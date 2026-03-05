@@ -7,7 +7,16 @@ def generate_answer(question, top_k=3):
     """
     # 1. Récupérer les documents pertinents
     results = search(question, top_k=top_k)
-    
+    print("\n--- DOCUMENTS UTILISÉS ---")
+    if results['documents'] and results['documents'][0]:
+        for i, doc in enumerate(results['documents'][0]):
+            source = results['metadatas'][0][i]['source']
+            page = results['metadatas'][0][i]['page']
+            print(f"Document {i+1}: {source} (Page {page})")
+            print(f"Contenu: {doc[:200]}...") # On affiche les 200 premiers caractères
+            print("-" * 30)
+    else:
+        print("⚠️ AUCUN DOCUMENT TROUVÉ DANS CHROMADB")
     # 2. Construire le contexte
     context = "\n\n".join(results['documents'][0])
     

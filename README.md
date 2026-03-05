@@ -9,4 +9,4 @@ From class documents to school lore anecdotes, TN-GPT can retrieve any informati
 ## Access to TN-GPT
 
 Work in Progress :
-Run ```uv sync``` then ```uv run streamlit run app/chat.py``` for a preview of what's comming.
+Run ```uv sync``` then ```uv run python main.py``` for a preview of what's comming.

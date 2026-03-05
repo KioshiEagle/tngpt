@@ -1,5 +1,10 @@
 from sentence_transformers import SentenceTransformer
 import chromadb
+import os
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+CHROMA_PATH = os.path.join(BASE_DIR, "chroma_db")
 
 def search(query, top_k=3, collection_name="documents"):
     """
@@ -9,7 +14,7 @@ def search(query, top_k=3, collection_name="documents"):
     model = SentenceTransformer('all-MiniLM-L6-v2')
     
     # Se connecter à ChromaDB
-    client = chromadb.PersistentClient(path="./chroma_db")
+    client = chromadb.PersistentClient(path=CHROMA_PATH)
     collection = client.get_collection(name=collection_name)
     
     # Générer l'embedding de la query

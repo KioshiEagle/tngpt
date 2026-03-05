@@ -1,5 +1,5 @@
-from flask import Blueprint, request, jsonify, session, render_templates
-from back.generate import generate_answer
+from flask import Blueprint, request, jsonify, session, render_template
+from .back.generate import generate_answer
 import random
 
 bp = Blueprint("chat", __name__)
