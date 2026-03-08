@@ -1,6 +1,7 @@
-from flask import Blueprint, request, jsonify, session, render_template
+from flask import Blueprint, request, jsonify, session, render_template,Response, stream_with_context
 from .back.generate import generate_answer
 import random
+import json
 
 bp = Blueprint("chat", __name__)
 
@@ -12,26 +13,32 @@ def chat():
         return jsonify({"error": "Message manquant"}), 400
     
     user_message = data["message"]
-    top_k = data.get("top_k", 3)
+    top_k = data.get("top_k", 15)
     
-    # Historique de la conversation en session
+    # Gestion de l'historique (Note : La session Flask est difficile à mettre à jour 
+    # à l'intérieur d'un stream, on enregistre donc l'entrée utilisateur ici)
     if "history" not in session:
         session["history"] = []
-    
     session["history"].append({"role": "user", "content": user_message})
-    
-    try:
-        response = generate_answer(user_message, top_k=top_k)
-        session["history"].append({"role": "assistant", "content": response})
-        session.modified = True
-        
-        return jsonify({
-            "response": response,
-            "history": session["history"]
-        })
-    
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    session.modified = True
+
+    def generate():
+        full_assistant_response = ""
+        try:
+            # On appelle generate_answer qui est maintenant un générateur (yield)
+            for chunk in generate_answer(user_message, top_k=top_k):
+                full_assistant_response += chunk
+                # On envoie le fragment de texte brut au client
+                yield chunk
+            
+            # Note : Pour mettre à jour l'historique en session avec la réponse complète,
+            # il faudrait idéalement utiliser une base de données ou un cache (Redis), 
+            # car le contexte de session Flask est souvent verrouillé après le début du stream.
+        except Exception as e:
+            yield f"Erreur : {str(e)}"
+
+    # On utilise stream_with_context pour garder l'accès à la session si besoin
+    return Response(stream_with_context(generate()), mimetype='text/plain')
 
 
 @bp.route("/history", methods=["GET"])

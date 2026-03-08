@@ -1,50 +1,69 @@
+import os
+from groq import Groq
 from .retrieval import search
-import ollama
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def generate_answer(question, top_k=3):
     """
-    Génère une réponse basée sur les documents récupérés
+    Génère une réponse en streaming avec Groq Cloud basée sur Qdrant.
     """
-    # 1. Récupérer les documents pertinents
+    # 1. Récupération du contexte
     results = search(question, top_k=top_k)
-    print("\n--- DOCUMENTS UTILISÉS ---")
-    if results['documents'] and results['documents'][0]:
-        for i, doc in enumerate(results['documents'][0]):
-            source = results['metadatas'][0][i]['source']
-            page = results['metadatas'][0][i]['page']
-            print(f"Document {i+1}: {source} (Page {page})")
-            print(f"Contenu: {doc[:200]}...") # On affiche les 200 premiers caractères
-            print("-" * 30)
-    else:
-        print("⚠️ AUCUN DOCUMENT TROUVÉ DANS CHROMADB")
-    # 2. Construire le contexte
-    context = "\n\n".join(results['documents'][0])
     
-    # 3. Construire le prompt
-    prompt = f"""Tu es TN-GPT, l'assistant sympa et décontracté de TELECOM Nancy. 
+    print("\n--- DOCUMENTS UTILISÉS ---")
+    if not results:
+        print("⚠️ AUCUN DOCUMENT TROUVÉ DANS QDRANT")
+        context = "Pas de contexte."
+    else:
+        for i, res in enumerate(results):
+            # On récupère les infos formatées par ton retrieval.py
+            source = res['metadata'].get('source', 'Inconnue')
+            score = res.get('score', 0)
+            
+            print(f"[{i+1}] Source: {source} (Score: {score:.4f})")
+            print(f"    Extrait: {res['content'][:150]}...")
+            print("-" * 40)
+        
+        context = "\n\n".join([res['content'] for res in results])
+    # 2. Initialisation du client Groq
+    client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-Ton style :
-- Réponds de manière concise (2-3 phrases max, sauf si la question demande des détails)
-- Sois friendly et un peu taquin (ton de pote, pas de prof)
-- Va droit au but, pas de blabla
-- Utilise des exemples concrets quand c'est utile
-- Tu peux utiliser un peu d'argot étudiant si ça colle
+    prompt = f"""Tu es TN-GPT, l'expert absolu du lore de TELECOM Nancy. 
+Ton style : Un pote de promo, taquin, mais qui a une mémoire de psychopathe sur les Mini Tel'.
 
-Contexte disponible :
+CONSIGNE DE RECHERCHE ULTRA-STRICTE :
+1. Analyse chaque [Source] fournie ci-dessous.
+2. Si l'utilisateur mentionne un "numéro" (ex: n°30), donne la priorité absolue aux extraits marqués [Source: Mini Tel_ 30].
+3. Ne survole pas : une blague ou un pléonasme peut tenir en un seul mot (ex: "Physiquement").
+4. Si tu trouves l'info, cite le numéro du Mini Tel'.
+
+ARCHIVES SECRÈTES (CONTEXTE) :
 {context}
 
-Question : {question}
+QUESTION DU POTE : 
+{question}
 
-Réponds en te basant sur le contexte. Si l'info n'est pas dans le contexte, dis-le franchement sans inventer."""
-    
-    # 4. Appeler le LLM
-    response = ollama.chat(
-        model='mistral',  # ou 'phi3', 'llama3.2' selon ce que tu as
-        messages=[{'role': 'user', 'content': prompt}]
-    )
-    
-    return response['message']['content']
+RÉPONSE DE TN-GPT :"""
 
-if __name__ == "__main__":
-    answer = generate_answer("C'est quoi un pointeur ?")
-    print(answer)
+    # 3. Appel Groq avec stream=True
+    try:
+        completion = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": "Tu es un étudiant de Telecom Nancy."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            stream=True  # Activation du streaming
+        )
+
+        # On "yield" chaque fragment de texte au fur et à mesure
+        for chunk in completion:
+            content = chunk.choices[0].delta.content
+            if content:
+                yield content
+
+    except Exception as e:
+        yield f"Erreur avec Groq : {str(e)}"
