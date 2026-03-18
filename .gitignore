@@ -1,3 +1,6 @@
+service-account.json
+.env
+
 # Environnements virtuels
 venv/
 .venv/
