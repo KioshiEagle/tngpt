@@ -11,23 +11,22 @@ def search(query, top_k=5, collection_name="documents"):
     """
     client = QdrantClient(
         url=os.getenv("QDRANT_URL"), 
-        api_key=os.getenv("QDRANT_API_KEY")
+        api_key=os.getenv("QDRANT_API_KEY"),
+        check_compatibility=False
     )
     
-    # Même modèle que pour l'ingestion
     model = SentenceTransformer('intfloat/multilingual-e5-small')
     
     # IMPORTANT : E5 demande le préfixe "query: " pour la recherche
     query_with_prefix = f"query: {query}"
     query_vector = model.encode(query_with_prefix).tolist()
     
-    # Recherche avec un seuil de score pour filtrer le bruit
     response = client.query_points(
         collection_name=collection_name,
         query=query_vector,
         limit=top_k,
-        score_threshold=0.75, # Seuil de qualité (E5 donne des scores plus élevés)
-        with_payload=True,
+        score_threshold=0.75,
+        with_payload=True, # on retrouve la source : le texte est stocké avec le vecteur dans le payload
         with_vectors=False
     )
     
