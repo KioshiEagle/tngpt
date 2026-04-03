@@ -3,3 +3,6 @@ chromadb
 ollama
 pypdf
 sentence-transformers
+pandas
+langchain_text_splitters
+semantic_chunkers
