@@ -5,7 +5,6 @@ def get_hybrid_chunks(text, chunk_size=800, chunk_overlap=240):
     Méthode Championne : Découpe le Markdown par Header (H1/H2) 
     puis affine par RecursiveCharacterSplitter avec injection de contexte.
     """
-    # 1. Définition des ancres structurelles (Titres du Mini Tel')
     headers_to_split_on = [
         ("#", "Header_1"),
         ("##", "Header_2"),
@@ -16,11 +15,10 @@ def get_hybrid_chunks(text, chunk_size=800, chunk_overlap=240):
         strip_headers=False # On garde les headers dans le texte pour plus de clarté
     )
     
-    # Premier découpage par sections sémantiques
     sections = md_splitter.split_text(text)
     
-    # 2. Configuration du découpage fin (Granularité RAG)
-    # On utilise tes réglages optimaux du Grid Search : 800 / 240 (30% overlap)
+    # Configuration du découpage fin (Granularité RAG)
+    # 840 / 240 -> 30% d'overlap
     rec_splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
