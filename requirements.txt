@@ -6,3 +6,4 @@ sentence-transformers
 pandas
 langchain_text_splitters
 semantic_chunkers
+qdrant_client

@@ -32,12 +32,12 @@ def reset_qdrant():
     log_file = "app/back/processed_files.json"
     if os.path.exists(log_file):
         os.remove(log_file)
-        print(f"🧹 Fichier {log_file} supprimé pour forcer la ré-ingestion.")
+        print(f"Fichier {log_file} supprimé pour forcer la ré-ingestion.")
 
-    print("✅ Base de données prête pour une nouvelle ingestion !")
+    print("Base de données prête pour une nouvelle ingestion.")
 
 if __name__ == "__main__":
-    confirm = input("⚠️ Es-tu sûr de vouloir tout supprimer dans Qdrant ? (y/n) : ")
+    confirm = input("Êtes-tu sûr de vouloir tout supprimer dans Qdrant ? (y/n) : ")
     if confirm.lower() == 'y':
         reset_qdrant()
     else:
