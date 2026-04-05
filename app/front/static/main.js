@@ -1,89 +1,95 @@
-document.addEventListener('DOMContentLoaded', function () {
+document.addEventListener('DOMContentLoaded', () => {
+    const form = document.getElementById('chat-form');
+    const input = document.getElementById('inp');
+    const messagesContainer = document.getElementById('messages');
+    const sendBtn = document.getElementById('sbtn');
+    const duckyImg = document.getElementById('sidebar-ducky');
+    const sidebarBubble = document.getElementById('sidebar-bubble');
 
-  const form     = document.getElementById('chat-form');
-  const input    = document.getElementById('inp');
-  const messages = document.getElementById('messages');
-  const typing   = document.getElementById('typing');
-  const sendBtn  = document.getElementById('sbtn');
+    // Gestion des clics sur les "chips" (suggestions)
+    document.querySelectorAll('.chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+            input.value = chip.dataset.query;
+            form.dispatchEvent(new Event('submit'));
+        });
+    });
 
-  form.addEventListener('submit', async function (e) {
-    e.preventDefault();
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const text = input.value.trim();
+        if (!text) return;
 
-    const message = input.value.trim();
-    if (!message) return;
+        // Nettoyage interface
+        const emptyState = document.getElementById('empty-state');
+        if (emptyState) emptyState.remove();
 
-    // Vider l'input + désactiver le bouton
-    input.value = '';
-    sendBtn.disabled = true;
+        // Afficher message utilisateur
+        appendMessage('user', text);
+        input.value = '';
+        sendBtn.disabled = true;
 
-    // Supprimer l'empty state s'il est encore là
-    const empty = document.querySelector('.empty');
-    if (empty) empty.remove();
+        // État "Réflexion"
+        duckyImg.classList.add('spinning');
+        sidebarBubble.textContent = "Je réfléchis...";
 
-    // Ajouter le message utilisateur
-    appendMessage('user', message);
+        // Préparer bulle assistant
+        const assistantMsgDiv = appendMessage('assistant', '');
+        const textContainer = assistantMsgDiv.querySelector('.msg-text');
 
-    // Afficher l'indicateur typing
-    typing.style.display = 'block';
-    scrollToBottom();
+        try {
+            const response = await fetch('/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: text })
+            });
 
-    // Préparer la bulle assistant vide
-    const assistantBubble = appendMessage('assistant', '');
+            if (!response.ok) throw new Error();
 
-    try {
-      const response = await fetch('/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message })
-      });
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            
+            // Premier chunk reçu : on change le statut
+            let firstChunk = true;
 
-      if (!response.ok) throw new Error('Erreur serveur');
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
 
-      // Cacher le typing dès que le stream commence
-      typing.style.display = 'none';
+                if (firstChunk) {
+                    duckyImg.classList.remove('spinning');
+                    sidebarBubble.textContent = "En train d'écrire...";
+                    firstChunk = false;
+                }
 
-      // Lire le stream chunk par chunk
-      const reader  = response.body.getReader();
-      const decoder = new TextDecoder();
+                textContainer.textContent += decoder.decode(value);
+                scrollToBottom();
+            }
+        } catch (err) {
+            textContainer.textContent = "Désolé, j'ai eu un bug de transmission. Réessaie ?";
+        } finally {
+            duckyImg.classList.remove('spinning');
+            sidebarBubble.textContent = "ici ça bz.";
+            sendBtn.disabled = false;
+            input.focus();
+        }
+    });
 
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        assistantBubble.textContent += decoder.decode(value);
+    function appendMessage(role, content) {
+        const msgDiv = document.createElement('div');
+        msgDiv.className = `msg ${role}`;
+        msgDiv.innerHTML = `
+            <div class="msg-who">${role === 'user' ? 'vous' : 'TN-GPT'}</div>
+            <div class="msg-text">${content}</div>
+        `;
+        messagesContainer.appendChild(msgDiv);
         scrollToBottom();
-      }
-
-    } catch (err) {
-      typing.style.display = 'none';
-      assistantBubble.textContent = 'Erreur : impossible de contacter le serveur.';
-    } finally {
-      sendBtn.disabled = false;
-      input.focus();
+        return msgDiv;
     }
-  });
 
-  function appendMessage(role, text) {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'msg ' + role;
-
-    const who = document.createElement('div');
-    who.className = 'msg-who';
-    who.textContent = role === 'user' ? 'vous' : 'TN-GPT';
-
-    const bubble = document.createElement('div');
-    bubble.className = 'msg-text';
-    bubble.textContent = text;
-
-    wrapper.appendChild(who);
-    wrapper.appendChild(bubble);
-    messages.appendChild(wrapper);
-
-    scrollToBottom();
-    return bubble;
-  }
-
-  function scrollToBottom() {
-    messages.scrollTop = messages.scrollHeight;
-  }
-
+    function scrollToBottom() {
+        messagesContainer.scrollTo({
+            top: messagesContainer.scrollHeight,
+            behavior: 'smooth'
+        });
+    }
 });
