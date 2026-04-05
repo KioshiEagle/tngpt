@@ -89,7 +89,7 @@ body {
 }
 
 .brand { font-family: 'IBM Plex Mono', monospace; font-size: 16px; font-weight: 500; }
-.brand span { color: var(--primary); }
+.hero-zone span { color: var(--primary); }
 
 .new-btn {
     display: block;
