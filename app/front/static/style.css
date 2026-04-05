@@ -22,7 +22,7 @@ body {
 
 /* --- SIDEBAR --- */
 .sidebar {
-    width: 240px;
+    width: 280px;
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
@@ -34,55 +34,58 @@ body {
 
 .logo-zone-mini {
     display: flex;
-    flex-direction: column;
-    align-items: center; /* Centre horizontalement l'image et la bulle */
-    gap: 0px; /* Supprime l'espace pour rapprocher la bulle de l'image */
-    margin-bottom: 15px;
+    flex-direction: row; /* Alignement horizontal */
+    align-items: center;
+    justify-content: flex-start;
+    gap: 15px; /* Espace pour le triangle */
+    margin-bottom: 25px;
+    position: relative;
+    padding-left: 5px;
 }
 
 .logo-img-mini { 
-    width: 150px; 
+    width: 150px; /* Taille réduite pour laisser de la place à la bulle en largeur */
+    height: auto;
     transition: transform 0.3s ease;
-    margin-bottom: -5px; /* Fait légèrement chevaucher l'image et la bulle pour l'effet */
-    position: relative;
-    z-index: 1; /* Assure que l'image est au-dessus du triangle */
+    flex-shrink: 0;
+    z-index: 2;
 }
 .logo-img-mini.spinning { animation: spin 1s linear infinite; }
 
 .speech-bubble.mini {
     background: #f0f0f5;
     padding: 8px 12px;
-    border-radius: 8px;
+    border-radius: 10px;
     font-size: 11px;
     position: relative;
     border: 1px solid var(--border);
-    max-width: 100%; /* Évite que la bulle ne dépasse de la sidebar */
-    word-wrap: break-word; /* Force le retour à la ligne si le texte est long */
-    z-index: 0;
+    flex: 1;
+    z-index: 1;
+    box-shadow: 2px 2px 5px rgba(0,0,0,0.05);
 }
 
 /* Le triangle de la bulle de BD pointant vers le haut */
 .speech-bubble.mini::before {
     content: '';
     position: absolute;
-    top: -10px; /* Positionne le triangle au-dessus de la bulle */
-    left: 50%; /* Centre horizontalement le triangle par rapport à la bulle */
-    transform: translateX(-50%); /* Ajustement précis du centrage */
-    border-width: 0 10px 10px 10px; /* Définit la forme du triangle pointant vers le haut */
+    left: -10px; /* Sort de la bulle vers la gauche */
+    top: 50%;
+    transform: translateY(-50%);
+    border-width: 8px 10px 8px 0; /* Triangle horizontal */
     border-style: solid;
-    border-color: transparent transparent var(--border) transparent; /* Couleur de la bordure du triangle */
+    border-color: transparent var(--border) transparent transparent;
 }
 
 /* Un deuxième triangle blanc pour masquer la bordure intérieure et créer l'effet de bulle pleine */
 .speech-bubble.mini::after {
     content: '';
     position: absolute;
-    top: -8.5px; /* Légèrement plus bas que le triangle de bordure */
-    left: 50%;
-    transform: translateX(-50%);
-    border-width: 0 9px 9px 9px; /* Taille légèrement réduite */
+    left: -8px;
+    top: 50%;
+    transform: translateY(-50%);
+    border-width: 7px 9px 7px 0;
     border-style: solid;
-    border-color: transparent transparent #f0f0f5 transparent; /* Couleur de fond de la bulle */
+    border-color: transparent #f0f0f5 transparent transparent;
 }
 
 .brand { font-family: 'IBM Plex Mono', monospace; font-size: 16px; font-weight: 500; }
