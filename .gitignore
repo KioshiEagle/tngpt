@@ -1,34 +1,4 @@
-service-account.json
-
-# Environnements virtuels
-venv/
-.venv/
-env/
-lib/
-bin/
-include/
-pyvenv.cfg
-share/
-
-# uv
-.uv/
-
-# ChromaDB (base de données locale)
-chroma_db/
-
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-
-# OS
-.DS_Store
-
-# IDE
-.vscode/
-.idea/
-
-.idea
 .env
+.venv
+uv.lock
+*/service-account.json
