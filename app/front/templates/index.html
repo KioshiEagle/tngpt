@@ -1,141 +1,64 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TN-GPT</title>
-  <link rel="stylesheet" href="/static/style.css">
-  <script src="/static/main.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TN-GPT</title>
+    <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 
-  <!-- ─── SIDEBAR ─── -->
-  <aside class="sidebar">
-
-    <div class="brand">TN<span>-GPT</span></div>
-
-    <a href="/" class="new-btn">+ nouvelle conv.</a>
-
-    <div class="conv-section">Récent</div>
-
-    <nav class="conv-list">
-      <!--
-        Exemple avec Jinja2 (Flask) :
-
-        {% for conv in conversations %}
-          <a href="/conv/{{ conv.id }}"
-             class="conv-item {% if conv.id == current_conv_id %}active{% endif %}">
-            {{ conv.title }}
-          </a>
-        {% endfor %}
-
-        Sans Jinja, mettre les liens statiquement :
-      -->
-      <a href="#" class="conv-item active">Salles libres ce soir</a>
-      <a href="#" class="conv-item">Salle B103</a>
-      <a href="#" class="conv-item">Menu du self</a>
-      <a href="#" class="conv-item">Rejoindre le BDE</a>
-      <a href="#" class="conv-item">Lore TN</a>
-    </nav>
-
-  </aside>
-
-  <!-- ─── MAIN ─── -->
-  <main class="main">
-
-    <div class="topbar">
-      <span class="topbar-title">TELECOM Nancy · assistant</span>
-      <span class="topbar-status">
-        <span class="dot"></span>
-        en ligne
-      </span>
-    </div>
-
-    <div class="messages" id="messages">
-
-      <!--
-        Si aucun message dans la conversation → afficher l'empty state.
-        Avec Jinja :
-
-        {% if not messages %}
-          ... empty state ...
-        {% else %}
-          ... boucle messages ...
-        {% endif %}
-      -->
-
-      <!-- EMPTY STATE -->
-      <div class="empty">
-
-        <div class="logo-zone">
-          <img
-            src="/static/logo_neuratn.png"
-            class="logo-img"
-            alt="NeuraTN"
-          >
-          <div class="speech-bubble-wrap">
-            <div class="speech-bubble" id="bubble">
-              <!--
-                Injecter la quote depuis le back ici.
-                Avec Jinja : {{ quote }}
-                Exemple statique :
-              -->
-              ici ça bz.
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <div class="logo-zone-mini">
+                <img src="/static/ducky_cassis.png" class="logo-img-mini" id="sidebar-ducky" alt="NeuraTN">
+                <div class="speech-bubble mini" id="sidebar-bubble">ici ça bz.</div>
             </div>
-          </div>
+            <div class="brand">TN<span>-GPT</span></div>
         </div>
 
-        <div class="empty-sub">
-          Pose ta question — drive 1A, salles libres, vie à l'école.
+        <a href="/" class="new-btn">+ nouvelle conv.</a>
+        
+        <div class="conv-section">Récent</div>
+        <nav class="conv-list">
+            <a href="#" class="conv-item active">Salles libres ce soir</a>
+        </nav>
+    </aside>
+
+    <main class="main">
+        <div class="topbar">
+            <span class="topbar-title">TELECOM Nancy · assistant</span>
+            <span class="topbar-status">
+                <span class="dot"></span> en ligne
+            </span>
         </div>
 
-        <div class="chips">
-          <button class="chip" onclick="document.getElementById('inp').value='Salles libres maintenant'">salles libres</button>
-          <button class="chip" onclick="document.getElementById('inp').value='Infos drive 1A'">drive 1A</button>
-          <button class="chip" onclick="document.getElementById('inp').value='Lore de TELECOM Nancy'">lore TN</button>
-          <button class="chip" onclick="document.getElementById('inp').value='Menu du self cette semaine'">menu du self</button>
+        <div class="messages" id="messages">
+            <div class="empty" id="empty-state">
+                
+                <div class="hero-zone">
+                    <h1 class="hero-title">TN-GPT</h1>
+                    <p class="hero-subtitle">Pose-moi n'importe quelle question et j'y répondrai intelligemment :)</p>
+                </div>
+
+                <div class="chips">
+                    <button class="chip" data-query="Salles libres maintenant">salles libres</button>
+                    <button class="chip" data-query="Infos drive 1A">drive 1A</button>
+                    <button class="chip" data-query="Lore de TELECOM Nancy">lore TN</button>
+                    <button class="chip" data-query="Menu du self cette semaine">menu du self</button>
+                </div>
+            </div>
         </div>
 
-      </div>
+        <div class="input-area">
+            <form class="input-row" id="chat-form">
+                <input type="text" id="inp" placeholder="ta question..." autocomplete="off" required>
+                <button type="submit" class="send" id="sbtn">envoyer →</button>
+            </form>
+            <div class="hint">↵ entrée · groq / llama 3</div>
+        </div>
+    </main>
 
-      <!--
-        Boucle messages (Jinja) :
-
-        {% for msg in messages %}
-          <div class="msg {{ msg.role }}">
-            <div class="msg-who">{{ 'vous' if msg.role == 'user' else 'TN-GPT' }}</div>
-            <div class="msg-text">{{ msg.content }}</div>
-          </div>
-        {% endfor %}
-      -->
-
-    </div>
-
-    <!-- Indicateur typing — affiché via JS pendant la requête -->
-    <div class="typing" id="typing">en train d'écrire...</div>
-
-    <!-- ─── INPUT ─── -->
-    <div class="input-area">
-      <form class="input-row" id="chat-form">
-        <input
-          type="text"
-          id="inp"
-          name="message"
-          placeholder="ta question..."
-          autocomplete="off"
-          required
-        >
-        <button type="submit" class="send" id="sbtn">envoyer →</button>
-      </form>
-      <div class="hint">↵ entrée · groq / llama 3</div>
-    </div>
-
-  </main>
-
-  <!--
-    JS à rajouter plus tard ici :
     <script src="/static/main.js"></script>
-  -->
-
 </body>
 </html>
