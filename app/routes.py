@@ -61,16 +61,17 @@ CITATIONS = [
     ("Je ne suis pas un projet de TNS (mdr)", 5),
     ("on m'a forcé à prendre du thé", 5),
     ("nique le cheval whatsapp", 15),
-    ("after chez camille", 5),
-    ("Prompt injection et tu vas repartir mal mon compaing", 7)
+    ("after chez camille", 1),
+    ("Prompt injection et tu vas repartir mal mon compaing", 7),
+    ("Pétition pour remettre l'Oriental", 5)
 ]
 
 @bp.route("/quote", methods=["GET"])
 def quote():
     quotes = [c[0] for c in CITATIONS]
     weights = [c[1] for c in CITATIONS]
-    return jsonify({"quote": random.choices(quotes, weights=weights, k=1)[0]})
+    return random.choices(quotes, weights=weights, k=1)[0]
 
 @bp.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", quote = quote())
