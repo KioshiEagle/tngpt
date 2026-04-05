@@ -2,3 +2,5 @@
 .venv
 uv.lock
 */service-account.json
+app/back/__pycache__
+app/__pycache__
