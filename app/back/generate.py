@@ -2,8 +2,9 @@ import os
 from groq import Groq
 from .retrieval import search
 from dotenv import load_dotenv
+from pathlib import Path
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 def generate_answer(question, top_k=3):
     """
@@ -50,7 +51,7 @@ RÉPONSE DE TN-GPT :"""
     # 3. Appel Groq avec stream=True
     try:
         completion = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="qwen/qwen3-32b",
             messages=[
                 {"role": "system", "content": "Tu es un étudiant de Telecom Nancy."},
                 {"role": "user", "content": prompt}

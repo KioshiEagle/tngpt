@@ -2,13 +2,15 @@ import os
 from qdrant_client import QdrantClient
 from sentence_transformers import SentenceTransformer
 from dotenv import load_dotenv
+from pathlib import Path
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 def search(query, top_k=5, collection_name="documents"):
     """
     Recherche sémantique optimisée pour le français avec E5.
     """
+
     client = QdrantClient(
         url=os.getenv("QDRANT_URL"), 
         api_key=os.getenv("QDRANT_API_KEY"),
@@ -20,7 +22,7 @@ def search(query, top_k=5, collection_name="documents"):
     # IMPORTANT : E5 demande le préfixe "query: " pour la recherche
     query_with_prefix = f"query: {query}"
     query_vector = model.encode(query_with_prefix).tolist()
-    
+
     response = client.query_points(
         collection_name=collection_name,
         query=query_vector,
