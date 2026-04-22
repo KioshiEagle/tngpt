@@ -1,0 +1,13 @@
+version: "3.9"
+
+services:
+  app:
+    build: .
+    container_name: mon-app-python
+    ports:
+      - "8000:8000"        # adapte le port si besoin
+    volumes:
+      - .:/app             # hot-reload en dev (optionnel)
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
