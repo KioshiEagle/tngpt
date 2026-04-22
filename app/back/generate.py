@@ -61,10 +61,18 @@ RÉPONSE DE TN-GPT :"""
         )
 
         # On "yield" chaque fragment de texte au fur et à mesure
+        in_thought_block = False
         for chunk in completion:
             content = chunk.choices[0].delta.content
             if content:
-                yield content
+                if "<think>" in content:
+                    in_thought_block = True
+                if "</think>" in content:
+                    in_thought_block = False
+                    continue # On passe au chunk suivant après la fermeture
+                
+                if not in_thought_block:
+                    yield content
 
     except Exception as e:
         yield f"Erreur avec Groq : {str(e)}"
