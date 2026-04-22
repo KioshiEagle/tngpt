@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+model = SentenceTransformer('intfloat/multilingual-e5-small')
 
 def search(query, top_k=5, collection_name="documents"):
     """
@@ -16,9 +17,7 @@ def search(query, top_k=5, collection_name="documents"):
         api_key=os.getenv("QDRANT_API_KEY"),
         check_compatibility=False
     )
-    
-    model = SentenceTransformer('intfloat/multilingual-e5-small')
-    
+        
     # IMPORTANT : E5 demande le préfixe "query: " pour la recherche
     query_with_prefix = f"query: {query}"
     query_vector = model.encode(query_with_prefix).tolist()
