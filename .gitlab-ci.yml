@@ -1,0 +1,14 @@
+stages:
+  - build
+
+build:
+  stage: build
+  image: docker:24
+  services:
+    - docker:24-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+  only:
+    - main
+  script:
+    - docker build -t tn-gpt .
