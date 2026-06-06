@@ -10,6 +10,7 @@ app/__pycache__
 core
 .DS_Store
 *.pyc
+*cache
 
 # fichiers d'output
 processed_files.json
