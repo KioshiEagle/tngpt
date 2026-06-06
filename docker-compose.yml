@@ -1,7 +1,7 @@
 services:
   app:
     build: .
-    container_name: mon-app-python
+    container_name: tn-gpt-python
     ports:
       - "8501:8501"
     volumes:

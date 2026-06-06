@@ -1,6 +1,15 @@
+# secret
 .env
+*/service-account.json
+
+# chiant sur le repo
 .venv
 uv.lock
-*/service-account.json
 app/back/__pycache__
 app/__pycache__
+core
+.DS_Store
+*.pyc
+
+# fichiers d'output
+processed_files.json
