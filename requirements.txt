@@ -1,5 +1,6 @@
 flask
 chromadb
+groq
 ollama
 pypdf
 sentence-transformers
