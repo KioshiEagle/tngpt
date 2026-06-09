@@ -17,6 +17,7 @@ dependencies = [
     "qdrant-client>=1.18.0",
     "semantic-chunkers>=0.1.1",
     "sentence-transformers>=5.5.1",
+    "torch==2.12.0+cpu",
 ]
 
 [dependency-groups]
