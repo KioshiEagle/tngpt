@@ -73,6 +73,7 @@ build_and_push_image:
       --context "${CI_PROJECT_DIR}"
       --dockerfile "${CI_PROJECT_DIR}/Dockerfile"
       --destination "${IMAGE_TAG}"
+      --skip-tls-verify
 
   # temporairement commenté pour tes tests sur ta branche JC/dev
   #only:
