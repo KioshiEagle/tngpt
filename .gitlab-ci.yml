@@ -84,13 +84,14 @@ deploy_to_server:
   stage: deploy
   image: alpine:latest
   script:
-    - apk add --no-cache openssh-client coreutils    # 1. On crée le dossier .ssh obligatoire
+    - apk add --no-cache openssh-client python3
     - mkdir -p ~/.ssh
     - chmod 700 ~/.ssh
     
     # 2. On écrit proprement la clé dans un fichier physique temporaire
     # Le guillemettage strict et l'écho préservent les retours à la ligne exacts
-    - echo "$PROD_SSH_KEY" | base64 -d > ~/.ssh/id_ed25519
+    - python3 -c "import base64, os; key = base64.b64decode(os.environ['PROD_SSH_KEY'].strip()); open(os.path.expanduser('~/.ssh/id_ed25519'), 'wb').write(key)"
+
     - chmod 600 ~/.ssh/id_ed25519
     
     # 3. Sécurité : On dit à SSH d'ignorer la vérification de l'hôte (évite le blocage Interactive)
