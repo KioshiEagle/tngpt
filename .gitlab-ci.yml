@@ -30,12 +30,11 @@ stages:
 build_and_push_image:
   stage: build
   image: docker:24.0.5
-  services:
-    - docker:24.0.5-dind
   variables:
     # Sécurité TLS car sur gitlab d'autre processus pourrait voir"
     DOCKER_TLS_CERTDIR: "/certs"
     IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
+    DOCKER_HOST: "unix:///var/run/docker.sock"
   before_script:
     # INDISPENSABLE : Connexion au magasin central pour avoir le droit de push
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
