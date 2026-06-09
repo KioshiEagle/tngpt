@@ -1,4 +1,4 @@
-image: ghcr.io/astral-sh/uv:python3.11-slim
+image: ghcr.io/astral-sh/uv:0.11.19-python3.13-trixie
 
 stages:
   - check_code_quality
