@@ -28,7 +28,7 @@ pytest:
 
 
 build_and_push_image:
-  stage: docker_build
+  stage: build
   image: docker:24.0.5
   services:
     - docker:24.0.5-dind
@@ -48,7 +48,7 @@ build_and_push_image:
     - master
 
 deploy_to_server:
-  stage: deploy_prod
+  stage: deploy
   image: alpine:latest
   script:
     # 1. Installation d'un client SSH léger dans le conteneur jetable d'Alpine
