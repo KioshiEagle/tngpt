@@ -15,6 +15,7 @@ lint:
     - uv run ruff format . --check
 check_security:
   stage: check_code_quality
+  script:
     - uv run bandit -c pyproject.toml -r .
     - uv audit
     - uv run pip-audit
