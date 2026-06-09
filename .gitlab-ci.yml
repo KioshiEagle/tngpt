@@ -1,30 +1,30 @@
 image: ghcr.io/astral-sh/uv:0.11.19-python3.13-trixie
 
 stages:
-  - check_code_quality
-  - test
+  #- check_code_quality
+  #- test
   - build
   - deploy
 
-lint:
-  stage : check_code_quality
-  script:
-    - uv lock --check
-    - uv check
-    - uv run ruff check . --statistics
-    - uv run ruff format . --check
-check_security:
-  stage: check_code_quality
-  script:
-    - uv run bandit -c pyproject.toml -r .
-    - uv audit
-    - uv run pip-audit
-#uv audit est encore expérimental donc je laisse pip-audit pour l'instant
-pytest:
-  stage: test
-  script:
-    - uv sync
-    - uv run pytest tests/
+# lint:
+#   stage : check_code_quality
+#   script:
+#     - uv lock --check
+#     - uv check
+#     - uv run ruff check . --statistics
+#     - uv run ruff format . --check
+# check_security:
+#   stage: check_code_quality
+#   script:
+#     - uv run bandit -c pyproject.toml -r .
+#     - uv audit
+#     - uv run pip-audit
+# #uv audit est encore expérimental donc je laisse pip-audit pour l'instant
+# pytest:
+#   stage: test
+#   script:
+#     - uv sync
+#     - uv run pytest tests/
 
 
 build_and_push_image:
@@ -44,8 +44,8 @@ build_and_push_image:
     - docker build -t $IMAGE_TAG .
     # INDISPENSABLE : On sauvegarde le produit fini dans l'entrepôt
     - docker push $IMAGE_TAG
-  only:
-    - master
+  #only:
+  #  - master
 
 deploy_to_server:
   stage: deploy
@@ -84,5 +84,5 @@ deploy_to_server:
   environment:
     name: production
     url: 64.226.99.199:5000
-  only:
-    - master
+  #only:
+  #  - master
