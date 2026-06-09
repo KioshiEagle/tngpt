@@ -108,13 +108,13 @@ deploy_to_server:
         docker rm tngpt-app || true &&
         
         # D. Il lance le nouveau conteneur en liant le port 5000 et en important tes variables d'environnement locales
-        docker run -d --name tngpt-app -p 5000:5000 --restart always $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG &&
+        docker run -d --name tngpt-app -p 8501:8501 --restart always $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG &&
         
         # E. Nettoyage : Supprime les vieilles images inutilisées pour ne pas surcharger les 50 Go de ton SSD
         docker image prune -f
       "
   environment:
     name: production
-    url: 64.226.99.199:5000
+    url: 64.226.99.199:8501
   #only:
   #  - master
