@@ -1,14 +1,87 @@
-stages:
-  - build
+image: ghcr.io/astral-sh/uv:python3.11-slim
 
-build:
-  stage: build
-  image: docker:24
-  services:
-    - docker:24-dind
-  variables:
-    DOCKER_TLS_CERTDIR: "/certs"
-  only:
-    - main
+stages:
+  - check_code_quality
+  - test
+  - build
+  - deploy
+
+lint:
+  stage : check_code_quality
   script:
-    - docker build -t tn-gpt .
+    - uv lock --check
+    - uv check
+    - uv run ruff check . --statistics
+    - uv run ruff format . --check
+check_security:
+  stage: check_code_quality
+    - uv run bandit -c pyproject.toml -r .
+    - uv audit
+    - uv run pip-audit
+#uv audit est encore expérimental donc je laisse pip-audit pour l'instant
+pytest:
+  stage: test
+  script:
+    - uv sync
+    - uv run pytest tests/
+
+
+build_and_push_image:
+  stage: docker_build
+  image: docker:24.0.5
+  services:
+    - docker:24.0.5-dind
+  variables:
+    # Sécurité TLS car sur gitlab d'autre processus pourrait voir"
+    DOCKER_TLS_CERTDIR: "/certs"
+    IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
+  before_script:
+    # INDISPENSABLE : Connexion au magasin central pour avoir le droit de push
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    # On build l'image avec son nom officiel complet pour le Registry
+    - docker build -t $IMAGE_TAG .
+    # INDISPENSABLE : On sauvegarde le produit fini dans l'entrepôt
+    - docker push $IMAGE_TAG
+  only:
+    - master
+
+deploy_to_server:
+  stage: deploy_prod
+  image: alpine:latest
+  script:
+    # 1. Installation d'un client SSH léger dans le conteneur jetable d'Alpine
+    - apk add --no-cache openssh-client
+    
+    # 2. Démarrage de l'agent SSH et injection de ta clé secrète stockée dans GitLab
+    - eval $(ssh-agent -s)
+    - echo "$PROD_SSH_KEY" | tr -d '\r' | ssh-add -
+    
+    # 3. Configuration de la sécurité pour éviter que la CI ne bloque sur la validation du serveur
+    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
+    
+    # 4. Ordres envoyés en SSH à ton Droplet DigitalOcean
+    - |
+      ssh root@64.226.99.199 "
+        # A. Ton Droplet se connecte au Registry GitLab avec les identifiants éphémères du Job
+        docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY &&
+        
+        # B. Il télécharge la toute nouvelle image scellée à l'étape 3
+        docker pull $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG &&
+        
+        # C. Il coupe l'ancien conteneur de l'application s'il existe (sans faire planter le script si c'est le premier déploiement)
+        docker stop tngpt-app || true &&
+        docker rm tngpt-app || true &&
+        
+        # D. Il lance le nouveau conteneur en liant le port 5000 et en important tes variables d'environnement locales
+        docker run -d --name tngpt-app -p 5000:5000 --restart always $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG &&
+        
+        # E. Nettoyage : Supprime les vieilles images inutilisées pour ne pas surcharger les 50 Go de ton SSD
+        docker image prune -f
+      "
+  environment:
+    name: production
+    url: 64.226.99.199:5000
+  only:
+    - master
