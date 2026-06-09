@@ -89,7 +89,7 @@ deploy_to_server:
     
     # 2. Démarrage de l'agent SSH et injection de ta clé secrète stockée dans GitLab
     - eval $(ssh-agent -s)
-    - echo "$PROD_SSH_KEY" | tr -d '\r' | ssh-add -
+    - printf "%s\n" "$PROD_SSH_KEY" | tr -d '\r' | ssh-add -
     
     # 3. Configuration de la sécurité pour éviter que la CI ne bloque sur la validation du serveur
     - mkdir -p ~/.ssh && chmod 700 ~/.ssh
