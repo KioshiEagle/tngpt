@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM ghcr.io/astral-sh/uv:0.11.19-python3.13-trixie
 
 WORKDIR /app
 
@@ -7,14 +7,12 @@ RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+COPY pyproject.toml uv.lock ./
 
-# Torch CPU en premier
-RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
-
-# Reste des dépendances
-RUN pip install --no-cache-dir -r requirements.txt
+RUN uv sync --frozen --no-dev
 
 COPY . .
 
-CMD ["python", "main.py"]
+EXPOSE 8501
+
+CMD ["uv", "run", "python", "main.py"]
