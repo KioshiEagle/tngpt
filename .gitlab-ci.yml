@@ -26,24 +26,55 @@ stages:
 #     - uv sync
 #     - uv run pytest tests/
 
+#Version bien mais je sais pas comment on gère avec gibson...
 
+# build_and_push_image:
+#   stage: build
+#   image: docker:24.0.5
+#   services:
+#     - docker:24.0.5-dind
+#   variables:
+#     # Sécurité TLS car sur gitlab d'autre processus pourrait voir"
+#     DOCKER_TLS_CERTDIR: "/certs"
+#     IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
+#   before_script:
+#     # INDISPENSABLE : Connexion au magasin central pour avoir le droit de push
+#     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+#   script:
+#     # On build l'image avec son nom officiel complet pour le Registry
+#     - docker build -t $IMAGE_TAG .
+#     # INDISPENSABLE : On sauvegarde le produit fini dans l'entrepôt
+#     - docker push $IMAGE_TAG
+#   #only:
+#   #  - master
+
+#version pas bien mais fonctionnel...
 build_and_push_image:
   stage: build
-  image: docker:24.0.5
-  services:
-    - docker:24.0.5-dind
+  # 1. On remplace l'image Docker par l'exécuteur de Google Kaniko
+  image:
+    name: gcr.io/kaniko-project/executor:v1.14.0-debug
+    entrypoint: [""]
+  
+  # 2. PLUS BESOIN de la section "services" (on oublie dind et les problèmes de TLS)
+  
   variables:
-    # Sécurité TLS car sur gitlab d'autre processus pourrait voir"
-    DOCKER_TLS_CERTDIR: "/certs"
     IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
+
   before_script:
-    # INDISPENSABLE : Connexion au magasin central pour avoir le droit de push
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    # 3. On crée le fichier de configuration d'authentification pour le Registry GitLab
+    # C'est l'équivalent strict du "docker login", mais au format JSON pour Kaniko
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
+
   script:
-    # On build l'image avec son nom officiel complet pour le Registry
-    - docker build -t $IMAGE_TAG .
-    # INDISPENSABLE : On sauvegarde le produit fini dans l'entrepôt
-    - docker push $IMAGE_TAG
+    # 4. Kaniko lit le Dockerfile, compile en user-space et push l'image finale tout seul
+    - /kaniko/executor
+      --context "${CI_PROJECT_DIR}"
+      --dockerfile "${CI_PROJECT_DIR}/Dockerfile"
+      --destination "${IMAGE_TAG}"
+
+  # temporairement commenté pour tes tests sur ta branche JC/dev
   #only:
   #  - master
 
