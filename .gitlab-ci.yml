@@ -84,34 +84,27 @@ deploy_to_server:
   stage: deploy
   image: alpine:latest
   script:
-    # 1. Installation d'un client SSH léger dans le conteneur jetable d'Alpine
     - apk add --no-cache openssh-client
+    # 1. On crée le dossier .ssh obligatoire
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
     
-    # 2. Démarrage de l'agent SSH et injection de ta clé secrète stockée dans GitLab
-    - eval $(ssh-agent -s)
-    - printf "%s\n" "$PROD_SSH_KEY" | tr -d '\r' | ssh-add -
+    # 2. On écrit proprement la clé dans un fichier physique temporaire
+    # Le guillemettage strict et l'écho préservent les retours à la ligne exacts
+    - echo "$PROD_SSH_KEY" > ~/.ssh/id_ed25519
+    - chmod 600 ~/.ssh/id_ed25519
     
-    # 3. Configuration de la sécurité pour éviter que la CI ne bloque sur la validation du serveur
-    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
+    # 3. Sécurité : On dit à SSH d'ignorer la vérification de l'hôte (évite le blocage Interactive)
     - echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
     
-    # 4. Ordres envoyés en SSH à ton Droplet DigitalOcean
+    # 4. On passe la clé directement à SSH via l'option -i (Identity File)
     - |
-      ssh root@64.226.99.199 "
-        # A. Ton Droplet se connecte au Registry GitLab avec les identifiants éphémères du Job
+      ssh -i ~/.ssh/id_ed25519 root@64.226.99.199 "
         docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY &&
-        
-        # B. Il télécharge la toute nouvelle image scellée à l'étape 3
         docker pull $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG &&
-        
-        # C. Il coupe l'ancien conteneur de l'application s'il existe (sans faire planter le script si c'est le premier déploiement)
         docker stop tngpt-app || true &&
         docker rm tngpt-app || true &&
-        
-        # D. Il lance le nouveau conteneur en liant le port 5000 et en important tes variables d'environnement locales
         docker run -d --name tngpt-app -p 8501:8501 --restart always $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG &&
-        
-        # E. Nettoyage : Supprime les vieilles images inutilisées pour ne pas surcharger les 50 Go de ton SSD
         docker image prune -f
       "
   environment:
