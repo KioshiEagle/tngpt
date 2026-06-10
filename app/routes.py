@@ -1,4 +1,5 @@
 import random
+from collections.abc import Iterator
 
 from flask import (
     Blueprint,
@@ -16,11 +17,12 @@ bp = Blueprint("chat", __name__)
 
 
 @bp.route("/chat", methods=["POST"])
-def chat():
+def chat() -> Response:
+    """Gère la conversation avec l'utilisateur via stream."""
     data = request.get_json()
 
     if not data or "message" not in data:
-        return jsonify({"error": "Message manquant"}), 400
+        return jsonify({"error": "Message manquant"})
 
     user_message = data["message"]
     top_k = data.get("top_k", 15)
@@ -32,7 +34,7 @@ def chat():
     session["history"].append({"role": "user", "content": user_message})
     session.modified = True
 
-    def generate():
+    def generate() -> Iterator[str]:
         full_assistant_response = ""
         try:
             # On appelle generate_answer qui est maintenant un générateur (yield)
@@ -45,25 +47,30 @@ def chat():
             # il faudrait idéalement utiliser une base de données ou un cache (Redis),
             # car le contexte de session Flask est souvent verrouillé
             # après le début du stream.
-        except Exception as e:
-            yield f"Erreur : {str(e)}"
+        except Exception as e:  # noqa: BLE001
+            # Beaucoup trop d'exception à gerer
+            # Peut être plus tard
+            yield f"Erreur : {e!s}"
 
     # On utilise stream_with_context pour garder l'accès à la session si besoin
     return Response(stream_with_context(generate()), mimetype="text/plain")
 
 
 @bp.route("/history", methods=["GET"])
-def history():
+def history() -> Response:
+    """Renvoie l'historique de la conversation."""
     return jsonify(session.get("history", []))
 
 
 @bp.route("/history", methods=["DELETE"])
-def clear_history():
+def clear_history() -> Response:
+    """Efface l'historique de la conversation."""
     session.pop("history", None)
     return jsonify({"message": "Historique effacé"})
 
 
-CITATIONS = [
+Citation = tuple[str, int]
+CITATIONS: list[Citation] = [
     ("Qu'avez-vous à dire pour votre défense ?", 10),
     ("Envie de jiguer, pas vous ?", 15),
     ("En date avec Crazy François", 15),
@@ -80,12 +87,14 @@ CITATIONS = [
 
 
 @bp.route("/quote", methods=["GET"])
-def quote():
+def quote() -> str:
+    """Retourne une citation aléatoire."""
     quotes = [c[0] for c in CITATIONS]
     weights = [c[1] for c in CITATIONS]
     return random.choices(quotes, weights=weights, k=1)[0]  # nosec
 
 
 @bp.route("/")
-def index():
+def index() -> str:
+    """Affiche la page d'accueil de l'interface."""
     return render_template("index.html", quote=quote())
