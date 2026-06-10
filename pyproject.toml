@@ -64,5 +64,5 @@ skip-magic-trailing-comma = false
 docstring-code-format = true
 
 [tool.bandit]
-exclude_dirs = [".venv","tests","models_cache","__pycache__",".ruf_cache"]
+exclude_dirs = [".venv","tests","models_cache","__pycache__",".ruf_cache",".uv-cache"]
 skips = ["B101"]
