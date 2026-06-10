@@ -1,6 +1,6 @@
 # secret
 .env
-*/service-account.json
+app/back/service-account.json
 
 # chiant sur le repo
 .venv
@@ -11,6 +11,9 @@ core
 .DS_Store
 *.pyc
 *cache
+.python-version
 
 # fichiers d'output
 processed_files.json
+*.pdf
+app/back/temp/
