@@ -30,19 +30,14 @@ def search(query: str, top_k: int = 5, collection_name: str = "documents") -> li
         with_vectors=False,
     )
 
-    formatted_results = []
-    for res in response.points:
-        formatted_results.append(
-            {
-                "content": (res.payload or {}).get("text", "Texte non trouvé"),
-                "metadata": {
-                    k: v for k, v in (res.payload or {}).items() if k != "text"
-                },
-                "score": res.score,
-            },
-        )
-
-    return formatted_results
+    return [
+        {
+            "content": (res.payload or {}).get("text", "Texte non trouvé"),
+            "metadata": {k: v for k, v in (res.payload or {}).items() if k != "text"},
+            "score": res.score,
+        }
+        for res in response.points
+    ]
 
 
 if __name__ == "__main__":

@@ -55,7 +55,7 @@ target-version = "py313"
 
 [tool.ruff.lint]
 select = ["ALL"]
-ignore = ["T201","S"]
+ignore = ["T201","S","D100","D104","D401"]
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["S101"]
 [tool.ruff.lint.mccabe]

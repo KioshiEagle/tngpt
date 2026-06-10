@@ -17,6 +17,7 @@ logfile = BASE_DIR / "processed_files.json"
 
 
 def run_pipeline() -> None:
+    """Lance le pipeline complet d'ingestion des documents."""
     # 0. Préparation des dossiers
     for d in [TEMP_PDF, TEMP_MD]:
         d.mkdir(parents=True, exist_ok=True)

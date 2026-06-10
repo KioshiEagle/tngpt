@@ -16,7 +16,8 @@ bp = Blueprint("chat", __name__)
 
 
 @bp.route("/chat", methods=["POST"])
-def chat()-> Response:
+def chat() -> Response:
+    """Gère la conversation avec l'utilisateur via stream."""
     data = request.get_json()
 
     if not data or "message" not in data:
@@ -53,12 +54,14 @@ def chat()-> Response:
 
 
 @bp.route("/history", methods=["GET"])
-def history()-> Response:
+def history() -> Response:
+    """Renvoie l'historique de la conversation."""
     return jsonify(session.get("history", []))
 
 
 @bp.route("/history", methods=["DELETE"])
-def clear_history()-> Response:
+def clear_history() -> Response:
+    """Efface l'historique de la conversation."""
     session.pop("history", None)
     return jsonify({"message": "Historique effacé"})
 
@@ -80,12 +83,14 @@ CITATIONS = [
 
 
 @bp.route("/quote", methods=["GET"])
-def quote()->list:
+def quote() -> str:
+    """Retourne une citation aléatoire."""
     quotes = [c[0] for c in CITATIONS]
     weights = [c[1] for c in CITATIONS]
     return random.choices(quotes, weights=weights, k=1)[0]  # nosec
 
 
 @bp.route("/")
-def index()-> str:
+def index() -> str:
+    """Affiche la page d'accueil de l'interface."""
     return render_template("index.html", quote=quote())
