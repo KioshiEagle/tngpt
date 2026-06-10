@@ -5,6 +5,7 @@ from qdrant_client import QdrantClient, models
 
 load_dotenv()
 
+
 def reset_qdrant():
     """Supprime et recrée la collection pour un nouveau départ."""
     client = QdrantClient(
@@ -23,8 +24,8 @@ def reset_qdrant():
         collection_name=collection_name,
         vectors_config=models.VectorParams(
             size=384,  # Dimension pour all-MiniLM-L6-v2
-            distance=models.Distance.COSINE
-        )
+            distance=models.Distance.COSINE,
+        ),
     )
 
     # Nettoyage du fichier log local
@@ -35,9 +36,10 @@ def reset_qdrant():
 
     print("Base de données prête pour une nouvelle ingestion.")
 
+
 if __name__ == "__main__":
     confirm = input("Êtes-tu sûr de vouloir tout supprimer dans Qdrant ? (y/n) : ")
-    if confirm.lower() == 'y':
+    if confirm.lower() == "y":
         reset_qdrant()
     else:
         print("Opération annulée.")
