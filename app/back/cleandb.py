@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient, models
@@ -29,10 +30,9 @@ def reset_qdrant() -> None:
     )
 
     # Nettoyage du fichier log local
-    log_file = "app/back/processed_files.json"
-    if os.path.exists(log_file):
-        os.remove(log_file)
-        print(f"Fichier {log_file} supprimé pour forcer la ré-ingestion.")
+    log_file_path = Path("app/back/processed_files.json")
+    log_file_path.unlink(missing_ok=True)
+    print(f"Fichier {log_file_path} supprimé pour forcer la ré-ingestion.")
 
     print("Base de données prête pour une nouvelle ingestion.")
 

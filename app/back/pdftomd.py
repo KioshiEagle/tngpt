@@ -4,9 +4,11 @@ import pymupdf4llm
 
 
 class DocumentProcessor:
+    """Traitement et conversion de documents PDF en Markdown."""
+
     def __init__(self) -> None:
+        """Initialise le convertisseur de documents."""
         # PyMuPDF4LLM n'a pas besoin d'initialisation de modèle lourd comme Docling
-        pass
 
     def convert_directory(self, source_dir: Path, output_dir: Path) -> None:
         """Transforme chaque .pdf valide en .md via PyMuPDF4LLM."""

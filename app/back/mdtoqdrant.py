@@ -1,5 +1,4 @@
 import json
-import os
 import uuid
 from pathlib import Path
 
@@ -10,15 +9,31 @@ from .chunking import get_hybrid_chunks  # Utilise bien le nom de ta fonction hy
 
 
 class VectorStore:
+    """Gestionnaire d'ingestion vectorielle vers Qdrant."""
+
     def __init__(self, url: str, api_key: str) -> None:
+        """Initialise la connexion à Qdrant et charge le modèle.
+
+        Args:
+            url (str): L'URL du cluster Qdrant.
+            api_key (str): La clé d'API Qdrant.
+
+        """
         self.client = QdrantClient(url=url, api_key=api_key)
         # Passage au modèle multilingue E5
         self.model = SentenceTransformer("intfloat/multilingual-e5-small")
         self.collection = "documents"
 
     def upload_directory(self, md_dir: Path, log_file: Path) -> None:
-        if os.path.exists(log_file):
-            with open(log_file) as f:
+        """Pousse les fichiers markdown vers Qdrant en évitant les doublons.
+
+        Args:
+            md_dir (Path): Le dossier source contenant les .md
+            log_file (Path): Le fichier de log d'ingestion
+
+        """
+        if log_file.exists():
+            with log_file.open() as f:
                 processed = set(json.load(f))
         else:
             processed = set()
@@ -29,7 +44,7 @@ class VectorStore:
                 continue
 
             print(f"📤 Ingestion sémantique (E5) : {drive_id}")
-            with open(md_path, encoding="utf-8") as f:
+            with md_path.open(encoding="utf-8") as f:
                 content = f.read()
 
             # Utilisation de ta méthode hybride validée par le benchmark
@@ -55,5 +70,5 @@ class VectorStore:
                 self.client.upsert(collection_name=self.collection, points=points)
                 processed.add(drive_id)
 
-        with open(log_file, "w") as f:
+        with log_file.open("w") as f:
             json.dump(list(processed), f)
