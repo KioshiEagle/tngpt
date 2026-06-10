@@ -22,7 +22,7 @@ def chat() -> Response:
     data = request.get_json()
 
     if not data or "message" not in data:
-        return jsonify({"error": "Message manquant"}), 400
+        return jsonify({"error": "Message manquant"})
 
     user_message = data["message"]
     top_k = data.get("top_k", 15)
@@ -47,9 +47,9 @@ def chat() -> Response:
             # il faudrait idéalement utiliser une base de données ou un cache (Redis),
             # car le contexte de session Flask est souvent verrouillé
             # après le début du stream.
-        except Exception as e: # noqa: BLE001
-            #Beaucoup trop d'exception à gerer
-            #Peut être plus tard
+        except Exception as e:  # noqa: BLE001
+            # Beaucoup trop d'exception à gerer
+            # Peut être plus tard
             yield f"Erreur : {e!s}"
 
     # On utilise stream_with_context pour garder l'accès à la session si besoin
@@ -67,6 +67,7 @@ def clear_history() -> Response:
     """Efface l'historique de la conversation."""
     session.pop("history", None)
     return jsonify({"message": "Historique effacé"})
+
 
 Citation = tuple[str, int]
 CITATIONS: list[Citation] = [

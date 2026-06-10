@@ -56,6 +56,7 @@ def generate_answer(question: str, top_k: int = 3) -> Iterator[str]:
         # et le streaming ne doit pas planter silencieusement côté utilisateur.
         yield f"Erreur inattendue avec Groq : {e!s}"
 
+
 def build_context(results: list[dict]) -> str:
     """Construit le contexte à partir des résultats de la recherche.
 
@@ -70,6 +71,7 @@ def build_context(results: list[dict]) -> str:
         return "Pas de contexte."
 
     return "\n\n".join(res["content"] for res in results)
+
 
 def build_prompt(context: str, question: str) -> str:
     """Construit le prompt pour le modèle."""

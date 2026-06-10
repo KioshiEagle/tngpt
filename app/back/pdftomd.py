@@ -28,7 +28,7 @@ class DocumentProcessor:
                 md_path = Path(output_dir) / f"{pdf_path.stem}.md"
                 md_path.write_text(md_content, encoding="utf-8")
 
-            except Exception as e: # noqa: BLE001
+            except Exception as e:  # noqa: BLE001
                 # Capture les erreurs spécifiques à PyMuPDF
                 print(f"❌ Impossible de convertir {pdf_path.name} : {e!s}")
                 continue

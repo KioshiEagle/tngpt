@@ -23,7 +23,7 @@ def run_pipeline() -> None:
         d.mkdir(parents=True, exist_ok=True)
 
     # 1. ÉTAPE DRIVE -> LOCAL
-    dm = DriveManager(str(BASE_DIR / "service-account.json"))
+    dm = DriveManager(BASE_DIR / "service-account.json")
 
     folder_ids_env = os.getenv("DRIVE_FOLDER_IDS")
     folder_ids = folder_ids_env.split(",") if folder_ids_env else []
@@ -34,7 +34,18 @@ def run_pipeline() -> None:
     dp.convert_directory(TEMP_PDF, TEMP_MD)
 
     # 3. ÉTAPE MD -> QDRANT
-    vs = VectorStore(os.getenv("QDRANT_URL"), os.getenv("QDRANT_API_KEY"))
+    qdrant_url = os.getenv("QDRANT_URL")
+    qdrant_api_key = os.getenv("QDRANT_API_KEY")
+
+    if qdrant_url is None:
+        msg = "Variable d'environnement QDRANT_URL manquante."
+        raise RuntimeError(msg)
+
+    if qdrant_api_key is None:
+        msg = "Variable d'environnement QDRANT_API_KEY manquante."
+        raise RuntimeError(msg)
+
+    vs = VectorStore(qdrant_url, qdrant_api_key)
     vs.upload_directory(TEMP_MD, logfile)
 
     # 4. NETTOYAGE
