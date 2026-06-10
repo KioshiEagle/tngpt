@@ -4,7 +4,6 @@
 
 # chiant sur le repo
 .venv
-uv.lock
 app/back/__pycache__
 app/__pycache__
 core
