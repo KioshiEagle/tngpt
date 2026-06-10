@@ -15,4 +15,4 @@ COPY . .
 
 EXPOSE 8501
 
-CMD ["uv", "run", "python", "main.py"]
+CMD ["uv", "run", "gunicorn", "-w", "1", "-b", "0.0.0.0:8501", "main:app"]
