@@ -1,21 +1,30 @@
-from flask import Blueprint, request, jsonify, session, render_template,Response, stream_with_context
-from .back.generate import generate_answer
 import random
-import json
+
+from flask import (
+    Blueprint,
+    Response,
+    jsonify,
+    render_template,
+    request,
+    session,
+    stream_with_context,
+)
+
+from .back.generate import generate_answer
 
 bp = Blueprint("chat", __name__)
 
 @bp.route("/chat", methods=["POST"])
 def chat():
     data = request.get_json()
-    
+
     if not data or "message" not in data:
         return jsonify({"error": "Message manquant"}), 400
-    
+
     user_message = data["message"]
     top_k = data.get("top_k", 15)
-    
-    # Gestion de l'historique (Note : La session Flask est difficile à mettre à jour 
+
+    # Gestion de l'historique (Note : La session Flask est difficile à mettre à jour
     # à l'intérieur d'un stream, on enregistre donc l'entrée utilisateur ici)
     if "history" not in session:
         session["history"] = []
@@ -30,9 +39,9 @@ def chat():
                 full_assistant_response += chunk
                 # On envoie le fragment de texte brut au client
                 yield chunk
-            
+
             # Note : Pour mettre à jour l'historique en session avec la réponse complète,
-            # il faudrait idéalement utiliser une base de données ou un cache (Redis), 
+            # il faudrait idéalement utiliser une base de données ou un cache (Redis),
             # car le contexte de session Flask est souvent verrouillé après le début du stream.
         except Exception as e:
             yield f"Erreur : {str(e)}"

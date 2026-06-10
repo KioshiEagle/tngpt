@@ -1,8 +1,10 @@
 import os
-from groq import Groq
-from .retrieval import search
-from dotenv import load_dotenv
 from pathlib import Path
+
+from dotenv import load_dotenv
+from groq import Groq
+
+from .retrieval import search
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
@@ -12,7 +14,7 @@ def generate_answer(question, top_k=3):
     """
     # 1. Récupération du contexte
     results = search(question, top_k=top_k)
-    
+
     print("\n--- DOCUMENTS UTILISÉS ---")
     if not results:
         print("⚠️ AUCUN DOCUMENT TROUVÉ DANS QDRANT")
@@ -22,11 +24,11 @@ def generate_answer(question, top_k=3):
             # On récupère les infos formatées par ton retrieval.py
             source = res['metadata'].get('source', 'Inconnue')
             score = res.get('score', 0)
-            
+
             print(f"[{i+1}] Source: {source} (Score: {score:.4f})")
             print(f"    Extrait: {res['content'][:150]}...")
             print("-" * 40)
-        
+
         context = "\n\n".join([res['content'] for res in results])
     # 2. Initialisation du client Groq
     client = Groq(api_key=os.getenv("GROQ_API_KEY"))
@@ -70,7 +72,7 @@ RÉPONSE DE TN-GPT :"""
                 if "</think>" in content:
                     in_thought_block = False
                     continue # On passe au chunk suivant après la fermeture
-                
+
                 if not in_thought_block:
                     yield content
 
