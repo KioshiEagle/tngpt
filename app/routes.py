@@ -1,4 +1,5 @@
 import random
+from collections.abc import Iterator
 
 from flask import (
     Blueprint,
@@ -33,7 +34,7 @@ def chat() -> Response:
     session["history"].append({"role": "user", "content": user_message})
     session.modified = True
 
-    def generate() -> str:
+    def generate() -> Iterator[str]:
         full_assistant_response = ""
         try:
             # On appelle generate_answer qui est maintenant un générateur (yield)
@@ -46,7 +47,9 @@ def chat() -> Response:
             # il faudrait idéalement utiliser une base de données ou un cache (Redis),
             # car le contexte de session Flask est souvent verrouillé
             # après le début du stream.
-        except Exception as e:
+        except Exception as e: # noqa: BLE001
+            #Beaucoup trop d'exception à gerer
+            #Peut être plus tard
             yield f"Erreur : {e!s}"
 
     # On utilise stream_with_context pour garder l'accès à la session si besoin
@@ -65,8 +68,8 @@ def clear_history() -> Response:
     session.pop("history", None)
     return jsonify({"message": "Historique effacé"})
 
-
-CITATIONS = [
+Citation = tuple[str, int]
+CITATIONS: list[Citation] = [
     ("Qu'avez-vous à dire pour votre défense ?", 10),
     ("Envie de jiguer, pas vous ?", 15),
     ("En date avec Crazy François", 15),

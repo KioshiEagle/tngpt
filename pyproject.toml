@@ -54,8 +54,8 @@ environments = [
 target-version = "py313"
 
 [tool.ruff.lint]
-select = ["ALL"]
-ignore = ["T201","S","D100","D104","D401"]
+select = ["ALL","RUF100"]
+ignore = ["T201","S","D100","D104","D401","D203","D213"]
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["S101"]
 [tool.ruff.lint.mccabe]

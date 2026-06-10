@@ -49,9 +49,9 @@ def get_hybrid_chunks(
         for content in sub_chunks:
             # On vérifie que le chunk n'est pas un micro-fragment inutile
             cleaned_content = content.strip()
-            MIN_CHUNK_SIZE = 60
+            min_chunk_size = 60
 
-            if len(cleaned_content) > MIN_CHUNK_SIZE:
+            if len(cleaned_content) > min_chunk_size:
                 # CRUCIAL : On injecte le préfixe au début de chaque chunk
                 final_chunks.append(prefix + cleaned_content)
 
