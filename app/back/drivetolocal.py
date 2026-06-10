@@ -82,3 +82,16 @@ class DriveManager:
                 except HttpError as e:
                     print(f"⚠️ Erreur sur {f['name']} : {e.resp.status}")
                     continue
+
+if __name__ == "__main__":
+    import os
+    from pathlib import Path
+    from dotenv import load_dotenv
+    BASE_DIR = Path(__file__).parent.resolve()
+    load_dotenv(BASE_DIR.parent.parent / ".env")
+    TEMP_PDF = BASE_DIR / "temp/pdfs"
+    TEMP_PDF.mkdir(parents=True, exist_ok=True)
+    dm = DriveManager(str(BASE_DIR / "service-account.json"))
+    folder_ids = [fid.strip() for fid in os.getenv("DRIVE_FOLDER_IDS").split(",")]
+    dm.download_all_from_folders(folder_ids, TEMP_PDF)
+    print("✅ Drive -> Local terminé.")
