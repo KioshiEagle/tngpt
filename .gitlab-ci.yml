@@ -13,25 +13,19 @@ lint:
     - uv check
     - uvx ruff check . --statistics
     - uvx ruff format . --check
-  allow_failure : true
-#A remove plus tard
+
 check_security:
   stage: check_code_quality
   script:
     - uvx bandit -c pyproject.toml -r .
     - uv audit
     - uvx pip-audit
-  allow_failure : true
-#A remove plus tard
 #uv audit est encore expérimental donc je laisse pip-audit pour l'instant
 pytest:
   stage: test
   script:
     - uv sync
     - uv run pytest tests/
-  allow_failure : true
-#A remove plus tard
-
 
 #Version bien mais je sais pas comment on gère avec gibson...
 
@@ -62,9 +56,9 @@ build_and_push_image:
   image:
     name: gcr.io/kaniko-project/executor:v1.14.0-debug
     entrypoint: [""]
-  
+
   # 2. PLUS BESOIN de la section "services" (on oublie dind et les problèmes de TLS)
-  
+
   variables:
     IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
 
@@ -96,15 +90,15 @@ deploy_to_server:
     - apk add --no-cache openssh-client
     - mkdir -p ~/.ssh
     - chmod 700 ~/.ssh
-    
+
     # 2. On écrit proprement la clé dans un fichier physique temporaire
     # Le guillemettage strict et l'écho préservent les retours à la ligne exacts
-    - echo "$PROD_SSH_KEY" | base64 -d > ~/.ssh/id_ed25519    
+    - echo "$PROD_SSH_KEY" | base64 -d > ~/.ssh/id_ed25519
     - chmod 600 ~/.ssh/id_ed25519
-    
+
     # 3. Sécurité : On dit à SSH d'ignorer la vérification de l'hôte (évite le blocage Interactive)
     - echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
-    
+
     # 4. On passe la clé directement à SSH via l'option -i (Identity File)
     - |
       ssh -i ~/.ssh/id_ed25519 root@64.226.99.199 "

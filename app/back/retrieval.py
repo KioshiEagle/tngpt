@@ -37,8 +37,10 @@ def search(query, top_k=5, collection_name="documents"):
     for res in response.points:
         formatted_results.append(
             {
-                "content": res.payload.get("text", "Texte non trouvé"),
-                "metadata": {k: v for k, v in res.payload.items() if k != "text"},
+                "content": (res.payload or {}).get("text", "Texte non trouvé"),
+                "metadata": {
+                    k: v for k, v in (res.payload or {}).items() if k != "text"
+                },
                 "score": res.score,
             }
         )
