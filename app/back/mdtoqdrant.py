@@ -1,4 +1,4 @@
-import os, uuid, json, hashlib
+import os, uuid, json, hashlib, re
 from pathlib import Path
 from qdrant_client import QdrantClient, models
 from sentence_transformers import SentenceTransformer
@@ -6,6 +6,18 @@ from chunking import get_hybrid_chunks
 
 def _file_hash(content: str) -> str:
     return hashlib.sha256(content.encode()).hexdigest()
+
+def _parse_frontmatter(content: str) -> tuple[dict, str]:
+    """Parse le YAML frontmatter et retourne (metadata, body)."""
+    match = re.match(r'^---\n(.*?)\n---\n\n?', content, re.DOTALL)
+    if not match:
+        return {}, content
+    meta = {}
+    for line in match.group(1).splitlines():
+        if ':' in line:
+            key, _, value = line.partition(':')
+            meta[key.strip()] = value.strip().strip('"')
+    return meta, content[match.end():]
 
 class VectorStore:
     def __init__(self, url, api_key):
@@ -17,10 +29,14 @@ class VectorStore:
             field_name="source",
             field_schema=models.PayloadSchemaType.KEYWORD,
         )
+        self.client.create_payload_index(
+            collection_name=self.collection,
+            field_name="date",
+            field_schema=models.PayloadSchemaType.KEYWORD,
+        )
 
     def upload_directory(self, md_dir, log_file):
         raw = json.load(open(log_file)) if os.path.exists(log_file) else {}
-        # Migration : ancien format liste → dict {id: None}
         processed = {drive_id: None for drive_id in raw} if isinstance(raw, list) else raw
 
         for md_path in Path(md_dir).glob("*.md"):
@@ -33,11 +49,15 @@ class VectorStore:
                 print(f"⏭️  Déjà à jour : {drive_id}")
                 continue
 
-            print(f"📤 Ingestion sémantique (E5) : {drive_id}")
-            chunks = get_hybrid_chunks(content, chunk_size=800, chunk_overlap=240)
+            meta, body = _parse_frontmatter(content)
+            title  = meta.get("title", drive_id)
+            date   = meta.get("date", "")
+            author = meta.get("author", "Inconnu")
+
+            print(f"📤 Ingestion sémantique (E5) : {title or drive_id}")
+            chunks = get_hybrid_chunks(body, chunk_size=800, chunk_overlap=240)
 
             if chunks:
-                # Supprime les anciens points pour ce document avant de ré-uploader
                 self.client.delete(
                     collection_name=self.collection,
                     points_selector=models.FilterSelector(
@@ -56,7 +76,13 @@ class VectorStore:
                 points = [models.PointStruct(
                     id=str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{drive_id}_{i}")),
                     vector=emb,
-                    payload={"text": txt, "source": drive_id}
+                    payload={
+                        "text": txt,
+                        "source": drive_id,
+                        "title": title,
+                        "date": date,
+                        "author": author,
+                    }
                 ) for i, (txt, emb) in enumerate(zip(chunks, embs))]
 
                 batch_size = 50
