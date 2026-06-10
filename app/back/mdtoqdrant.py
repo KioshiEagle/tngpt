@@ -12,7 +12,7 @@ class VectorStore:
     def __init__(self, url, api_key):
         self.client = QdrantClient(url=url, api_key=api_key)
         # Passage au modèle multilingue E5
-        self.model = SentenceTransformer('intfloat/multilingual-e5-small')
+        self.model = SentenceTransformer("intfloat/multilingual-e5-small")
         self.collection = "documents"
 
     def upload_directory(self, md_dir, log_file):
@@ -20,7 +20,8 @@ class VectorStore:
 
         for md_path in Path(md_dir).glob("*.md"):
             drive_id = md_path.stem
-            if drive_id in processed: continue
+            if drive_id in processed:
+                continue
 
             print(f"📤 Ingestion sémantique (E5) : {drive_id}")
             with open(md_path, encoding="utf-8") as f:
@@ -34,14 +35,17 @@ class VectorStore:
                 prefixed_chunks = [f"passage: {c}" for c in chunks]
                 embs = self.model.encode(prefixed_chunks).tolist()
 
-                points = [models.PointStruct(
-                    id=str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{drive_id}_{i}")),
-                    vector=emb,
-                    payload={
-                        "text": txt, # Texte avec préfixe de contexte [Header]
-                        "source": drive_id
-                    }
-                ) for i, (txt, emb) in enumerate(zip(chunks, embs))]
+                points = [
+                    models.PointStruct(
+                        id=str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{drive_id}_{i}")),
+                        vector=emb,
+                        payload={
+                            "text": txt,  # Texte avec préfixe de contexte [Header]
+                            "source": drive_id,
+                        },
+                    )
+                    for i, (txt, emb) in enumerate(zip(chunks, embs))
+                ]
 
                 self.client.upsert(collection_name=self.collection, points=points)
                 processed.add(drive_id)

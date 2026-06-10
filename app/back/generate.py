@@ -8,6 +8,7 @@ from .retrieval import search
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
+
 def generate_answer(question, top_k=3):
     """
     Génère une réponse en streaming avec Groq Cloud basée sur Qdrant.
@@ -22,18 +23,18 @@ def generate_answer(question, top_k=3):
     else:
         for i, res in enumerate(results):
             # On récupère les infos formatées par ton retrieval.py
-            source = res['metadata'].get('source', 'Inconnue')
-            score = res.get('score', 0)
+            source = res["metadata"].get("source", "Inconnue")
+            score = res.get("score", 0)
 
-            print(f"[{i+1}] Source: {source} (Score: {score:.4f})")
+            print(f"[{i + 1}] Source: {source} (Score: {score:.4f})")
             print(f"    Extrait: {res['content'][:150]}...")
             print("-" * 40)
 
-        context = "\n\n".join([res['content'] for res in results])
+        context = "\n\n".join([res["content"] for res in results])
     # 2. Initialisation du client Groq
     client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-    prompt = f"""Tu es TN-GPT, l'expert absolu du lore de TELECOM Nancy. 
+    prompt = f"""Tu es TN-GPT, l'expert absolu du lore de TELECOM Nancy.
 Ton style : une entité particulière qui connaît absolument telecom nancy : son histoire, ses anecdotes, le prénom de la mère celui qui pose la question, etc.
 
 si la question n'a aucun rapport avec Telecom nancy et son lore ou que la réponse ne se trouve pas dans tes sources, répond "demande à chat gpt me casse pas les couilles"
@@ -45,7 +46,7 @@ parle avec la même tonalité que les sources citées (ne cite pas la source, sa
 ARCHIVES SECRÈTES (CONTEXTE) :
 {context}
 
-QUESTION DU POTE : 
+QUESTION DU POTE :
 {question}
 
 RÉPONSE DE TN-GPT :"""
@@ -56,10 +57,10 @@ RÉPONSE DE TN-GPT :"""
             model="qwen/qwen3-32b",
             messages=[
                 {"role": "system", "content": "Tu es un étudiant de Telecom Nancy."},
-                {"role": "user", "content": prompt}
+                {"role": "user", "content": prompt},
             ],
             temperature=0.7,
-            stream=True  # Activation du streaming
+            stream=True,  # Activation du streaming
         )
 
         # On "yield" chaque fragment de texte au fur et à mesure
@@ -71,7 +72,7 @@ RÉPONSE DE TN-GPT :"""
                     in_thought_block = True
                 if "</think>" in content:
                     in_thought_block = False
-                    continue # On passe au chunk suivant après la fermeture
+                    continue  # On passe au chunk suivant après la fermeture
 
                 if not in_thought_block:
                     yield content

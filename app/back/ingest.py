@@ -14,9 +14,11 @@ TEMP_PDF = BASE_DIR / "temp/pdfs"
 TEMP_MD = BASE_DIR / "temp/markdowns"
 logfile = BASE_DIR / "processed_files.json"
 
+
 def run_pipeline():
     # 0. Préparation des dossiers
-    for d in [TEMP_PDF, TEMP_MD]: d.mkdir(parents=True, exist_ok=True)
+    for d in [TEMP_PDF, TEMP_MD]:
+        d.mkdir(parents=True, exist_ok=True)
 
     # 1. ÉTAPE DRIVE -> LOCAL
     dm = DriveManager(str(BASE_DIR / "service-account.json"))
@@ -35,6 +37,7 @@ def run_pipeline():
     # 4. NETTOYAGE
     shutil.rmtree(BASE_DIR / "temp")
     print("✨ Pipeline terminé et dossiers temp nettoyés.")
+
 
 if __name__ == "__main__":
     while True:
