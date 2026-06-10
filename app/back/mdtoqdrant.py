@@ -16,7 +16,11 @@ class VectorStore:
         self.collection = "documents"
 
     def upload_directory(self, md_dir, log_file):
-        processed = set(json.load(open(log_file)) if os.path.exists(log_file) else [])
+        if os.path.exists(log_file):
+            with open(log_file) as f:
+                processed = set(json.load(f))
+        else:
+            processed = set()
 
         for md_path in Path(md_dir).glob("*.md"):
             drive_id = md_path.stem
@@ -44,7 +48,7 @@ class VectorStore:
                             "source": drive_id,
                         },
                     )
-                    for i, (txt, emb) in enumerate(zip(chunks, embs))
+                    for i, (txt, emb) in enumerate(zip(chunks, embs, strict=False))
                 ]
 
                 self.client.upsert(collection_name=self.collection, points=points)
