@@ -83,7 +83,7 @@ CITATIONS = [
 def quote():
     quotes = [c[0] for c in CITATIONS]
     weights = [c[1] for c in CITATIONS]
-    return random.choices(quotes, weights=weights, k=1)[0]
+    return random.choices(quotes, weights=weights, k=1)[0]  # nosec
 
 
 @bp.route("/")

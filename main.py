@@ -1,3 +1,5 @@
+import os
+
 from flask import Flask
 
 from app.routes import bp
@@ -7,9 +9,10 @@ app = Flask(
     template_folder="app/front/templates",
     static_folder="app/front/static",
 )
-app.secret_key = "change-moi-en-prod"
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "change-moi-en-prod")
 
 app.register_blueprint(bp)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", debug=True, port=8501)
+    debug_mode = os.environ.get("FLASK_DEBUG", "True").lower() in ["true", "1", "t"]
+    app.run(host="127.0.0.1", debug=debug_mode, port=8501)

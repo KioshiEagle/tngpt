@@ -7,16 +7,12 @@ load_dotenv()
 client = QdrantClient(url=os.getenv("QDRANT_URL"), api_key=os.getenv("QDRANT_API_KEY"))
 
 # On scanne TOUS les chunks du n°22 (limit=100)
-points, _ = client.scroll(
-    collection_name="documents",
-    limit=100,
-    with_payload=True
-)
+points, _ = client.scroll(collection_name="documents", limit=100, with_payload=True)
 
 print("🔍 Scan profond du contenu du n°22...")
 for p in points:
-    source = str(p.payload.get("source", ""))
-    text = p.payload.get("text", "")
+    source = str((p.payload or {}).get("source", ""))
+    text = (p.payload or {}).get("text", "")
 
     if "22" in source:
         # On affiche TOUT le texte pour vérifier ce qui a été ingéré

@@ -3,9 +3,10 @@ import os
 import uuid
 from pathlib import Path
 
-from chunking import get_hybrid_chunks  # Utilise bien le nom de ta fonction hybride
 from qdrant_client import QdrantClient, models
 from sentence_transformers import SentenceTransformer
+
+from .chunking import get_hybrid_chunks  # Utilise bien le nom de ta fonction hybride
 
 
 class VectorStore:
