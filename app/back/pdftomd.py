@@ -28,6 +28,6 @@ class DocumentProcessor:
                     f.write(md_content)
 
             except Exception as e:
-                # Capture les erreurs spécifiques à PyMuPDF (fichiers protégés ou malformés)
+                # Capture les erreurs spécifiques à PyMuPDF
                 print(f"❌ Impossible de convertir {pdf_path.name} : {str(e)}")
                 continue

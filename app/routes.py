@@ -14,6 +14,7 @@ from .back.generate import generate_answer
 
 bp = Blueprint("chat", __name__)
 
+
 @bp.route("/chat", methods=["POST"])
 def chat():
     data = request.get_json()
@@ -40,14 +41,15 @@ def chat():
                 # On envoie le fragment de texte brut au client
                 yield chunk
 
-            # Note : Pour mettre à jour l'historique en session avec la réponse complète,
+            # Note : Pour mettre à jour l'historique en session avec la réponse complète
             # il faudrait idéalement utiliser une base de données ou un cache (Redis),
-            # car le contexte de session Flask est souvent verrouillé après le début du stream.
+            # car le contexte de session Flask est souvent verrouillé
+            # après le début du stream.
         except Exception as e:
             yield f"Erreur : {str(e)}"
 
     # On utilise stream_with_context pour garder l'accès à la session si besoin
-    return Response(stream_with_context(generate()), mimetype='text/plain')
+    return Response(stream_with_context(generate()), mimetype="text/plain")
 
 
 @bp.route("/history", methods=["GET"])
@@ -59,6 +61,7 @@ def history():
 def clear_history():
     session.pop("history", None)
     return jsonify({"message": "Historique effacé"})
+
 
 CITATIONS = [
     ("Qu'avez-vous à dire pour votre défense ?", 10),
@@ -72,8 +75,9 @@ CITATIONS = [
     ("nique le cheval whatsapp", 15),
     ("after chez camille", 1),
     ("Prompt injection et tu vas repartir mal mon compaing", 7),
-    ("Pétition pour remettre l'Oriental", 5)
+    ("Pétition pour remettre l'Oriental", 5),
 ]
+
 
 @bp.route("/quote", methods=["GET"])
 def quote():
@@ -81,6 +85,7 @@ def quote():
     weights = [c[1] for c in CITATIONS]
     return random.choices(quotes, weights=weights, k=1)[0]
 
+
 @bp.route("/")
 def index():
-    return render_template("index.html", quote = quote())
+    return render_template("index.html", quote=quote())

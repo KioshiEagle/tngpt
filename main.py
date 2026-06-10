@@ -2,7 +2,11 @@ from flask import Flask
 
 from app.routes import bp
 
-app = Flask(__name__, template_folder="app/front/templates", static_folder="app/front/static")
+app = Flask(
+    __name__,
+    template_folder="app/front/templates",
+    static_folder="app/front/static",
+)
 app.secret_key = "change-moi-en-prod"
 
 app.register_blueprint(bp)
