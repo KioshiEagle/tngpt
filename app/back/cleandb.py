@@ -6,7 +6,7 @@ from qdrant_client import QdrantClient, models
 load_dotenv()
 
 
-def reset_qdrant():
+def reset_qdrant() -> None:
     """Supprime et recrée la collection pour un nouveau départ."""
     client = QdrantClient(
         url=os.getenv("QDRANT_URL"),

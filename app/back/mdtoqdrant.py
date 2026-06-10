@@ -10,13 +10,13 @@ from .chunking import get_hybrid_chunks  # Utilise bien le nom de ta fonction hy
 
 
 class VectorStore:
-    def __init__(self, url, api_key):
+    def __init__(self, url: str, api_key: str) -> None:
         self.client = QdrantClient(url=url, api_key=api_key)
         # Passage au modèle multilingue E5
         self.model = SentenceTransformer("intfloat/multilingual-e5-small")
         self.collection = "documents"
 
-    def upload_directory(self, md_dir, log_file):
+    def upload_directory(self, md_dir: Path, log_file: Path) -> None:
         if os.path.exists(log_file):
             with open(log_file) as f:
                 processed = set(json.load(f))

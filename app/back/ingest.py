@@ -16,7 +16,7 @@ TEMP_MD = BASE_DIR / "temp/markdowns"
 logfile = BASE_DIR / "processed_files.json"
 
 
-def run_pipeline():
+def run_pipeline() -> None:
     # 0. Préparation des dossiers
     for d in [TEMP_PDF, TEMP_MD]:
         d.mkdir(parents=True, exist_ok=True)

@@ -1,4 +1,5 @@
 import os
+from collections.abc import Iterator
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -9,10 +10,8 @@ from .retrieval import search
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 
-def generate_answer(question, top_k=3):
-    """
-    Génère une réponse en streaming avec Groq Cloud basée sur Qdrant.
-    """
+def generate_answer(question: str, top_k: int = 3) -> Iterator[str]:
+    """Génère une réponse en streaming avec Groq Cloud basée sur Qdrant."""
     # 1. Récupération du contexte
     results = search(question, top_k=top_k)
 
@@ -81,4 +80,4 @@ def generate_answer(question, top_k=3):
                     yield content
 
     except Exception as e:
-        yield f"Erreur avec Groq : {str(e)}"
+        yield f"Erreur avec Groq : {e!s}"

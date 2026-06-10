@@ -1,5 +1,5 @@
 class RAG:
     name: str
 
-    def __init__(self, name: str = "RAG-1"):
+    def __init__(self, name: str = "RAG-1") -> None:
         self.name = name

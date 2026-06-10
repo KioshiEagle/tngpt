@@ -4,9 +4,12 @@ from langchain_text_splitters import (
 )
 
 
-def get_hybrid_chunks(text, chunk_size=800, chunk_overlap=240):
-    """
-    Méthode Championne : Découpe le Markdown par Header (H1/H2)
+def get_hybrid_chunks(
+    text: str,
+    chunk_size: int = 800,
+    chunk_overlap: int = 240,
+) -> list[str]:
+    """Méthode Championne : Découpe le Markdown par Header (H1/H2)
     puis affine par RecursiveCharacterSplitter avec injection de contexte.
     """
     headers_to_split_on = [
@@ -53,5 +56,9 @@ def get_hybrid_chunks(text, chunk_size=800, chunk_overlap=240):
 
 
 # Alias pour garder la compatibilité avec tes anciens scripts si nécessaire
-def recursive_chunking(text, max_chunk_size=800, overlap=240):
+def recursive_chunking(
+    text: str,
+    max_chunk_size: int = 800,
+    overlap: int = 240,
+) -> list[str]:
     return get_hybrid_chunks(text, max_chunk_size, overlap)

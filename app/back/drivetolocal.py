@@ -1,5 +1,6 @@
 import os
 import re  # Indispensable pour le nettoyage
+from pathlib import Path
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -8,13 +9,18 @@ from googleapiclient.http import MediaIoBaseDownload
 
 
 class DriveManager:
-    def __init__(self, json_path):
+    def __init__(self, json_path: Path) -> None:
         self.creds = service_account.Credentials.from_service_account_file(
-            json_path, scopes=["https://www.googleapis.com/auth/drive.readonly"]
+            json_path,
+            scopes=["https://www.googleapis.com/auth/drive.readonly"],
         )
         self.service = build("drive", "v3", credentials=self.creds)
 
-    def download_all_from_folders(self, folder_ids, target_dir):
+    def download_all_from_folders(
+        self,
+        folder_ids: list[str],
+        target_dir: Path,
+    ) -> None:
         """Télécharge les PDF en conservant leur nom d'origine nettoyé."""
         for folder_id in folder_ids:
             query = f"'{folder_id}' in parents and mimeType='application/pdf'"
