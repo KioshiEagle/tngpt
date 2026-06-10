@@ -1,6 +1,7 @@
 import os
-from qdrant_client import QdrantClient, models
+
 from dotenv import load_dotenv
+from qdrant_client import QdrantClient
 
 load_dotenv()
 client = QdrantClient(url=os.getenv("QDRANT_URL"), api_key=os.getenv("QDRANT_API_KEY"))
@@ -12,11 +13,11 @@ points, _ = client.scroll(
     with_payload=True
 )
 
-print(f"🔍 Scan profond du contenu du n°22...")
+print("🔍 Scan profond du contenu du n°22...")
 for p in points:
     source = str(p.payload.get("source", ""))
     text = p.payload.get("text", "")
-    
+
     if "22" in source:
         # On affiche TOUT le texte pour vérifier ce qui a été ingéré
         if "Aridhi" in text or "Sabeur" in text:

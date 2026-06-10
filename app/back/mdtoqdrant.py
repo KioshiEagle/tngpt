@@ -1,8 +1,12 @@
-import os, uuid, json
+import json
+import os
+import uuid
 from pathlib import Path
+
+from chunking import get_hybrid_chunks  # Utilise bien le nom de ta fonction hybride
 from qdrant_client import QdrantClient, models
 from sentence_transformers import SentenceTransformer
-from chunking import get_hybrid_chunks # Utilise bien le nom de ta fonction hybride
+
 
 class VectorStore:
     def __init__(self, url, api_key):
@@ -13,34 +17,34 @@ class VectorStore:
 
     def upload_directory(self, md_dir, log_file):
         processed = set(json.load(open(log_file)) if os.path.exists(log_file) else [])
-        
+
         for md_path in Path(md_dir).glob("*.md"):
             drive_id = md_path.stem
             if drive_id in processed: continue
-            
+
             print(f"📤 Ingestion sémantique (E5) : {drive_id}")
-            with open(md_path, "r", encoding="utf-8") as f:
+            with open(md_path, encoding="utf-8") as f:
                 content = f.read()
 
             # Utilisation de ta méthode hybride validée par le benchmark
             chunks = get_hybrid_chunks(content, chunk_size=800, chunk_overlap=240)
-            
+
             if chunks:
                 # IMPORTANT : E5 demande le préfixe "passage: " pour l'indexation
                 prefixed_chunks = [f"passage: {c}" for c in chunks]
                 embs = self.model.encode(prefixed_chunks).tolist()
-                
+
                 points = [models.PointStruct(
                     id=str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{drive_id}_{i}")),
-                    vector=emb, 
+                    vector=emb,
                     payload={
                         "text": txt, # Texte avec préfixe de contexte [Header]
-                        "source": drive_id 
+                        "source": drive_id
                     }
                 ) for i, (txt, emb) in enumerate(zip(chunks, embs))]
-                
+
                 self.client.upsert(collection_name=self.collection, points=points)
                 processed.add(drive_id)
-        
+
         with open(log_file, "w") as f:
             json.dump(list(processed), f)

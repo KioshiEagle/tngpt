@@ -1,22 +1,23 @@
 import os
-from qdrant_client import QdrantClient, models
+
 from dotenv import load_dotenv
+from qdrant_client import QdrantClient, models
 
 load_dotenv()
 
 def reset_qdrant():
     """Supprime et recrée la collection pour un nouveau départ."""
     client = QdrantClient(
-        url=os.getenv("QDRANT_URL"), 
+        url=os.getenv("QDRANT_URL"),
         api_key=os.getenv("QDRANT_API_KEY"),
     )
-    
+
     collection_name = "documents"
-    
+
     if client.collection_exists(collection_name):
         print(f"Suppression de la collection '{collection_name}'...")
         client.delete_collection(collection_name=collection_name)
-    
+
     print(f"Création d'une collection '{collection_name}' toute neuve...")
     client.create_collection(
         collection_name=collection_name,
@@ -25,7 +26,7 @@ def reset_qdrant():
             distance=models.Distance.COSINE
         )
     )
-    
+
     # Nettoyage du fichier log local
     log_file = "app/back/processed_files.json"
     if os.path.exists(log_file):

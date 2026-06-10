@@ -1,4 +1,5 @@
 from flask import Flask
+
 from app.routes import bp
 
 app = Flask(__name__, template_folder="app/front/templates", static_folder="app/front/static")

@@ -1,10 +1,12 @@
-import os, time, shutil
+import os
+import shutil
+import time
 from pathlib import Path
-from dotenv import load_dotenv
 
+from dotenv import load_dotenv
 from drivetolocal import DriveManager
-from pdftomd import DocumentProcessor
 from mdtoqdrant import VectorStore
+from pdftomd import DocumentProcessor
 
 load_dotenv()
 BASE_DIR = Path(__file__).parent.resolve()
@@ -18,7 +20,7 @@ def run_pipeline():
 
     # 1. ÉTAPE DRIVE -> LOCAL
     dm = DriveManager(str(BASE_DIR / "service-account.json"))
-    
+
     folder_ids = os.getenv("DRIVE_FOLDER_IDS").split(",")
     dm.download_all_from_folders(folder_ids, TEMP_PDF)
 
