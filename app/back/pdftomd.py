@@ -1,6 +1,7 @@
-import os
 from pathlib import Path
+
 import pymupdf4llm
+
 
 class DocumentProcessor:
     def __init__(self):
@@ -17,16 +18,16 @@ class DocumentProcessor:
                     continue
 
                 print(f"⚡ PDF -> MD (Fast) : {pdf_path.name}")
-                
+
                 # Extraction avec pymupdf4llm (beaucoup plus léger que Docling)
                 # Note: Le moteur de layout est utilisé automatiquement si installé
                 md_content = pymupdf4llm.to_markdown(str(pdf_path))
-                
+
                 md_path = Path(output_dir) / f"{pdf_path.stem}.md"
                 with open(md_path, "w", encoding="utf-8") as f:
                     f.write(md_content)
-                    
+
             except Exception as e:
-                # Capture les erreurs spécifiques à PyMuPDF (fichiers protégés ou malformés)
+                # Capture les erreurs spécifiques à PyMuPDF
                 print(f"❌ Impossible de convertir {pdf_path.name} : {str(e)}")
                 continue
