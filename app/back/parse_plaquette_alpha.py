@@ -22,7 +22,9 @@ def main():
     if not args.pdf.exists():
         sys.exit(f"Fichier introuvable : {args.pdf}")
 
-    output = args.output or args.pdf.with_suffix(".md")
+    default_out = Path(__file__).parent / "temp/markdowns" / args.pdf.with_suffix(".md").name
+    default_out.parent.mkdir(parents=True, exist_ok=True)
+    output = args.output or default_out
 
     print(f"[1/2] Extraction du texte de {args.pdf.name}…")
     md_text = pymupdf4llm.to_markdown(str(args.pdf), page_chunks=True)
