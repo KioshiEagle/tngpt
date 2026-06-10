@@ -9,11 +9,8 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 model = SentenceTransformer("intfloat/multilingual-e5-small")
 
 
-def search(query, top_k=5, collection_name="documents"):
-    """
-    Recherche sémantique optimisée pour le français avec E5.
-    """
-
+def search(query: str, top_k: int = 5, collection_name: str = "documents") -> list:
+    """Recherche sémantique optimisée pour le français avec E5."""
     client = QdrantClient(
         url=os.getenv("QDRANT_URL"),
         api_key=os.getenv("QDRANT_API_KEY"),
@@ -33,19 +30,14 @@ def search(query, top_k=5, collection_name="documents"):
         with_vectors=False,
     )
 
-    formatted_results = []
-    for res in response.points:
-        formatted_results.append(
-            {
-                "content": (res.payload or {}).get("text", "Texte non trouvé"),
-                "metadata": {
-                    k: v for k, v in (res.payload or {}).items() if k != "text"
-                },
-                "score": res.score,
-            }
-        )
-
-    return formatted_results
+    return [
+        {
+            "content": (res.payload or {}).get("text", "Texte non trouvé"),
+            "metadata": {k: v for k, v in (res.payload or {}).items() if k != "text"},
+            "score": res.score,
+        }
+        for res in response.points
+    ]
 
 
 if __name__ == "__main__":

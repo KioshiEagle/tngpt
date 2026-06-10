@@ -4,11 +4,13 @@ import pymupdf4llm
 
 
 class DocumentProcessor:
-    def __init__(self):
-        # PyMuPDF4LLM n'a pas besoin d'initialisation de modèle lourd comme Docling
-        pass
+    """Traitement et conversion de documents PDF en Markdown."""
 
-    def convert_directory(self, source_dir, output_dir):
+    def __init__(self) -> None:
+        """Initialise le convertisseur de documents."""
+        # PyMuPDF4LLM n'a pas besoin d'initialisation de modèle lourd comme Docling
+
+    def convert_directory(self, source_dir: Path, output_dir: Path) -> None:
         """Transforme chaque .pdf valide en .md via PyMuPDF4LLM."""
         for pdf_path in Path(source_dir).glob("*.pdf"):
             try:
@@ -24,10 +26,9 @@ class DocumentProcessor:
                 md_content = pymupdf4llm.to_markdown(str(pdf_path))
 
                 md_path = Path(output_dir) / f"{pdf_path.stem}.md"
-                with open(md_path, "w", encoding="utf-8") as f:
-                    f.write(md_content)
+                md_path.write_text(md_content, encoding="utf-8")
 
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 # Capture les erreurs spécifiques à PyMuPDF
-                print(f"❌ Impossible de convertir {pdf_path.name} : {str(e)}")
+                print(f"❌ Impossible de convertir {pdf_path.name} : {e!s}")
                 continue

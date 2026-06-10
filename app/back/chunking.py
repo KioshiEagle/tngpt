@@ -4,10 +4,14 @@ from langchain_text_splitters import (
 )
 
 
-def get_hybrid_chunks(text, chunk_size=800, chunk_overlap=240):
-    """
-    Méthode Championne : Découpe le Markdown par Header (H1/H2)
-    puis affine par RecursiveCharacterSplitter avec injection de contexte.
+def get_hybrid_chunks(
+    text: str,
+    chunk_size: int = 800,
+    chunk_overlap: int = 240,
+) -> list[str]:
+    """Méthode Championne : Découpe le Markdown par Header (H1/H2).
+
+    Puis affine par RecursiveCharacterSplitter avec injection de contexte.
     """
     headers_to_split_on = [
         ("#", "Header_1"),
@@ -45,7 +49,9 @@ def get_hybrid_chunks(text, chunk_size=800, chunk_overlap=240):
         for content in sub_chunks:
             # On vérifie que le chunk n'est pas un micro-fragment inutile
             cleaned_content = content.strip()
-            if len(cleaned_content) > 60:
+            min_chunk_size = 60
+
+            if len(cleaned_content) > min_chunk_size:
                 # CRUCIAL : On injecte le préfixe au début de chaque chunk
                 final_chunks.append(prefix + cleaned_content)
 
@@ -53,5 +59,10 @@ def get_hybrid_chunks(text, chunk_size=800, chunk_overlap=240):
 
 
 # Alias pour garder la compatibilité avec tes anciens scripts si nécessaire
-def recursive_chunking(text, max_chunk_size=800, overlap=240):
-    return get_hybrid_chunks(text, max_chunk_size, overlap)
+def recursive_chunking(
+    text: str,
+    max_chunk_size: int = 800,
+    chunk_overlap: int = 200,
+) -> list[str]:
+    """Alias pour garder la compatibilité avec tes anciens scripts si nécessaire."""
+    return get_hybrid_chunks(text, max_chunk_size, chunk_overlap)

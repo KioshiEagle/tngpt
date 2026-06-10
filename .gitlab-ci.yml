@@ -13,6 +13,7 @@ lint:
     - uv check
     - uvx ruff check . --statistics
     - uvx ruff format . --check
+    - uvx ty check
 
 check_security:
   stage: check_code_quality
@@ -112,6 +113,18 @@ deploy_to_server:
   environment:
     name: production
     url: 64.226.99.199:8501
+  only:
+    - master
+    - dev
+
+pages:
+  stage: deploy
+  script:
+    - uv sync
+    - uv run mkdocs build --site-dir public
+  artifacts:
+    paths:
+      - public
   only:
     - master
     - dev
