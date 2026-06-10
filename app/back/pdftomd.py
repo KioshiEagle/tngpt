@@ -30,3 +30,13 @@ class DocumentProcessor:
                 # Capture les erreurs spécifiques à PyMuPDF (fichiers protégés ou malformés)
                 print(f"❌ Impossible de convertir {pdf_path.name} : {str(e)}")
                 continue
+
+if __name__ == "__main__":
+    from pathlib import Path
+    BASE_DIR = Path(__file__).parent.resolve()
+    TEMP_PDF = BASE_DIR / "temp/pdfs"
+    TEMP_MD = BASE_DIR / "temp/markdowns"
+    TEMP_MD.mkdir(parents=True, exist_ok=True)
+    dp = DocumentProcessor()
+    dp.convert_directory(TEMP_PDF, TEMP_MD)
+    print("✅ PDF -> MD terminé.")
