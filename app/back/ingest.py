@@ -1,5 +1,6 @@
 import os, time, shutil, argparse
 from pathlib import Path
+
 from dotenv import load_dotenv
 from drivetolocal import DriveManager
 from pdftomd import DocumentProcessor
@@ -36,6 +37,7 @@ def run_pipeline():
     step_qdrant()
     shutil.rmtree(BASE_DIR / "temp")
     print("✨ Pipeline terminé et dossiers temp nettoyés.")
+
 
 if __name__ == "__main__":
     """

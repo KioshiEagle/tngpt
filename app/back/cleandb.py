@@ -1,12 +1,13 @@
 import os
 from pathlib import Path
-from qdrant_client import QdrantClient, models
 from dotenv import load_dotenv
+from qdrant_client import QdrantClient, models
 
 BASE_DIR = Path(__file__).parent.resolve()
 load_dotenv(BASE_DIR.parent.parent / ".env")
 
-def reset_qdrant():
+
+def reset_qdrant() -> None:
     """Supprime et recrée la collection pour un nouveau départ."""
     client = QdrantClient(
         url=os.getenv("QDRANT_URL"),
@@ -35,9 +36,10 @@ def reset_qdrant():
 
     print("Base de données prête pour une nouvelle ingestion.")
 
+
 if __name__ == "__main__":
     confirm = input("Êtes-tu sûr de vouloir tout supprimer dans Qdrant ? (y/n) : ")
-    if confirm.lower() == 'y':
+    if confirm.lower() == "y":
         reset_qdrant()
     else:
         print("Opération annulée.")

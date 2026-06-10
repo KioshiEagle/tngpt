@@ -1,0 +1,38 @@
+site_name: Documentation TN-GPT
+site_description: Documentation technique du projet TN-GPT
+site_author: Tobias NOBILE & Jean-Charles VENTE
+
+theme:
+  name: material
+  language: fr
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: ["."]
+          options:
+            show_source: true
+            show_signature_annotations: true
+            separate_signature: true
+            docstring_style: google
+            members_order: source
+
+nav:
+  - Accueil: index.md
+  - Installation: installation.md
+  - API: api.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight
