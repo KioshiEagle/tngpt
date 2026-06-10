@@ -19,12 +19,11 @@ def generate_answer(question, top_k=3):
         context = "Pas de contexte."
     else:
         for i, res in enumerate(results):
-            # On récupère les infos formatées par ton retrieval.py
-            source = res['metadata'].get('source', 'Inconnue')
-            score = res.get('score', 0)
-            
-            print(f"[{i+1}] Source: {source} (Score: {score:.4f})")
-            print(f"    Extrait: {res['content'][:150]}...")
+            m = res['metadata']
+            title = m.get('title') or m.get('source', 'Inconnue')
+            print(f"[{i+1}] {title} | Auteur: {m.get('author', '?')} | Date: {m.get('date', '?')}")
+            print(f"     Score: {res.get('score', 0):.4f}  (sem: {res.get('semantic_score', 0):.4f}, fraîcheur: {res.get('freshness_score', 0):.4f})")
+            print(f"     Extrait: {res['content'][:150]}...")
             print("-" * 40)
         
         context = "\n\n".join([res['content'] for res in results])
