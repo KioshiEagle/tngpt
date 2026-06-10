@@ -13,6 +13,7 @@ stages:
 #     - uv check
 #     - uvx ruff check . --statistics
 #     - uvx ruff format . --check
+#     - uvx ty check
 
 # check_security:
 #   stage: check_code_quality

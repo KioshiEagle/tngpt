@@ -54,8 +54,10 @@ environments = [
 target-version = "py313"
 
 [tool.ruff.lint]
-select = ["E", "W", "F", "C90", "I", "B","N","UP","A","SIM"]
-
+select = ["ALL"]
+ignore = ["T201","S"]
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101"]
 [tool.ruff.lint.mccabe]
 max-complexity = 10
 
