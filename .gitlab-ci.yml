@@ -1,121 +1,121 @@
 image: ghcr.io/astral-sh/uv:0.11.19-python3.13-trixie
 
 stages:
-  # - check_code_quality
-  # - test
-  # - build
+  - check_code_quality
+  - test
+  - build
   - deploy
 
-# lint:
-#   stage : check_code_quality
-#   script:
-#     - uv lock --check
-#     - uv check
-#     - uvx ruff check . --statistics
-#     - uvx ruff format . --check
-#     - uvx ty check
+lint:
+  stage : check_code_quality
+  script:
+    - uv lock --check
+    - uv check
+    - uvx ruff check . --statistics
+    - uvx ruff format . --check
+    - uvx ty check
 
-# check_security:
-#   stage: check_code_quality
-#   script:
-#     - uvx bandit -c pyproject.toml -r .
-#     - uv audit
-#     - uvx pip-audit
-# #uv audit est encore expérimental donc je laisse pip-audit pour l'instant
-# pytest:
-#   stage: test
-#   script:
-#     - uv sync
-#     - uv run pytest tests/
+check_security:
+  stage: check_code_quality
+  script:
+    - uvx bandit -c pyproject.toml -r .
+    - uv audit
+    - uvx pip-audit
+#uv audit est encore expérimental donc je laisse pip-audit pour l'instant
+pytest:
+  stage: test
+  script:
+    - uv sync
+    - uv run pytest tests/
 
-# #Version bien mais je sais pas comment on gère avec gibson...
+#Version bien mais je sais pas comment on gère avec gibson...
 
-# # build_and_push_image:
-# #   stage: build
-# #   image: docker:24.0.5
-# #   services:
-# #     - docker:24.0.5-dind
-# #   variables:
-# #     # Sécurité TLS car sur gitlab d'autre processus pourrait voir"
-# #     DOCKER_TLS_CERTDIR: "/certs"
-# #     IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
-# #   before_script:
-# #     # INDISPENSABLE : Connexion au magasin central pour avoir le droit de push
-# #     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-# #   script:
-# #     # On build l'image avec son nom officiel complet pour le Registry
-# #     - docker build -t $IMAGE_TAG .
-# #     # INDISPENSABLE : On sauvegarde le produit fini dans l'entrepôt
-# #     - docker push $IMAGE_TAG
-# #   #only:
-# #   #  - master
-
-# # #version pas bien mais fonctionnel...
 # build_and_push_image:
 #   stage: build
-#   # 1. On remplace l'image Docker par l'exécuteur de Google Kaniko
-#   image:
-#     name: gcr.io/kaniko-project/executor:v1.14.0-debug
-#     entrypoint: [""]
-
-#   # 2. PLUS BESOIN de la section "services" (on oublie dind et les problèmes de TLS)
-
+#   image: docker:24.0.5
+#   services:
+#     - docker:24.0.5-dind
 #   variables:
+#     # Sécurité TLS car sur gitlab d'autre processus pourrait voir"
+#     DOCKER_TLS_CERTDIR: "/certs"
 #     IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
-
 #   before_script:
-#     # 3. On crée le fichier de configuration d'authentification pour le Registry GitLab
-#     # C'est l'équivalent strict du "docker login", mais au format JSON pour Kaniko
-#     - mkdir -p /kaniko/.docker
-#     - echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
-
+#     # INDISPENSABLE : Connexion au magasin central pour avoir le droit de push
+#     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
 #   script:
-#     # 4. Kaniko lit le Dockerfile, compile en user-space et push l'image finale tout seul
-#     - /kaniko/executor
-#       --context "${CI_PROJECT_DIR}"
-#       --dockerfile "${CI_PROJECT_DIR}/Dockerfile"
-#       --destination "${IMAGE_TAG}"
-#       --skip-tls-verify
-#       --cache=true
-#       --cache-repo="${CI_REGISTRY_IMAGE}/cache"
-#       --snapshot-mode=redo
+#     # On build l'image avec son nom officiel complet pour le Registry
+#     - docker build -t $IMAGE_TAG .
+#     # INDISPENSABLE : On sauvegarde le produit fini dans l'entrepôt
+#     - docker push $IMAGE_TAG
+#   #only:
+#   #  - master
 
-#   only:
-#     - master
-#     - dev
+# #version pas bien mais fonctionnel...
+build_and_push_image:
+  stage: build
+  # 1. On remplace l'image Docker par l'exécuteur de Google Kaniko
+  image:
+    name: gcr.io/kaniko-project/executor:v1.14.0-debug
+    entrypoint: [""]
 
-# deploy_to_server:
-#   stage: deploy
-#   image: alpine:latest
-#   script:
-#     - apk add --no-cache openssh-client
-#     - mkdir -p ~/.ssh
-#     - chmod 700 ~/.ssh
+  # 2. PLUS BESOIN de la section "services" (on oublie dind et les problèmes de TLS)
 
-#     # 2. On écrit proprement la clé dans un fichier physique temporaire
-#     # Le guillemettage strict et l'écho préservent les retours à la ligne exacts
-#     - echo "$PROD_SSH_KEY" | base64 -d > ~/.ssh/id_ed25519
-#     - chmod 600 ~/.ssh/id_ed25519
+  variables:
+    IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
 
-#     # 3. Sécurité : On dit à SSH d'ignorer la vérification de l'hôte (évite le blocage Interactive)
-#     - echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
+  before_script:
+    # 3. On crée le fichier de configuration d'authentification pour le Registry GitLab
+    # C'est l'équivalent strict du "docker login", mais au format JSON pour Kaniko
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
 
-#     # 4. On passe la clé directement à SSH via l'option -i (Identity File)
-#     - |
-#       ssh -i ~/.ssh/id_ed25519 root@64.226.99.199 "
-#         docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY &&
-#         docker pull $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG &&
-#         docker stop tngpt-app || true &&
-#         docker rm tngpt-app || true &&
-#         docker run -d --name tngpt-app -p 8501:8501 --restart always $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG &&
-#         docker image prune -f
-#       "
-#   environment:
-#     name: production
-#     url: 64.226.99.199:8501
-#   only:
-#     - master
-#     - dev
+  script:
+    # 4. Kaniko lit le Dockerfile, compile en user-space et push l'image finale tout seul
+    - /kaniko/executor
+      --context "${CI_PROJECT_DIR}"
+      --dockerfile "${CI_PROJECT_DIR}/Dockerfile"
+      --destination "${IMAGE_TAG}"
+      --skip-tls-verify
+      --cache=true
+      --cache-repo="${CI_REGISTRY_IMAGE}/cache"
+      --snapshot-mode=redo
+
+  only:
+    - master
+    - dev
+
+deploy_to_server:
+  stage: deploy
+  image: alpine:latest
+  script:
+    - apk add --no-cache openssh-client
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+
+    # 2. On écrit proprement la clé dans un fichier physique temporaire
+    # Le guillemettage strict et l'écho préservent les retours à la ligne exacts
+    - echo "$PROD_SSH_KEY" | base64 -d > ~/.ssh/id_ed25519
+    - chmod 600 ~/.ssh/id_ed25519
+
+    # 3. Sécurité : On dit à SSH d'ignorer la vérification de l'hôte (évite le blocage Interactive)
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
+
+    # 4. On passe la clé directement à SSH via l'option -i (Identity File)
+    - |
+      ssh -i ~/.ssh/id_ed25519 root@64.226.99.199 "
+        docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY &&
+        docker pull $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG &&
+        docker stop tngpt-app || true &&
+        docker rm tngpt-app || true &&
+        docker run -d --name tngpt-app -p 8501:8501 --restart always $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG &&
+        docker image prune -f
+      "
+  environment:
+    name: production
+    url: 64.226.99.199:8501
+  only:
+    - master
+    - dev
 
 pages:
   stage: deploy
