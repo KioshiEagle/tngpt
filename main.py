@@ -7,4 +7,4 @@ app.secret_key = "change-moi-en-prod"
 app.register_blueprint(bp)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", debug=False, port=8501)
+    app.run(host="0.0.0.0", debug=True, port=8501)
