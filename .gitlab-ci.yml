@@ -11,16 +11,16 @@ lint:
   script:
     - uv lock --check
     - uv check
-    - uv run ruff check . --statistics
-    - uv run ruff format . --check
+    - uvx ruff check . --statistics
+    - uvx ruff format . --check
   allow_failure : true
 #A remove plus tard
 check_security:
   stage: check_code_quality
   script:
-    - uv run bandit -c pyproject.toml -r .
+    - uvx bandit -c pyproject.toml -r .
     - uv audit
-    - uv run pip-audit
+    - uvx pip-audit
   allow_failure : true
 #A remove plus tard
 #uv audit est encore expérimental donc je laisse pip-audit pour l'instant
