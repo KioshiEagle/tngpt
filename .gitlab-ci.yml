@@ -1,5 +1,14 @@
 image: ghcr.io/astral-sh/uv:0.11.19-python3.13-trixie
+variables:
+  UV_CACHE_DIR: ".uv-cache"
+  UV_LINK_MODE: "copy" 
 
+cache:
+  key:
+    files:
+      - uv.lock
+  paths:
+    - .uv-cache/
 stages:
   - check_code_quality
   - test
@@ -99,7 +108,7 @@ deploy_to_server:
     
     # 2. On écrit proprement la clé dans un fichier physique temporaire
     # Le guillemettage strict et l'écho préservent les retours à la ligne exacts
-    - echo "$PROD_SSH_KEY" > ~/.ssh/id_ed25519
+    - echo "$PROD_SSH_KEY" | base64 -d > ~/.ssh/id_ed25519    
     - chmod 600 ~/.ssh/id_ed25519
     
     # 3. Sécurité : On dit à SSH d'ignorer la vérification de l'hôte (évite le blocage Interactive)
