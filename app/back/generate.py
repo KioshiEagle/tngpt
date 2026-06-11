@@ -14,21 +14,8 @@ def generate_answer(question: str, top_k: int = 3) -> Iterator[str]:
     """Génère une réponse en streaming avec Groq Cloud basée sur Qdrant."""
     # 1. Récupération du contexte
     results = search(question, top_k=top_k)
-    
-    print("\n--- DOCUMENTS UTILISÉS ---")
-    if not results:
-        print("⚠️ AUCUN DOCUMENT TROUVÉ DANS QDRANT")
-        context = "Pas de contexte."
-    else:
-        for i, res in enumerate(results):
-            m = res['metadata']
-            title = m.get('title') or m.get('source', 'Inconnue')
-            print(f"[{i+1}] {title} | Auteur: {m.get('author', '?')} | Date: {m.get('date', '?')}")
-            print(f"     Score: {res.get('score', 0):.4f}  (sem: {res.get('semantic_score', 0):.4f}, fraîcheur: {res.get('freshness_score', 0):.4f})")
-            print(f"     Extrait: {res['content'][:150]}...")
-            print("-" * 40)
-        
-        context = "\n\n".join([res['content'] for res in results])
+
+    context = print_and_build_context(results)
     # 2. Initialisation du client Groq
     client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
@@ -69,6 +56,31 @@ def generate_answer(question: str, top_k: int = 3) -> Iterator[str]:
         # Fallback volontaire : l'appel Groq est une frontière externe
         # et le streaming ne doit pas planter silencieusement côté utilisateur.
         yield f"Erreur inattendue avec Groq : {e!s}"
+
+
+def print_and_build_context(results: list[dict]) -> str:
+    """Affiche les documents utilisés et construit le contexte."""
+    print("\n--- DOCUMENTS UTILISÉS ---")
+    if not results:
+        print("⚠️ AUCUN DOCUMENT TROUVÉ DANS QDRANT")
+        return "Pas de contexte."
+
+    for i, res in enumerate(results):
+        m = res["metadata"]
+        title = m.get("title") or m.get("source", "Inconnue")
+        print(
+            f"[{i + 1}] {title} | Auteur: {m.get('author', '?')} "
+            f"| Date: {m.get('date', '?')}"
+        )
+        print(
+            f"     Score: {res.get('score', 0):.4f}  (sem: "
+            f"{res.get('semantic_score', 0):.4f}, fraîcheur: "
+            f"{res.get('freshness_score', 0):.4f})"
+        )
+        print(f"     Extrait: {res['content'][:150]}...")
+        print("-" * 40)
+
+    return "\n\n".join(res["content"] for res in results)
 
 
 def build_context(results: list[dict]) -> str:

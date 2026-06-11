@@ -68,9 +68,6 @@ indent-style = "space"
 skip-magic-trailing-comma = false
 docstring-code-format = true
 
-[tool.ty.environment]
-extra-paths = ["app/back"]
-
 [tool.bandit]
 exclude_dirs = [".venv","tests","models_cache","__pycache__",".ruf_cache",".uv-cache"]
 skips = ["B101"]

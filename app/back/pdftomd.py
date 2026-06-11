@@ -1,22 +1,28 @@
+import json
 import os
 import re
-import json
 from pathlib import Path
 
 import pymupdf4llm
-from groq import Groq
+from groq import Groq, GroqError
 
 BASE_DIR = Path(__file__).parent.resolve()
 
+
 class DocumentProcessor:
-    def __init__(self):
+    """Classe pour transformer des PDF en Markdown avec métadonnées."""
+
+    def __init__(self) -> None:
+        """Initialise le processeur de document avec Groq."""
         self.groq = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
     def _extract_metadata(self, md_content: str, filename: str) -> dict:
         """Extrait titre, date et auteur depuis le début du document via Groq."""
-        prompt = f"""Analyse le début de ce document et extrais les métadonnées en JSON strict.
+        prompt = f"""Analyse le début de ce document et extrais les \
+métadonnées en JSON strict.
 Si une information est introuvable, utilise null.
-La date doit être au format ISO 8601 (YYYY-MM-DD). Si tu as seulement mois+année, utilise le premier du mois.
+La date doit être au format ISO 8601 (YYYY-MM-DD). Si tu as \
+seulement mois+année, utilise le premier du mois.
 Réponds UNIQUEMENT avec du JSON valide, sans texte autour.
 
 Format attendu :
@@ -32,15 +38,15 @@ Début du document :
                 temperature=0.0,
             )
             raw = (completion.choices[0].message.content or "").strip()
-            match = re.search(r'\{.*\}', raw, re.DOTALL)
+            match = re.search(r"\{.*\}", raw, re.DOTALL)
             if match:
                 return json.loads(match.group())
-        except Exception as e:
+        except (GroqError, json.JSONDecodeError) as e:
             print(f"⚠️ Extraction métadonnées échouée pour {filename} : {e}")
 
         return {"title": filename, "date": None, "author": None}
 
-    def convert_directory(self, source_dir, output_dir):
+    def convert_directory(self, source_dir: Path, output_dir: Path) -> None:
         """Transforme chaque .pdf valide en .md avec frontmatter de métadonnées."""
         for pdf_path in Path(source_dir).glob("*.pdf"):
             try:
@@ -54,22 +60,27 @@ Début du document :
 
                 meta = self._extract_metadata(md_content, pdf_path.stem)
                 title = (meta.get("title") or pdf_path.stem).replace("\n", " ")
-                date  = meta.get("date") or ""
+                date = meta.get("date") or ""
                 author = (meta.get("author") or "Inconnu").replace("\n", " ")
                 print(f"   → titre: {title} | date: {date} | auteur: {author}")
 
-                frontmatter = f"---\ntitle: \"{title}\"\ndate: \"{date}\"\nauthor: \"{author}\"\n---\n\n"
+                frontmatter = (
+                    f'---\ntitle: "{title}"\ndate: "{date}"\n'
+                    f'author: "{author}"\n---\n\n'
+                )
 
                 md_path = Path(output_dir) / f"{pdf_path.stem}.md"
-                with open(md_path, "w", encoding="utf-8") as f:
+                with md_path.open("w", encoding="utf-8") as f:
                     f.write(frontmatter + md_content)
 
-            except Exception as e:
-                print(f"❌ Impossible de convertir {pdf_path.name} : {str(e)}")
+            except (RuntimeError, ValueError, OSError) as e:
+                print(f"❌ Impossible de convertir {pdf_path.name} : {e!s}")
                 continue
+
 
 if __name__ == "__main__":
     from dotenv import load_dotenv
+
     load_dotenv(BASE_DIR.parent.parent / ".env")
 
     TEMP_PDF = BASE_DIR / "temp/pdfs"
