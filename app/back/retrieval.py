@@ -62,10 +62,12 @@ def search(query: str, top_k: int = 5, collection_name: str = "documents") -> li
         semantic = res.score
         freshness = _freshness_score(res.payload.get("date", ""))
         hybrid = FRESHNESS_ALPHA * semantic + (1 - FRESHNESS_ALPHA) * freshness
+        payload = res.payload or {}
+        freshness = _freshness_score(payload.get("date", ""))
 
         results.append({
-            "content": res.payload.get("text", "Texte non trouvé"),
-            "metadata": {k: v for k, v in res.payload.items() if k != "text"},
+            "content": payload.get("text", "Texte non trouvé"),
+            "metadata": {k: v for k, v in payload.items() if k != "text"},
             "score": hybrid,
             "semantic_score": semantic,
             "freshness_score": round(freshness, 4),
