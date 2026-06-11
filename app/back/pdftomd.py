@@ -31,7 +31,7 @@ Début du document :
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.0,
             )
-            raw = completion.choices[0].message.content.strip()
+            raw = (completion.choices[0].message.content or "").strip()
             match = re.search(r'\{.*\}', raw, re.DOTALL)
             if match:
                 return json.loads(match.group())
