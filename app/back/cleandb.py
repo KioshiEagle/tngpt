@@ -1,10 +1,10 @@
 import os
 from pathlib import Path
-
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient, models
 
-load_dotenv()
+BASE_DIR = Path(__file__).parent.resolve()
+load_dotenv(BASE_DIR.parent.parent / ".env")
 
 
 def reset_qdrant() -> None:
@@ -24,15 +24,15 @@ def reset_qdrant() -> None:
     client.create_collection(
         collection_name=collection_name,
         vectors_config=models.VectorParams(
-            size=384,  # Dimension pour all-MiniLM-L6-v2
-            distance=models.Distance.COSINE,
-        ),
+            size=384,
+            distance=models.Distance.COSINE
+        )
     )
 
-    # Nettoyage du fichier log local
-    log_file_path = Path("app/back/processed_files.json")
-    log_file_path.unlink(missing_ok=True)
-    print(f"Fichier {log_file_path} supprimé pour forcer la ré-ingestion.")
+    log_file = BASE_DIR / "processed_files.json"
+    if log_file.exists():
+        log_file.unlink()
+        print(f"Fichier {log_file.name} supprimé pour forcer la ré-ingestion.")
 
     print("Base de données prête pour une nouvelle ingestion.")
 
