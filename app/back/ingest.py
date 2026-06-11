@@ -15,7 +15,7 @@ logfile = BASE_DIR / "processed_files.json"
 def step_drive():
     TEMP_PDF.mkdir(parents=True, exist_ok=True)
     dm = DriveManager(str(BASE_DIR / "service-account.json"))
-    folder_ids = [fid.strip() for fid in os.getenv("DRIVE_FOLDER_IDS").split(",")]
+    folder_ids = [fid.strip() for fid in os.getenv("DRIVE_FOLDER_IDS", "").split(",")]
     dm.download_all_from_folders(folder_ids, TEMP_PDF)
     print("✅ Drive -> Local terminé.")
 
