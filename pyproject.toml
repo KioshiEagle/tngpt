@@ -18,6 +18,7 @@ dependencies = [
     "pymupdf4llm>=1.27.2.3",
     "gunicorn>=26.0.0",
     "dotenv>=0.9.9",
+    "torch>=2.12.0",
 ]
 
 [dependency-groups]
@@ -63,12 +64,12 @@ max-complexity = 10
 
 [tool.ruff.format]
 quote-style = "double"
-
 indent-style = "space"
-
 skip-magic-trailing-comma = false
-
 docstring-code-format = true
+
+[tool.ty.environment]
+extra-paths = ["app/back"]
 
 [tool.bandit]
 exclude_dirs = [".venv","tests","models_cache","__pycache__",".ruf_cache",".uv-cache"]

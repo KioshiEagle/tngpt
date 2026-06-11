@@ -14,7 +14,21 @@ def generate_answer(question: str, top_k: int = 3) -> Iterator[str]:
     """Génère une réponse en streaming avec Groq Cloud basée sur Qdrant."""
     # 1. Récupération du contexte
     results = search(question, top_k=top_k)
-    context = build_context(results)
+    
+    print("\n--- DOCUMENTS UTILISÉS ---")
+    if not results:
+        print("⚠️ AUCUN DOCUMENT TROUVÉ DANS QDRANT")
+        context = "Pas de contexte."
+    else:
+        for i, res in enumerate(results):
+            m = res['metadata']
+            title = m.get('title') or m.get('source', 'Inconnue')
+            print(f"[{i+1}] {title} | Auteur: {m.get('author', '?')} | Date: {m.get('date', '?')}")
+            print(f"     Score: {res.get('score', 0):.4f}  (sem: {res.get('semantic_score', 0):.4f}, fraîcheur: {res.get('freshness_score', 0):.4f})")
+            print(f"     Extrait: {res['content'][:150]}...")
+            print("-" * 40)
+        
+        context = "\n\n".join([res['content'] for res in results])
     # 2. Initialisation du client Groq
     client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
