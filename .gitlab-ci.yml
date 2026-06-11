@@ -19,8 +19,12 @@ check_security:
   stage: check_code_quality
   script:
     - uvx bandit -c pyproject.toml -r .
-    - uv audit
+    - uv audit --ignore GHSA-rrmf-rvhw-rf47
     - uvx pip-audit
+# Ignore GHSA-rrmf-rvhw-rf47 / CVE-2025-3000:
+# affects torch.jit.script / TorchScript.
+# This project does not use torch.jit.script.
+
 #uv audit est encore expérimental donc je laisse pip-audit pour l'instant
 pytest:
   stage: test

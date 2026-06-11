@@ -5,16 +5,18 @@ from pathlib import Path
 import pymupdf4llm
 
 
-def main():
-    """
-    main
+def main() -> None:
+    """Main.
+
     PDF → Markdown structuré par extraction de texte, pour ingestion RAG.
 
     Usage :
         uv run python parse_plaquette_alpha.py mon_document.pdf
         uv run python parse_plaquette_alpha.py mon_document.pdf -o sortie.md
     """
-    parser = argparse.ArgumentParser(description="PDF → Markdown structuré par extraction de texte")
+    parser = argparse.ArgumentParser(
+        description="PDF → Markdown structuré par extraction de texte"
+    )
     parser.add_argument("pdf", type=Path, help="Fichier PDF source")
     parser.add_argument("-o", "--output", type=Path, help="Fichier .md de sortie")
     args = parser.parse_args()
@@ -22,7 +24,9 @@ def main():
     if not args.pdf.exists():
         sys.exit(f"Fichier introuvable : {args.pdf}")
 
-    default_out = Path(__file__).parent / "temp/markdowns" / args.pdf.with_suffix(".md").name
+    default_out = (
+        Path(__file__).parent / "temp/markdowns" / args.pdf.with_suffix(".md").name
+    )
     default_out.parent.mkdir(parents=True, exist_ok=True)
     output = args.output or default_out
 
