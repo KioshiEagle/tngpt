@@ -64,9 +64,9 @@ max-complexity = 10
 
 [tool.ruff.format]
 quote-style = "double"
-
-[tool.ty.environment]
-root = ["app/back"]
+indent-style = "space"
+skip-magic-trailing-comma = false
+docstring-code-format = true
 
 indent-style = "space"
 
