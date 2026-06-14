@@ -1,3 +1,5 @@
+"""Routes Flask de l'application TN-GPT."""
+
 import random
 from collections.abc import Iterator
 
@@ -18,42 +20,26 @@ bp = Blueprint("chat", __name__)
 
 @bp.route("/chat", methods=["POST"])
 def chat() -> Response:
-    """Gère la conversation avec l'utilisateur via stream."""
+    """Répond en streaming à un message utilisateur."""
     data = request.get_json()
-
     if not data or "message" not in data:
         return jsonify({"error": "Message manquant"})
 
     user_message = data["message"]
     top_k = data.get("top_k", 15)
 
-    # Gestion de l'historique (Note : La session Flask est difficile à mettre à jour
-    # à l'intérieur d'un stream, on enregistre donc l'entrée utilisateur ici)
     if "history" not in session:
         session["history"] = []
     session["history"].append({"role": "user", "content": user_message})
     session.modified = True
 
-    def generate() -> Iterator[str]:
-        full_assistant_response = ""
+    def _stream() -> Iterator[str]:
         try:
-            # On appelle generate_answer qui est maintenant un générateur (yield)
-            for chunk in generate_answer(user_message, top_k=top_k):
-                full_assistant_response += chunk
-                # On envoie le fragment de texte brut au client
-                yield chunk
-
-            # Note : Pour mettre à jour l'historique en session avec la réponse complète
-            # il faudrait idéalement utiliser une base de données ou un cache (Redis),
-            # car le contexte de session Flask est souvent verrouillé
-            # après le début du stream.
+            yield from generate_answer(user_message, top_k=top_k)
         except Exception as e:  # noqa: BLE001
-            # Beaucoup trop d'exception à gerer
-            # Peut être plus tard
             yield f"Erreur : {e!s}"
 
-    # On utilise stream_with_context pour garder l'accès à la session si besoin
-    return Response(stream_with_context(generate()), mimetype="text/plain")
+    return Response(stream_with_context(_stream()), mimetype="text/plain")
 
 
 @bp.route("/history", methods=["GET"])
@@ -88,7 +74,7 @@ CITATIONS: list[Citation] = [
 
 @bp.route("/quote", methods=["GET"])
 def quote() -> str:
-    """Retourne une citation aléatoire."""
+    """Retourne une citation aléatoire pondérée."""
     quotes = [c[0] for c in CITATIONS]
     weights = [c[1] for c in CITATIONS]
     return random.choices(quotes, weights=weights, k=1)[0]  # nosec
@@ -96,5 +82,5 @@ def quote() -> str:
 
 @bp.route("/")
 def index() -> str:
-    """Affiche la page d'accueil de l'interface."""
+    """Affiche la page d'accueil."""
     return render_template("index.html", quote=quote())
