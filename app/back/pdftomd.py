@@ -1,20 +1,20 @@
-"""Conversion PDF → Markdown avec extraction de métadonnées via LLM local."""
+"""Conversion PDF → Markdown avec extraction de métadonnées via LLM Groq."""
 
 import contextlib
+import hashlib
 import json
 import os
 import re
 from datetime import date
 from pathlib import Path
 from dotenv import load_dotenv
-from urllib.error import URLError
-from urllib.request import Request, urlopen
 
 import pymupdf4llm
+from groq import APIConnectionError, APIStatusError, APITimeoutError, Groq
 
 BASE_DIR = Path(__file__).parent.resolve()
 
-_OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:0.5b")
+_GROQ_MODEL = os.getenv("GROQ_METADATA_MODEL", "llama-3.1-8b-instant")
 
 # Borne de validité des années extraites
 _YEAR_MIN = 1990
@@ -73,46 +73,57 @@ def _regex_date(text: str) -> str | None:
                         return date(year, month, day).isoformat()
     return None
 
-_ENDPOINT = "http://localhost:11434/api/generate"
+_METADATA_SYSTEM = (
+    "Tu es un assistant qui extrait des métadonnées de documents. "
+    "Réponds UNIQUEMENT avec du JSON valide, sans texte autour, sans balises markdown."
+)
 
-
-def generate(prompt: str, model: str, timeout: int = 30) -> str | None:
-    """Envoie un prompt au LLM local via Ollama. Retourne None si indisponible."""
-    payload = json.dumps({"model": model, "prompt": prompt, "stream": False}).encode()
-    req = Request(_ENDPOINT, data=payload, headers={"Content-Type": "application/json"})
-    try:
-        with urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read()).get("response", "").strip()
-    except (URLError, json.JSONDecodeError, TimeoutError):
-        return None
-
-
-_METADATA_PROMPT = (
+_METADATA_USER = (
     "Analyse le début de ce document et extrais les métadonnées en JSON strict.\n"
     "Si une information est introuvable, utilise null.\n"
     "La date doit être en ISO 8601 (YYYY-MM-DD). "
     "Si tu as seulement mois+année, utilise le premier du mois.\n"
-    "Réponds UNIQUEMENT avec du JSON valide, sans texte autour.\n\n"
+    "Pour l'auteur : cherche un nom de personne, l'auteur est généralement le secrétaire de séance ou le ou les rédacteurs.\n"
+    "Si tu ne trouves pas d'auteur, indique null\n"
+    "Si tu trouves plusieurs noms, joins-les avec ' & '.\n"
     'Format : {"title": "...", "date": "YYYY-MM-DD", "author": "..."}\n\n'
     "Début du document :\n"
 )
 
 
+def _groq_extract(content: str) -> str | None:
+    """Appelle Groq pour extraire les métadonnées. Retourne None si indisponible."""
+    client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+    try:
+        resp = client.chat.completions.create(
+            model=_GROQ_MODEL,
+            messages=[
+                {"role": "system", "content": _METADATA_SYSTEM},
+                {"role": "user", "content": _METADATA_USER + content},
+            ],
+            temperature=0,
+            max_tokens=200,
+        )
+        return resp.choices[0].message.content or None
+    except (APITimeoutError, APIConnectionError, APIStatusError):
+        return None
+
+
 class DocumentProcessor:
-    """Convertit des PDF en Markdown avec extraction de métadonnées via LLM local."""
+    """Convertit des PDF en Markdown avec extraction de métadonnées via Groq."""
 
     def _extract_metadata(self, md_content: str, filename: str) -> dict:
-        """Extrait titre, date et auteur. LLM local en premier, regex en fallback."""
+        """Extrait titre, date et auteur via Groq, regex en fallback pour la date."""
         meta: dict = {"title": filename, "date": None, "author": None}
 
-        response = generate(_METADATA_PROMPT + md_content[:2000], model=_OLLAMA_MODEL)
+        response = _groq_extract(md_content[:2000])
         if response:
             match = re.search(r"\{.*\}", response, re.DOTALL)
             if match:
                 with contextlib.suppress(json.JSONDecodeError):
                     meta = json.loads(match.group())
         else:
-            print(f"⚠️ Ollama indisponible pour {filename}, regex en fallback")
+            print(f"⚠️ Groq indisponible pour {filename}, regex en fallback")
 
         if not meta.get("date"):
             # Filename d'abord (ex: RO_10_2026-04-07, 2022_04_25), content ensuite
@@ -123,12 +134,21 @@ class DocumentProcessor:
 
         return meta
 
-    def convert_directory(self, source_dir: Path, output_dir: Path) -> None:
+    def convert_directory(self, source_dir: Path, output_dir: Path, log_file: Path) -> None:
         """Transforme chaque PDF valide en Markdown avec frontmatter de métadonnées."""
+        raw = json.loads(log_file.read_text()) if log_file.exists() else {}
+        processed = dict.fromkeys(raw) if isinstance(raw, list) else raw
+
         for pdf_path in Path(source_dir).glob("*.pdf"):
             try:
                 if pdf_path.stat().st_size == 0:
                     print(f"⚠️ Fichier vide ignoré : {pdf_path.name}")
+                    continue
+
+                current_hash = hashlib.sha256(pdf_path.read_bytes()).hexdigest()
+                md_path = Path(output_dir) / f"{pdf_path.stem}.md"
+                if processed.get(pdf_path.stem) == current_hash and md_path.exists():
+                    print(f"⏭️  Déjà converti : {pdf_path.name}")
                     continue
 
                 print(f"⚡ PDF -> MD : {pdf_path.name}")
@@ -145,13 +165,17 @@ class DocumentProcessor:
                     f'author: "{author}"\n---\n\n'
                 )
 
-                md_path = Path(output_dir) / f"{pdf_path.stem}.md"
                 with md_path.open("w", encoding="utf-8") as f:
                     f.write(frontmatter + md_content)
+
+                processed[pdf_path.stem] = current_hash
 
             except (RuntimeError, ValueError, OSError) as e:
                 print(f"❌ Impossible de convertir {pdf_path.name} : {e!s}")
                 continue
+
+        with log_file.open("w") as f:
+            json.dump(processed, f)
 
 
 if __name__ == "__main__":
@@ -161,6 +185,7 @@ if __name__ == "__main__":
     TEMP_PDF = BASE_DIR / "temp/pdfs"
     TEMP_MD = BASE_DIR / "temp/markdowns"
     TEMP_MD.mkdir(parents=True, exist_ok=True)
+    logfile = BASE_DIR / "processed_pdfs.json"
     dp = DocumentProcessor()
-    dp.convert_directory(TEMP_PDF, TEMP_MD)
+    dp.convert_directory(TEMP_PDF, TEMP_MD, logfile)
     print("✅ PDF -> MD terminé.")
