@@ -17,8 +17,8 @@ BASE_DIR = Path(__file__).parent.resolve()
 _OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:0.5b")
 
 # Borne de validité des années extraites
-_YEAR_MIN = 2000
-_YEAR_MAX = 2100
+_YEAR_MIN = 1990
+_YEAR_MAX = 2027
 
 _MONTHS_FR: dict[str, int] = {
     "janvier": 1, "février": 2, "fevrier": 2, "mars": 3, "avril": 4,
@@ -34,9 +34,9 @@ _DATE_PATTERNS = [
         r"\b(\d{4})-(\d{2})-(\d{2})\b",
         lambda m: (int(m[0]), int(m[1]), int(m[2])),
     ),
-    # Numérique FR : 14/06/2026  → groups = (day, month, year)
+    # Numérique FR avec ou sans espaces : 14/06/2026 ou 14 / 06 / 2026
     (
-        r"\b(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})\b",
+        r"\b(\d{1,2})\s*[/\-]\s*(\d{1,2})\s*[/\-]\s*(\d{4})\b",
         lambda m: (int(m[2]), int(m[1]), int(m[0])),
     ),
     # Littéral FR : 14 juin 2026  → groups = (day, month_name, year)
@@ -49,17 +49,28 @@ _DATE_PATTERNS = [
         r"\b(" + "|".join(_MONTHS_FR) + r")\s+(\d{4})\b",
         lambda m: (int(m[1]), _MONTHS_FR[m[0].lower()], 1),
     ),
+    # Numérique FR année 2 chiffres : 17/12/18 → DD/MM/YY (≤27 → 20xx, sinon 19xx)
+    (
+        r"\b(\d{1,2})\s*[/\-]\s*(\d{1,2})\s*[/\-]\s*(\d{2})\b",
+        lambda m: (2000 + int(m[2]) if int(m[2]) <= 27 else 1900 + int(m[2]), int(m[1]), int(m[0])),
+    ),
 ]
+
+
+def _collapse_spaced_digits(text: str) -> str:
+    """Collapse character-spaced headers: '0 7 / 0 4 / 2 0 2 6' → '07 / 04 / 2026'."""
+    return re.sub(r"(\d)(?: \d)+", lambda m: m.group().replace(" ", ""), text)
 
 
 def _regex_date(text: str) -> str | None:
     """Cherche la première date valide dans le texte. Retourne ISO 8601 ou None."""
-    for pattern, extractor in _DATE_PATTERNS:
-        for m in re.finditer(pattern, text, re.IGNORECASE):
-            with contextlib.suppress(ValueError, KeyError, IndexError):
-                year, month, day = extractor(m.groups())
-                if _YEAR_MIN <= year <= _YEAR_MAX:
-                    return date(year, month, day).isoformat()
+    for t in (text, _collapse_spaced_digits(text)):
+        for pattern, extractor in _DATE_PATTERNS:
+            for m in re.finditer(pattern, t, re.IGNORECASE):
+                with contextlib.suppress(ValueError, KeyError, IndexError):
+                    year, month, day = extractor(m.groups())
+                    if _YEAR_MIN <= year <= _YEAR_MAX:
+                        return date(year, month, day).isoformat()
     return None
 
 _ENDPOINT = "http://localhost:11434/api/generate"
@@ -104,7 +115,9 @@ class DocumentProcessor:
             print(f"⚠️ Ollama indisponible pour {filename}, regex en fallback")
 
         if not meta.get("date"):
-            meta["date"] = _regex_date(md_content)
+            # Filename d'abord (ex: RO_10_2026-04-07, 2022_04_25), content ensuite
+            clean_stem = filename.replace("_", "-")
+            meta["date"] = _regex_date(clean_stem) or _regex_date(md_content)
             if meta["date"]:
                 print(f"   → date extraite par regex : {meta['date']}")
 
