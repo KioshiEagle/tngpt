@@ -8,7 +8,7 @@ from pathlib import Path
 from qdrant_client import QdrantClient, models
 from sentence_transformers import SentenceTransformer
 
-from chunking import get_hybrid_chunks
+from .chunking import get_hybrid_chunks
 
 
 # Bumper cette version force la re-ingestion de tous les documents
