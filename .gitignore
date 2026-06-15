@@ -14,6 +14,7 @@ core
 
 # fichiers d'output
 processed_files.json
+processed_pdfs.json
 *.pdf
 app/back/temp/
 Plaquette-Alpha**
