@@ -22,9 +22,21 @@ _YEAR_MAX = 2027
 _YEAR_2DIGIT_CUTOFF = 27
 
 _MONTHS_FR: dict[str, int] = {
-    "janvier": 1, "février": 2, "fevrier": 2, "mars": 3, "avril": 4,
-    "mai": 5, "juin": 6, "juillet": 7, "août": 8, "aout": 8,
-    "septembre": 9, "octobre": 10, "novembre": 11, "décembre": 12, "decembre": 12,
+    "janvier": 1,
+    "février": 2,
+    "fevrier": 2,
+    "mars": 3,
+    "avril": 4,
+    "mai": 5,
+    "juin": 6,
+    "juillet": 7,
+    "août": 8,
+    "aout": 8,
+    "septembre": 9,
+    "octobre": 10,
+    "novembre": 11,
+    "décembre": 12,
+    "decembre": 12,
 }
 
 # Patterns du plus précis au moins précis.
@@ -54,8 +66,7 @@ _DATE_PATTERNS = [
     (
         r"\b(\d{1,2})\s*[/\-]\s*(\d{1,2})\s*[/\-]\s*(\d{2})\b",
         lambda m: (
-            2000 + int(m[2]) if int(m[2]) <= _YEAR_2DIGIT_CUTOFF
-            else 1900 + int(m[2]),
+            2000 + int(m[2]) if int(m[2]) <= _YEAR_2DIGIT_CUTOFF else 1900 + int(m[2]),
             int(m[1]),
             int(m[0]),
         ),
@@ -78,6 +89,7 @@ def _regex_date(text: str) -> str | None:
                     if _YEAR_MIN <= year <= _YEAR_MAX:
                         return date(year, month, day).isoformat()
     return None
+
 
 _METADATA_SYSTEM = (
     "Tu es un assistant qui extrait des métadonnées de documents. "
@@ -189,7 +201,6 @@ class DocumentProcessor:
 
 
 if __name__ == "__main__":
-
     load_dotenv(BASE_DIR.parent.parent / ".env")
 
     TEMP_PDF = BASE_DIR / "temp/pdfs"
