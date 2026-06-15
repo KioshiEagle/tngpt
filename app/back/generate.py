@@ -8,7 +8,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from groq import APIConnectionError, APIStatusError, APITimeoutError, Groq
 
-from retrieval import search
+from .retrieval import search
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
