@@ -34,7 +34,12 @@ def _freshness_score(date_str: str) -> float:
 
 
 def search(query: str, top_k: int = 5, collection_name: str = "documents") -> list:
-    """Recherche sémantique optimisée pour le français avec E5."""
+    """Recherche hybride (sémantique + fraîcheur) dans Qdrant.
+
+    Le pool de candidats est volontairement large (top_k * 20) pour ne pas
+    écarter des documents pertinents avant la re-notation par fraîcheur.
+    Retourne jusqu'à `top_k` résultats triés par score hybride décroissant.
+    """
     client = QdrantClient(
         url=os.getenv("QDRANT_URL"),
         api_key=os.getenv("QDRANT_API_KEY"),
@@ -42,21 +47,19 @@ def search(query: str, top_k: int = 5, collection_name: str = "documents") -> li
     )
 
     query_vector = model.encode(f"query: {query}").tolist()
-
-    # On récupère plus de candidats pour que le reranker ait de la matière
     response = client.query_points(
         collection_name=collection_name,
         query=query_vector,
-        limit=top_k * 3,
-        score_threshold=0.75,
+        limit=top_k * 20,
+        score_threshold=0.72,
         with_payload=True,
         with_vectors=False,
     )
 
     results = []
-    for res in response.points:
-        semantic = res.score
-        payload = res.payload or {}
+    for point in response.points:
+        semantic = point.score
+        payload = point.payload or {}
         freshness = _freshness_score(payload.get("date", ""))
         hybrid = FRESHNESS_ALPHA * semantic + (1 - FRESHNESS_ALPHA) * freshness
 
@@ -81,7 +84,7 @@ if __name__ == "__main__":
     res = search(query_test)
 
     if not res:
-        print("⚠️ Aucun résultat pertinent trouvé (Score < 0.75).")
+        print("⚠️ Aucun résultat pertinent trouvé (Score < 0.72).")
     else:
         for r in res:
             m = r["metadata"]
