@@ -7,9 +7,9 @@ import os
 import re
 from datetime import date
 from pathlib import Path
-from dotenv import load_dotenv
 
 import pymupdf4llm
+from dotenv import load_dotenv
 from groq import APIConnectionError, APIStatusError, APITimeoutError, Groq
 
 BASE_DIR = Path(__file__).parent.resolve()
@@ -19,6 +19,7 @@ _GROQ_MODEL = os.getenv("GROQ_METADATA_MODEL", "llama-3.1-8b-instant")
 # Borne de validité des années extraites
 _YEAR_MIN = 1990
 _YEAR_MAX = 2027
+_YEAR_2DIGIT_CUTOFF = 27
 
 _MONTHS_FR: dict[str, int] = {
     "janvier": 1, "février": 2, "fevrier": 2, "mars": 3, "avril": 4,
@@ -52,7 +53,12 @@ _DATE_PATTERNS = [
     # Numérique FR année 2 chiffres : 17/12/18 → DD/MM/YY (≤27 → 20xx, sinon 19xx)
     (
         r"\b(\d{1,2})\s*[/\-]\s*(\d{1,2})\s*[/\-]\s*(\d{2})\b",
-        lambda m: (2000 + int(m[2]) if int(m[2]) <= 27 else 1900 + int(m[2]), int(m[1]), int(m[0])),
+        lambda m: (
+            2000 + int(m[2]) if int(m[2]) <= _YEAR_2DIGIT_CUTOFF
+            else 1900 + int(m[2]),
+            int(m[1]),
+            int(m[0]),
+        ),
     ),
 ]
 
@@ -83,7 +89,9 @@ _METADATA_USER = (
     "Si une information est introuvable, utilise null.\n"
     "La date doit être en ISO 8601 (YYYY-MM-DD). "
     "Si tu as seulement mois+année, utilise le premier du mois.\n"
-    "Pour l'auteur : cherche un nom de personne, l'auteur est généralement le secrétaire de séance ou le ou les rédacteurs.\n"
+    "Pour l'auteur : cherche un nom de personne, "
+    "l'auteur est généralement le secrétaire de séance "
+    "ou le ou les rédacteurs.\n"
     "Si tu ne trouves pas d'auteur, indique null\n"
     "Si tu trouves plusieurs noms, joins-les avec ' & '.\n"
     'Format : {"title": "...", "date": "YYYY-MM-DD", "author": "..."}\n\n'
@@ -134,7 +142,9 @@ class DocumentProcessor:
 
         return meta
 
-    def convert_directory(self, source_dir: Path, output_dir: Path, log_file: Path) -> None:
+    def convert_directory(
+        self, source_dir: Path, output_dir: Path, log_file: Path
+    ) -> None:
         """Transforme chaque PDF valide en Markdown avec frontmatter de métadonnées."""
         raw = json.loads(log_file.read_text()) if log_file.exists() else {}
         processed = dict.fromkeys(raw) if isinstance(raw, list) else raw

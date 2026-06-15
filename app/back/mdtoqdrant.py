@@ -10,7 +10,6 @@ from sentence_transformers import SentenceTransformer
 
 from .chunking import get_hybrid_chunks
 
-
 # Bumper cette version force la re-ingestion de tous les documents
 _CHUNK_VERSION = "v5-clean"
 
