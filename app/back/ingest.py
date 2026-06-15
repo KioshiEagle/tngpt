@@ -6,9 +6,9 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from drivetolocal import DriveManager
-from mdtoqdrant import VectorStore
-from pdftomd import DocumentProcessor
+from .drivetolocal import DriveManager
+from .mdtoqdrant import VectorStore
+from .pdftomd import DocumentProcessor
 
 BASE_DIR = Path(__file__).parent.resolve()
 load_dotenv(BASE_DIR.parent.parent / ".env")
