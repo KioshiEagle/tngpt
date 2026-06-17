@@ -1,0 +1,30 @@
+[project]
+site_name = "Documentation TN-GPT"
+site_description = "Documentation technique du projet TN-GPT"
+site_author = "Tobias NOBILE & Jean-Charles VENTE"
+
+[project.theme]
+language = "fr"
+features = [
+    "navigation.tabs",
+    "navigation.sections",
+    "navigation.top",
+    "search.suggest",
+    "search.highlight",
+    "content.code.copy"
+]
+
+[project.plugins.mkdocstrings.handlers.python]
+paths = ["."]
+
+[project.plugins.mkdocstrings.handlers.python.options]
+show_source = true
+show_signature_annotations = true
+separate_signature = true
+docstring_style = "google"
+members_order = "source"
+
+[project.markdown_extensions.admonition]
+[project.markdown_extensions.pymdownx.details]
+[project.markdown_extensions.pymdownx.superfences]
+[project.markdown_extensions.pymdownx.highlight]
