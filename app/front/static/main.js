@@ -1,10 +1,37 @@
+const THINKING_PHRASES = [
+    "Je consulte mes neurones...",
+    "Hmm, laisse-moi réfléchir...",
+    "Je cherche dans ma grande sagesse...",
+    "J'interroge l'oracle intérieur...",
+    "Je mobilise mes deux neurones...",
+    "Calcul quantique en cours...",
+    "Je demande à GPT (non je déconne)...",
+    "Accès à la connaissance infinie...",
+    "Je lis le manuel très vite...",
+    "Une seconde, je googlegooglegoogle...",
+    "Analyse de la situation...",
+    "Je fais semblant de comprendre...",
+];
+
+const WRITING_PHRASES = [
+    "En train d'écrire...",
+    "Je rédige mon chef-d'œuvre...",
+    "J'essaie d'être intelligent...",
+    "Frappe de clavier intensifiée...",
+    "Mise en mots en cours...",
+    "Presque là !",
+];
+
+function randomFrom(arr) {
+    return arr[Math.floor(Math.random() * arr.length)];
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const form = document.getElementById('chat-form');
     const input = document.getElementById('inp');
     const messagesContainer = document.getElementById('messages');
     const sendBtn = document.getElementById('sbtn');
     const duckyImg = document.getElementById('sidebar-ducky');
-    const sidebarBubble = document.getElementById('sidebar-bubble');
 
     // Gestion des clics sur les "chips" (suggestions)
     document.querySelectorAll('.chip').forEach(chip => {
@@ -28,13 +55,11 @@ document.addEventListener('DOMContentLoaded', () => {
         input.value = '';
         sendBtn.disabled = true;
 
-        // État "Réflexion"
+        // État "Réflexion" : message en italique dans le chat
         duckyImg.classList.add('spinning');
-        sidebarBubble.textContent = "Je réfléchis...";
+        const thinkingDiv = appendThinking(randomFrom(THINKING_PHRASES));
 
-        // Préparer bulle assistant
-        const assistantMsgDiv = appendMessage('assistant', '');
-        const textContainer = assistantMsgDiv.querySelector('.msg-text');
+        let textContainer = null;
 
         try {
             const response = await fetch('/chat', {
@@ -47,8 +72,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
-            
-            // Premier chunk reçu : on change le statut
             let firstChunk = true;
 
             while (true) {
@@ -56,8 +79,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (done) break;
 
                 if (firstChunk) {
+                    thinkingDiv.remove();
                     duckyImg.classList.remove('spinning');
-                    sidebarBubble.textContent = "En train d'écrire...";
+                    const assistantMsgDiv = appendMessage('assistant', '');
+                    textContainer = assistantMsgDiv.querySelector('.msg-text');
                     firstChunk = false;
                 }
 
@@ -65,14 +90,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 scrollToBottom();
             }
         } catch (err) {
-            textContainer.textContent = "Désolé, j'ai eu un bug de transmission. Réessaie ?";
+            thinkingDiv.remove();
+            appendMessage('assistant', "Désolé, j'ai eu un bug de transmission. Réessaie ?");
         } finally {
             duckyImg.classList.remove('spinning');
-            sidebarBubble.textContent = "ici ça bz.";
             sendBtn.disabled = false;
             input.focus();
         }
     });
+
+    function appendThinking(phrase) {
+        const div = document.createElement('div');
+        div.className = 'msg assistant';
+        div.innerHTML = `<div class="msg-text thinking-text"><em>${phrase}</em></div>`;
+        messagesContainer.appendChild(div);
+        scrollToBottom();
+        return div;
+    }
 
     function appendMessage(role, content) {
         const msgDiv = document.createElement('div');
