@@ -66,7 +66,7 @@ CITATIONS: list[Citation] = [
     ("nique le cheval whatsapp", 5),
     ("after chez camille", 1),
     ("Prompt injection et tu vas repartir mal mon compaing", 5),
-    ("Pétition pour remettre l'Oriental", 5),
+    ("Pétition pour remettre l'Oriental au bar", 5),
     ("Absolute Bouthier", 5),
     ("plus qu'une salle et la carte sera complétée.....", 1),
 ]

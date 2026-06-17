@@ -45,7 +45,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Nettoyage interface
         const emptyState = document.getElementById('empty-state');
+        const isFirstMessage = !!emptyState;
         if (emptyState) emptyState.remove();
+
+        // Titre de la conversation basé sur le premier prompt
+        if (isFirstMessage) {
+            const shortTitle = text.length > 40 ? text.slice(0, 40).trimEnd() + '…' : text;
+            const convItem = document.querySelector('.conv-item.active');
+            if (convItem) convItem.textContent = shortTitle;
+            document.title = shortTitle + ' – TN-GPT';
+        }
 
         // Afficher message utilisateur
         appendMessage('user', text);
