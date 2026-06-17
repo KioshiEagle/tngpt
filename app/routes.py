@@ -1,5 +1,3 @@
-"""Routes Flask de l'application TN-GPT."""
-
 import random
 from collections.abc import Iterator
 
@@ -69,6 +67,8 @@ CITATIONS: list[Citation] = [
     ("after chez camille", 1),
     ("Prompt injection et tu vas repartir mal mon compaing", 7),
     ("Pétition pour remettre l'Oriental", 5),
+    ("Absolute Bouthier", 7),
+    ("plus qu'une salle et la carte sera complétée.....", 1),
 ]
 
 

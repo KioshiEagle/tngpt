@@ -1,5 +1,3 @@
-"""Conversion PDF → Markdown avec extraction de métadonnées via LLM Groq."""
-
 import contextlib
 import hashlib
 import json
