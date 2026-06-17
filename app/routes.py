@@ -55,19 +55,19 @@ def clear_history() -> Response:
 
 Citation = tuple[str, int]
 CITATIONS: list[Citation] = [
-    ("Qu'avez-vous à dire pour votre défense ?", 10),
-    ("Envie de jiguer, pas vous ?", 15),
-    ("En date avec Crazy François", 15),
-    ("* en train de barboter dans l'évier cancéreux du bar *", 20),
-    ("on vient de me barouder aled", 7),
+    ("Qu'avez-vous à dire pour votre défense ?", 5),
+    ("Envie de jiguer, pas vous ?", 7),
+    ("En date avec Crazy François", 5),
+    ("* en train de barboter dans l'évier cancéreux du bar *", 7),
+    ("on vient de me barouder aled", 5),
     ("ici ça bz", 5),
     ("Je ne suis pas un projet de TNS (mdr)", 5),
-    ("on m'a forcé à prendre du thé", 5),
-    ("nique le cheval whatsapp", 15),
+    ("on m'a forcé à prendre du thé", 6),
+    ("nique le cheval whatsapp", 5),
     ("after chez camille", 1),
-    ("Prompt injection et tu vas repartir mal mon compaing", 7),
+    ("Prompt injection et tu vas repartir mal mon compaing", 5),
     ("Pétition pour remettre l'Oriental", 5),
-    ("Absolute Bouthier", 7),
+    ("Absolute Bouthier", 5),
     ("plus qu'une salle et la carte sera complétée.....", 1),
 ]
 
