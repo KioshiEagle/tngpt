@@ -1,4 +1,4 @@
-image: ghcr.io/astral-sh/uv:0.11.19-python3.13-trixie
+image: ghcr.io/astral-sh/uv:0.11.21-python3.13-trixie
 
 stages:
   - check_code_quality
@@ -10,11 +10,11 @@ lint:
   stage : check_code_quality
   script:
     - uv lock --check
-    - uv check
     - uvx ruff check . --statistics
     - uvx ruff format . --check
+    - uv check
     - uvx ty check
-
+#uv check est encore expérimental donc je laisse uvx ty check pour l'instant
 check_security:
   stage: check_code_quality
   script:
@@ -125,7 +125,8 @@ pages:
   stage: deploy
   script:
     - uv sync
-    - uv run mkdocs build --site-dir public
+    - uv run python docs/gen_ref_pages.py
+    - uv run zensical build --strict --site-dir public --clean
   artifacts:
     paths:
       - public
