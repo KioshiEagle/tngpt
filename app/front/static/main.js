@@ -56,9 +56,12 @@ document.addEventListener('DOMContentLoaded', () => {
         duckyImg.classList.add('spinning');
         const thinkingDiv = appendThinking(randomFrom(THINKING_PHRASES));
 
+        let oiiaAudio = null;
         const slowTimer = setTimeout(() => {
             thinkingDiv.querySelector('em').textContent = SLOW_PHRASE;
-            new Audio('/static/sounds/OIIA_OIIA.mp3').play();
+            oiiaAudio = new Audio('/static/sounds/OIIA_OIIA.mp3');
+            oiiaAudio.loop = true;
+            oiiaAudio.play();
         }, 3000);
 
         let textContainer = null;
@@ -86,6 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const trimmed = chunk.trimStart();
                     if (!trimmed) continue;
                     clearTimeout(slowTimer);
+                    if (oiiaAudio) { oiiaAudio.pause(); oiiaAudio = null; }
                     thinkingDiv.remove();
                     duckyImg.classList.remove('spinning');
                     const assistantMsgDiv = appendMessage('assistant', trimmed);
@@ -98,6 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (err) {
             clearTimeout(slowTimer);
+            if (oiiaAudio) { oiiaAudio.pause(); oiiaAudio = null; }
             thinkingDiv.remove();
             appendMessage('assistant', "Désolé, j'ai eu un bug de transmission. Réessaie ?");
         } finally {
