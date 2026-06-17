@@ -56,13 +56,3 @@ def get_hybrid_chunks(
                 final_chunks.append(prefix + cleaned_content)
 
     return final_chunks
-
-
-# Alias pour garder la compatibilité avec tes anciens scripts si nécessaire
-def recursive_chunking(
-    text: str,
-    max_chunk_size: int = 800,
-    chunk_overlap: int = 200,
-) -> list[str]:
-    """Alias pour garder la compatibilité avec tes anciens scripts si nécessaire."""
-    return get_hybrid_chunks(text, max_chunk_size, chunk_overlap)

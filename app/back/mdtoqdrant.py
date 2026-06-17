@@ -10,9 +10,13 @@ from sentence_transformers import SentenceTransformer
 
 from .chunking import get_hybrid_chunks
 
+# Bumper cette version force la re-ingestion de tous les documents
+_CHUNK_VERSION = "v5-clean"
+
 
 def _file_hash(content: str) -> str:
-    return hashlib.sha256(content.encode()).hexdigest()
+    """Hash du contenu incluant la version de chunking pour forcer la re-ingestion."""
+    return hashlib.sha256((content + _CHUNK_VERSION).encode()).hexdigest()
 
 
 def _parse_frontmatter(content: str) -> tuple[dict, str]:
@@ -32,7 +36,7 @@ class VectorStore:
     """Gestionnaire de la base vectorielle Qdrant."""
 
     def __init__(self, url: str, api_key: str) -> None:
-        """Initialise la connexion à Qdrant."""
+        """Initialise la connexion à Qdrant et les index de payload."""
         self.client = QdrantClient(url=url, api_key=api_key, timeout=60)
         self.model = SentenceTransformer("intfloat/multilingual-e5-small")
         self.collection = "documents"
@@ -48,7 +52,13 @@ class VectorStore:
         )
 
     def upload_directory(self, md_dir: Path, log_file: Path) -> None:
-        """Ingère les fichiers Markdown d'un dossier dans Qdrant."""
+        """Ingère les fichiers Markdown d'un dossier dans Qdrant.
+
+        Chaque chunk est préfixé avec date et titre avant l'encodage E5
+        pour améliorer la qualité du matching sémantique. Le texte brut
+        (sans préfixe) est stocké dans le payload pour l'affichage.
+        Seuls les fichiers modifiés (hash différent) sont re-ingérés.
+        """
         raw = json.loads(Path(log_file).read_text()) if Path(log_file).exists() else {}
         processed = dict.fromkeys(raw) if isinstance(raw, list) else raw
 
@@ -70,47 +80,53 @@ class VectorStore:
             print(f"📤 Ingestion sémantique (E5) : {title or drive_id}")
             chunks = get_hybrid_chunks(body, chunk_size=800, chunk_overlap=240)
 
-            if chunks:
-                self.client.delete(
+            if not chunks:
+                continue
+
+            self.client.delete(
+                collection_name=self.collection,
+                points_selector=models.FilterSelector(
+                    filter=models.Filter(
+                        must=[
+                            models.FieldCondition(
+                                key="source",
+                                match=models.MatchValue(value=drive_id),
+                            )
+                        ]
+                    )
+                ),
+            )
+
+            date_prefix = f"[Date: {date}] " if date else ""
+            title_prefix = f"[Source: {title}] " if title else ""
+            prefixed_chunks = [
+                f"passage: {date_prefix}{title_prefix}{c}" for c in chunks
+            ]
+            embs = self.model.encode(prefixed_chunks).tolist()
+
+            points = [
+                models.PointStruct(
+                    id=str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{drive_id}_{i}")),
+                    vector=emb,
+                    payload={
+                        "text": txt,
+                        "source": drive_id,
+                        "title": title,
+                        "date": date,
+                        "author": author,
+                    },
+                )
+                for i, (txt, emb) in enumerate(zip(chunks, embs, strict=False))
+            ]
+
+            batch_size = 50
+            for i in range(0, len(points), batch_size):
+                self.client.upsert(
                     collection_name=self.collection,
-                    points_selector=models.FilterSelector(
-                        filter=models.Filter(
-                            must=[
-                                models.FieldCondition(
-                                    key="source",
-                                    match=models.MatchValue(value=drive_id),
-                                )
-                            ]
-                        )
-                    ),
+                    points=points[i : i + batch_size],
                 )
 
-                prefixed_chunks = [f"passage: {c}" for c in chunks]
-                embs = self.model.encode(prefixed_chunks).tolist()
-
-                points = [
-                    models.PointStruct(
-                        id=str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{drive_id}_{i}")),
-                        vector=emb,
-                        payload={
-                            "text": txt,
-                            "source": drive_id,
-                            "title": title,
-                            "date": date,
-                            "author": author,
-                        },
-                    )
-                    for i, (txt, emb) in enumerate(zip(chunks, embs, strict=False))
-                ]
-
-                batch_size = 50
-                for i in range(0, len(points), batch_size):
-                    self.client.upsert(
-                        collection_name=self.collection,
-                        points=points[i : i + batch_size],
-                    )
-
-                processed[drive_id] = current_hash
+            processed[drive_id] = current_hash
 
         with Path(log_file).open("w") as f:
             json.dump(processed, f)

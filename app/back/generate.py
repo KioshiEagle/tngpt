@@ -1,5 +1,6 @@
 import os
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -10,61 +11,25 @@ from .retrieval import search
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 
-def generate_answer(question: str, top_k: int = 3) -> Iterator[str]:
-    """Génère une réponse en streaming avec Groq Cloud basée sur Qdrant."""
-    # 1. Récupération du contexte
-    results = search(question, top_k=top_k)
-
-    context = print_and_build_context(results)
-    # 2. Initialisation du client Groq
-    client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-
-    prompt = build_prompt(context, question)
-
-    # 3. Appel Groq avec stream=True
-    try:
-        completion = client.chat.completions.create(
-            model="qwen/qwen3-32b",
-            messages=[
-                {"role": "system", "content": "Tu es un étudiant de Telecom Nancy."},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.7,
-            stream=True,  # Activation du streaming
-        )
-
-        # On "yield" chaque fragment de texte au fur et à mesure
-        in_thought_block = False
-        for chunk in completion:
-            content = chunk.choices[0].delta.content
-            if content:
-                if "<think>" in content:
-                    in_thought_block = True
-                if "</think>" in content:
-                    in_thought_block = False
-                    continue  # On passe au chunk suivant après la fermeture
-
-                if not in_thought_block:
-                    yield content
-    except APITimeoutError:
-        yield "Erreur avec Groq : délai d'attente dépassé."
-    except APIConnectionError:
-        yield "Erreur avec Groq : impossible de se connecter à l'API."
-    except APIStatusError as e:
-        yield f"Erreur avec Groq : API Groq a répondu avec le code {e.status_code}."
-    except Exception as e:  # noqa: BLE001
-        # Fallback volontaire : l'appel Groq est une frontière externe
-        # et le streaming ne doit pas planter silencieusement côté utilisateur.
-        yield f"Erreur inattendue avec Groq : {e!s}"
+def _build_context(results: list[dict]) -> str:
+    """Assemble le contexte à injecter dans le prompt."""
+    if not results:
+        return "Pas de contexte."
+    parts = []
+    for res in results:
+        m = res["metadata"]
+        title = m.get("title") or m.get("source", "source inconnue")
+        doc_date = m.get("date", "date inconnue")
+        parts.append(f"[Source: {title} | Date: {doc_date}]\n{res['content']}")
+    return "\n\n".join(parts)
 
 
-def print_and_build_context(results: list[dict]) -> str:
-    """Affiche les documents utilisés et construit le contexte."""
+def _log_results(results: list[dict]) -> None:
+    """Affiche dans les logs les documents retenus pour la réponse."""
     print("\n--- DOCUMENTS UTILISÉS ---")
     if not results:
         print("⚠️ AUCUN DOCUMENT TROUVÉ DANS QDRANT")
-        return "Pas de contexte."
-
+        return
     for i, res in enumerate(results):
         m = res["metadata"]
         title = m.get("title") or m.get("source", "Inconnue")
@@ -73,50 +38,92 @@ def print_and_build_context(results: list[dict]) -> str:
             f"| Date: {m.get('date', '?')}"
         )
         print(
-            f"     Score: {res.get('score', 0):.4f}  (sem: "
-            f"{res.get('semantic_score', 0):.4f}, fraîcheur: "
-            f"{res.get('freshness_score', 0):.4f})"
+            f"     Score: {res.get('score', 0):.4f}  "
+            f"(sem: {res.get('semantic_score', 0):.4f}, "
+            f"fraîcheur: {res.get('freshness_score', 0):.4f})"
         )
         print(f"     Extrait: {res['content'][:150]}...")
         print("-" * 40)
 
-    return "\n\n".join(res["content"] for res in results)
-
-
-def build_context(results: list[dict]) -> str:
-    """Construit le contexte à partir des résultats de la recherche.
-
-    Args:
-        results (list[dict]): Liste des résultats de la recherche.
-
-    Returns:
-        str: Contexte construit à partir des résultats.
-
-    """
-    if not results:
-        return "Pas de contexte."
-
-    return "\n\n".join(res["content"] for res in results)
-
 
 def build_prompt(context: str, question: str) -> str:
-    """Construit le prompt pour le modèle."""
+    """Construit le prompt système + utilisateur envoyé au modèle."""
+    today = datetime.now(UTC).strftime("%d %B %Y")
     return (
-        "Tu es TN-GPT, l'expert absolu du lore de TELECOM Nancy.\n"
-        "Ton style : une entité particulière qui connaît absolument "
-        "telecom nancy : son histoire, ses anecdotes, le prénom de la "
-        "mère celui qui pose la question, etc.\n\n"
-        "si la question n'a aucun rapport avec Telecom nancy et son "
-        "lore ou que la réponse ne se trouve pas dans tes sources, "
-        'répond "demande à chat gpt me casse pas les couilles"\n\n'
-        "privilégie les répondes très courtes (pas plus de 3 ou 4 "
-        "lignes)\n"
-        "ne commence pas très phrases par une lettre majuscule\n"
-        "parle avec la même tonalité que les sources citées (ne cite "
-        "pas la source, sauf si on te le demande explicitement)\n\n"
+        "Tu es TN-GPT, l'expert absolu de la vie associative de TELECOM Nancy.\n"
+        "Ton style : un canard IA décontracté qui connaît sur le bout des doigts "
+        "la vie associative de Telecom Nancy : son histoire, ses anecdotes, "
+        "ses événements.\n\n"
+        "Règles strictes :\n"
+        "- Pour les simples salutations (Hey, Bonjour, Salut...), "
+        "réponds juste par une courte salutation.\n"
+        "- Si la question porte clairement sur autre chose que Telecom Nancy, "
+        "réponds UNIQUEMENT : 'demande à chatgpt, me casse pas les couilles'\n"
+        "- Ne mélange JAMAIS une réponse normale et un message off-topic.\n"
+        "- N'invente jamais d'informations ou de noms de personnes.\n"
+        "- Si la réponse factuelle ne figure pas explicitement "
+        "dans le contexte fourni, "
+        "réponds : 'je sais pas, je trouve pas dans mes archives'\n"
+        "- Privilégie les réponses très courtes (3-4 lignes max).\n"
+        "- Ne commence pas tes phrases par une lettre majuscule.\n"
+        "- Ne cite pas la source, sauf si on te le demande explicitement.\n"
+        "- En cas de doute entre plusieurs archives, préfère la plus récente.\n\n"
+        "Sources officielles :\n"
+        "- Les Réunions Ouvertes (RO) sont la référence "
+        "pour les postes officiels du BDE. "
+        "Dans un RO, la section 'Membres du bureau présents' "
+        "liste les membres du bureau BDE "
+        "(format 'NOM Prénom - Fonction'). "
+        "Les sections suivantes dans le même document "
+        "concernent les clubs votés en réunion, pas le bureau BDE.\n"
+        "- Les comptes-rendus informels (FCR, signés par un prénom seul "
+        "ou auteur inconnu) "
+        "utilisent des pseudonymes — ignore-les pour tout poste officiel.\n\n"
+        f"Date d'aujourd'hui : {today}\n\n"
         "ARCHIVES SECRÈTES (CONTEXTE) :\n"
         f"{context}\n\n"
-        "QUESTION DU POTE :\n"
+        "QUESTION :\n"
         f"{question}\n\n"
         "RÉPONSE DE TN-GPT :"
     )
+
+
+def generate_answer(question: str, top_k: int = 3) -> Iterator[str]:
+    """Génère une réponse en streaming : recherche Qdrant → prompt → Groq."""
+    results = search(question, top_k=top_k)
+    _log_results(results)
+
+    context = _build_context(results)
+    prompt = build_prompt(context, question)
+
+    client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+    try:
+        completion = client.chat.completions.create(
+            model="qwen/qwen3-32b",
+            messages=[
+                {"role": "system", "content": "Tu es un étudiant de Telecom Nancy."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.7,
+            stream=True,
+        )
+        in_thought_block = False
+        for chunk in completion:
+            content = chunk.choices[0].delta.content
+            if content:
+                if "<think>" in content:
+                    in_thought_block = True
+                if "</think>" in content:
+                    in_thought_block = False
+                    continue
+                if not in_thought_block:
+                    yield content
+
+    except APITimeoutError:
+        yield "Erreur avec Groq : délai d'attente dépassé."
+    except APIConnectionError:
+        yield "Erreur avec Groq : impossible de se connecter à l'API."
+    except APIStatusError as e:
+        yield f"Erreur avec Groq : statut {e.status_code}."
+    except Exception as e:  # noqa: BLE001
+        yield f"Erreur inattendue : {e!s}"
