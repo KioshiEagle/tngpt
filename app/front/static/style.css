@@ -150,19 +150,8 @@ body {
 .conv-item:hover { background: #ebe7e0; }
 .conv-item.active { background: #e3ddd5; color: var(--text-main); font-weight: 600; }
 
-/* --- MAIN & TOPBAR --- */
+/* --- MAIN --- */
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-.topbar {
-    padding: 14px 28px;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: var(--bg);
-}
-.topbar-title { font-family: 'IBM Plex Mono', monospace; color: #c7c7cc; font-size: 11px; }
-.topbar-status { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #aeaeb2; display: flex; align-items: center; gap: 6px; }
-.dot { width: 6px; height: 6px; background: #22c55e; border-radius: 50%; animation: pulse 2s infinite; }
 
 /* --- MESSAGES AREA --- */
 .messages {
