@@ -57,8 +57,10 @@ body {
 }
 
 .logo-img-mini {
-    width: 130px;
-    height: auto;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    object-fit: cover;
     transition: transform 0.3s ease;
     flex-shrink: 0;
     z-index: 2;
