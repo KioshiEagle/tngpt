@@ -5,7 +5,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
-from groq import APIConnectionError, APIStatusError, APITimeoutError, Groq
+from groq import APIConnectionError, APIStatusError, APITimeoutError, Groq, Stream
+from groq.types.chat import ChatCompletionChunk
 
 from .retrieval import search
 
@@ -89,6 +90,23 @@ def build_prompt(context: str, question: str) -> str:
     )
 
 
+_HTTP_429 = 429
+
+
+def _stream_chunks(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
+    in_thought_block = False
+    for chunk in completion:
+        content = chunk.choices[0].delta.content
+        if content:
+            if "<think>" in content:
+                in_thought_block = True
+            if "</think>" in content:
+                in_thought_block = False
+                continue
+            if not in_thought_block:
+                yield content
+
+
 def generate_answer(question: str, top_k: int = 3) -> Iterator[str]:
     """Génère une réponse en streaming : recherche Qdrant → prompt → Groq."""
     results = search(question, top_k=top_k)
@@ -104,27 +122,18 @@ def generate_answer(question: str, top_k: int = 3) -> Iterator[str]:
             completion = client.chat.completions.create(
                 model="qwen/qwen3-32b",
                 messages=[
-                    {"role": "system", "content": "Tu es un étudiant de Telecom Nancy."},
+                    {
+                        "role": "system",
+                        "content": "Tu es un étudiant de Telecom Nancy.",
+                    },
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.7,
                 stream=True,
             )
-            in_thought_block = False
-            for chunk in completion:
-                content = chunk.choices[0].delta.content
-                if content:
-                    if "<think>" in content:
-                        in_thought_block = True
-                    if "</think>" in content:
-                        in_thought_block = False
-                        continue
-                    if not in_thought_block:
-                        yield content
-            return
-
+            yield from _stream_chunks(completion)
         except APIStatusError as e:
-            if e.status_code == 429 and attempt < max_retries - 1:
+            if e.status_code == _HTTP_429 and attempt < max_retries - 1:
                 time.sleep(2 ** attempt)
                 continue
             yield f"Erreur avec Groq : statut {e.status_code}."
@@ -137,4 +146,6 @@ def generate_answer(question: str, top_k: int = 3) -> Iterator[str]:
             return
         except Exception as e:  # noqa: BLE001
             yield f"Erreur inattendue : {e!s}"
+            return
+        else:
             return
