@@ -1,24 +1,20 @@
 const THINKING_PHRASES = [
     "Je consulte mes neurones...",
     "Hmm, laisse-moi réfléchir...",
-    "Je cherche dans ma grande sagesse...",
-    "J'interroge l'oracle intérieur...",
-    "Je mobilise mes deux neurones...",
+    "Je mobilise mes deux neurones non connectés...",
     "Calcul quantique en cours...",
-    "Je demande à GPT (non je déconne)...",
-    "Accès à la connaissance infinie...",
-    "Je lis le manuel très vite...",
-    "Une seconde, je googlegooglegoogle...",
-    "Analyse de la situation...",
+    "Je demande à ChatGPT...",
+    "Lecture des archives du MiniTel...",
+    "Je demande à Tek les outils nécessaires...",
     "Je fais semblant de comprendre...",
+    "Ouh hihi ha, ouh hihi ha..."
 ];
 
 const WRITING_PHRASES = [
     "En train d'écrire...",
-    "Je rédige mon chef-d'œuvre...",
+    "Je demande à Gemini d'écire le prompt à ma place...",
     "J'essaie d'être intelligent...",
-    "Frappe de clavier intensifiée...",
-    "Mise en mots en cours...",
+    "je tape avec la machine à écrire du MiniTel...",
     "Presque là !",
 ];
 
