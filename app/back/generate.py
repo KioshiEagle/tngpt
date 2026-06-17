@@ -1,4 +1,5 @@
 import os
+import time
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -97,33 +98,43 @@ def generate_answer(question: str, top_k: int = 3) -> Iterator[str]:
     prompt = build_prompt(context, question)
 
     client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-    try:
-        completion = client.chat.completions.create(
-            model="qwen/qwen3-32b",
-            messages=[
-                {"role": "system", "content": "Tu es un étudiant de Telecom Nancy."},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.7,
-            stream=True,
-        )
-        in_thought_block = False
-        for chunk in completion:
-            content = chunk.choices[0].delta.content
-            if content:
-                if "<think>" in content:
-                    in_thought_block = True
-                if "</think>" in content:
-                    in_thought_block = False
-                    continue
-                if not in_thought_block:
-                    yield content
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            completion = client.chat.completions.create(
+                model="qwen/qwen3-32b",
+                messages=[
+                    {"role": "system", "content": "Tu es un étudiant de Telecom Nancy."},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.7,
+                stream=True,
+            )
+            in_thought_block = False
+            for chunk in completion:
+                content = chunk.choices[0].delta.content
+                if content:
+                    if "<think>" in content:
+                        in_thought_block = True
+                    if "</think>" in content:
+                        in_thought_block = False
+                        continue
+                    if not in_thought_block:
+                        yield content
+            return
 
-    except APITimeoutError:
-        yield "Erreur avec Groq : délai d'attente dépassé."
-    except APIConnectionError:
-        yield "Erreur avec Groq : impossible de se connecter à l'API."
-    except APIStatusError as e:
-        yield f"Erreur avec Groq : statut {e.status_code}."
-    except Exception as e:  # noqa: BLE001
-        yield f"Erreur inattendue : {e!s}"
+        except APIStatusError as e:
+            if e.status_code == 429 and attempt < max_retries - 1:
+                time.sleep(2 ** attempt)
+                continue
+            yield f"Erreur avec Groq : statut {e.status_code}."
+            return
+        except APITimeoutError:
+            yield "Erreur avec Groq : délai d'attente dépassé."
+            return
+        except APIConnectionError:
+            yield "Erreur avec Groq : impossible de se connecter à l'API."
+            return
+        except Exception as e:  # noqa: BLE001
+            yield f"Erreur inattendue : {e!s}"
+            return
