@@ -15,6 +15,7 @@ load_dotenv(BASE_DIR.parent.parent / ".env")
 TEMP_PDF = BASE_DIR / "temp/pdfs"
 TEMP_MD = BASE_DIR / "temp/markdowns"
 logfile = BASE_DIR / "processed_files.json"
+pdf_logfile = BASE_DIR / "processed_pdfs.json"
 
 
 def step_drive() -> None:
@@ -30,7 +31,7 @@ def step_pdf() -> None:
     """Étape 2 : Conversion PDF vers Markdown."""
     TEMP_MD.mkdir(parents=True, exist_ok=True)
     dp = DocumentProcessor()
-    dp.convert_directory(TEMP_PDF, TEMP_MD)
+    dp.convert_directory(TEMP_PDF, TEMP_MD, pdf_logfile)
     print("✅ PDF -> MD terminé.")
 
 
