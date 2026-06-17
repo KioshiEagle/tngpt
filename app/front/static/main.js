@@ -7,8 +7,9 @@ const THINKING_PHRASES = [
     "Lecture des archives du MiniTel...",
     "Je demande à Tek les outils nécessaires...",
     "Je fais semblant de comprendre...",
-    "Ouh hihi ha, ouh hihi ha..."
 ];
+
+const SLOW_PHRASE = "Ouh hihi ha, ouh hihi ha...";
 
 const WRITING_PHRASES = [
     "En train d'écrire...",
@@ -55,6 +56,11 @@ document.addEventListener('DOMContentLoaded', () => {
         duckyImg.classList.add('spinning');
         const thinkingDiv = appendThinking(randomFrom(THINKING_PHRASES));
 
+        const slowTimer = setTimeout(() => {
+            thinkingDiv.querySelector('em').textContent = SLOW_PHRASE;
+            new Audio('/static/sounds/OIIA_OIIA.mp3').play();
+        }, 3000);
+
         let textContainer = null;
 
         try {
@@ -79,6 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (firstChunk) {
                     const trimmed = chunk.trimStart();
                     if (!trimmed) continue;
+                    clearTimeout(slowTimer);
                     thinkingDiv.remove();
                     duckyImg.classList.remove('spinning');
                     const assistantMsgDiv = appendMessage('assistant', trimmed);
@@ -90,6 +97,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 scrollToBottom();
             }
         } catch (err) {
+            clearTimeout(slowTimer);
             thinkingDiv.remove();
             appendMessage('assistant', "Désolé, j'ai eu un bug de transmission. Réessaie ?");
         } finally {
