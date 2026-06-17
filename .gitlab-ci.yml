@@ -130,7 +130,7 @@ pages:
   script:
     - uv sync
     - uv run python docs/gen_ref_pages.py
-    - uv run zensical build --strict --site-dir public --clean
+    - uv run zensical build --strict --clean
   artifacts:
     paths:
       - public

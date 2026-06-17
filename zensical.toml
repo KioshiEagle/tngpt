@@ -2,6 +2,7 @@
 site_name = "Documentation TN-GPT"
 site_description = "Documentation technique du projet TN-GPT"
 site_author = "Tobias NOBILE & Jean-Charles VENTE"
+site_dir = "public"
 
 [project.theme]
 language = "fr"
