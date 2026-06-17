@@ -134,7 +134,7 @@ def generate_answer(question: str, top_k: int = 3) -> Iterator[str]:
             yield from _stream_chunks(completion)
         except APIStatusError as e:
             if e.status_code == _HTTP_429 and attempt < max_retries - 1:
-                time.sleep(2 ** attempt)
+                time.sleep(2**attempt)
                 continue
             yield f"Erreur avec Groq : statut {e.status_code}."
             return
