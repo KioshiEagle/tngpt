@@ -18,3 +18,5 @@ processed_pdfs.json
 *.pdf
 app/back/temp/
 Plaquette-Alpha**
+docs/api/
+site/
