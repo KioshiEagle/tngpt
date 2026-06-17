@@ -50,9 +50,10 @@ pytest:
 #     # On build l'image avec son nom officiel complet pour le Registry
 #     - docker build -t $IMAGE_TAG .
 #     # INDISPENSABLE : On sauvegarde le produit fini dans l'entrepôt
-#     - docker push $IMAGE_TAG
-#   #only:
-#   #  - master
+# #     - docker push $IMAGE_TAG
+#   rules:
+#     - if: $CI_COMMIT_BRANCH == "master"
+#     - if: $CI_COMMIT_BRANCH == "dev" 
 
 # #version pas bien mais fonctionnel...
 build_and_push_image:
@@ -84,42 +85,45 @@ build_and_push_image:
       --cache-repo="${CI_REGISTRY_IMAGE}/cache"
       --snapshot-mode=redo
 
-  only:
-    - master
-    - dev
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+    - if: $CI_COMMIT_BRANCH == "dev" 
 
 deploy_to_server:
   stage: deploy
-  image: alpine:latest
+  image: alpine:3.24
   script:
+    # 1. Installation du client SSH
     - apk add --no-cache openssh-client
-    - mkdir -p ~/.ssh
-    - chmod 700 ~/.ssh
 
-    # 2. On écrit proprement la clé dans un fichier physique temporaire
-    # Le guillemettage strict et l'écho préservent les retours à la ligne exacts
-    - echo "$PROD_SSH_KEY" | base64 -d > ~/.ssh/id_ed25519
-    - chmod 600 ~/.ssh/id_ed25519
-
-    # 3. Sécurité : On dit à SSH d'ignorer la vérification de l'hôte (évite le blocage Interactive)
+    # 2. Configuration temporaire de la clé privée de production
+    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
+    - echo "$PROD_SSH_KEY" | base64 -d > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
     - echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
 
-    # 4. On passe la clé directement à SSH via l'option -i (Identity File)
+    # 3. Préparation du terrain sur le serveur distant (via SSH direct)
+    - ssh -i ~/.ssh/id_ed25519 root@$PROD_URL "mkdir -p /opt/tngpt"
+
+    # 4. TRÈS IMPORTANT : On envoie le plan de prod (docker-compose.yml) sur le serveur
+    # On utilise scp (Secure Copy) pour transférer le fichier local vers le VPS
+    - scp -i ~/.ssh/id_ed25519 docker-compose.yml root@$PROD_URL:/opt/tngpt/docker-compose.yml
+
+    # 5. Déclenchement du déploiement par Docker Compose sur le serveur distant
     - |
-      ssh -i ~/.ssh/id_ed25519 root@64.226.99.199 "
+      ssh -i ~/.ssh/id_ed25519 root@$PROD_URL "
         docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY &&
-        docker pull $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG &&
-        docker stop tngpt-app || true &&
-        docker rm tngpt-app || true &&
-        docker run -d --name tngpt-app -p 8501:8501 --restart always $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG &&
+        export IMAGE_TAG=$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG &&
+        cd /opt/tngpt &&
+        docker compose pull &&
+        docker compose up -d --remove-orphans &&
         docker image prune -f
       "
   environment:
     name: production
-    url: 64.226.99.199:8501
-  only:
-    - master
-    - dev
+    url: $PROD_URL:8501
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+    - if: $CI_COMMIT_BRANCH == "dev" 
 
 pages:
   stage: deploy
@@ -129,6 +133,6 @@ pages:
   artifacts:
     paths:
       - public
-  only:
-    - master
-    - dev
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+    - if: $CI_COMMIT_BRANCH == "dev" 
