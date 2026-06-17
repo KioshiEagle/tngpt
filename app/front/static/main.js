@@ -78,15 +78,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 const { value, done } = await reader.read();
                 if (done) break;
 
+                const chunk = decoder.decode(value);
+
                 if (firstChunk) {
+                    const trimmed = chunk.trimStart();
+                    if (!trimmed) continue;
                     thinkingDiv.remove();
                     duckyImg.classList.remove('spinning');
-                    const assistantMsgDiv = appendMessage('assistant', '');
+                    const assistantMsgDiv = appendMessage('assistant', trimmed);
                     textContainer = assistantMsgDiv.querySelector('.msg-text');
                     firstChunk = false;
+                } else {
+                    textContainer.textContent += chunk;
                 }
-
-                textContainer.textContent += decoder.decode(value);
                 scrollToBottom();
             }
         } catch (err) {
