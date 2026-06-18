@@ -178,13 +178,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const thinkingDiv = appendThinking(randomFrom(THINKING_PHRASES));
         setStreaming(true);
 
+        // Audio créé dans le contexte du clic pour contourner la politique autoplay
+        const oiiaAudioElem = new Audio('/static/sounds/OIIA_OIIA.mp3');
+        oiiaAudioElem.loop = true;
         let oiiaAudio = null;
         const slowTimer = setTimeout(() => {
             thinkingDiv.querySelector('em').textContent = SLOW_PHRASE;
-            oiiaAudio = new Audio('/static/sounds/OIIA_OIIA.mp3');
-            oiiaAudio.loop = true;
-            oiiaAudio.play();
-        }, 3000);
+            oiiaAudio = oiiaAudioElem;
+            oiiaAudio.play().catch(() => {});
+        }, 7000);
 
         let rawText = '';
         let textContainer = null;
