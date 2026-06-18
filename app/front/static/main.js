@@ -248,9 +248,9 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         bubbleDiv.appendChild(textDiv);
-        bubbleDiv.appendChild(copyBtn);
         msgDiv.appendChild(whoDiv);
         msgDiv.appendChild(bubbleDiv);
+        msgDiv.appendChild(copyBtn);
         messagesContainer.appendChild(msgDiv);
         scrollToBottom();
         return msgDiv;
