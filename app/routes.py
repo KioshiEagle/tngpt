@@ -7,23 +7,30 @@ from flask import (
     jsonify,
     render_template,
     request,
-    session,
     stream_with_context,
 )
 
 from .back.generate import generate_answer
+from .extensions import limiter
 
 bp = Blueprint("chat", __name__)
 
+MAX_MESSAGE_LENGTH = 500
+
 
 @bp.route("/chat", methods=["POST"])
+@limiter.limit("20 per minute")
 def chat() -> Response:
     """Répond en streaming à un message utilisateur."""
+
     data = request.get_json()
     if not data or "message" not in data:
         return jsonify({"error": "Message manquant"})
 
     user_message = data["message"]
+    if len(user_message) > MAX_MESSAGE_LENGTH:
+        return jsonify({"error": f"Message trop long (max {MAX_MESSAGE_LENGTH} caractères)"}), 400
+
     top_k = data.get("top_k", 15)
     history = data.get("history", [])
     # TODO: remplacer par le vrai nom une fois l'auth implémentée
