@@ -266,6 +266,8 @@ document.addEventListener('DOMContentLoaded', () => {
         msgDiv.appendChild(whoDiv);
         msgDiv.appendChild(bubbleDiv);
         msgDiv.appendChild(copyBtn);
+        msgDiv.addEventListener('mouseenter', () => copyBtn.classList.add('visible'));
+        msgDiv.addEventListener('mouseleave', () => copyBtn.classList.remove('visible'));
         messagesContainer.appendChild(msgDiv);
         scrollToBottom();
         return msgDiv;
