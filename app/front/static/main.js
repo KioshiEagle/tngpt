@@ -6,10 +6,21 @@ const THINKING_PHRASES = [
     "Je demande à ChatGPT...",
     "Lecture des archives du MiniTel...",
     "Je demande à Tek les outils nécessaires...",
+    "J'emprunte des balles au BDS...",
+    "Je demande du café à TNS...",
+    "Je cours chercher une flutte au BDA...",
     "Je fais semblant de comprendre...",
 ];
 
 const SLOW_PHRASE = "Ouh hihi ha, ouh hihi ha...";
+
+const WRITING_PHRASES = [
+    "En train d'écrire...",
+    "Je demande à Gemini d'écrire le prompt à ma place...",
+    "je tape avec la machine à écrire du MiniTel...",
+    "je demande au BDE s'ils ont la réponse...pas sûr...",
+    "Presque là !",
+];
 
 const ALL_CHIPS = [
     { label: 'salles libres', query: 'Salles libres maintenant' },
@@ -23,7 +34,6 @@ const ALL_CHIPS = [
     { label: 'options 3A', query: "Quelles sont les options disponibles en 3ème année ?" },
     { label: 'wifi campus', query: "Comment se connecter au wifi de TELECOM Nancy ?" },
     { label: 'histoire de TN', query: "Quelle est l'histoire de TELECOM Nancy ?" },
-    { label: 'admissions', query: "Comment intégrer TELECOM Nancy ?" },
 ];
 
 function randomFrom(arr) {
@@ -178,8 +188,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (!trimmed) continue;
                     clearTimeout(slowTimer);
                     if (oiiaAudio) { oiiaAudio.pause(); oiiaAudio = null; }
-                    thinkingDiv.remove();
                     duckyImg.classList.remove('spinning');
+                    thinkingDiv.querySelector('em').textContent = randomFrom(WRITING_PHRASES);
                     const assistantMsgDiv = appendMessage('assistant', '');
                     textContainer = assistantMsgDiv.querySelector('.msg-text');
                     bubbleContainer = assistantMsgDiv.querySelector('.msg-bubble');
@@ -199,6 +209,7 @@ document.addEventListener('DOMContentLoaded', () => {
             thinkingDiv.remove();
             appendMessage('assistant', "Désolé, j'ai eu un bug de transmission. Réessaie ?");
         } finally {
+            thinkingDiv.remove();
             duckyImg.classList.remove('spinning');
             sendBtn.disabled = false;
             inp.focus();
