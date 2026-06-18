@@ -30,14 +30,14 @@ def chat() -> Response:
 
     user_message = data["message"]
     if len(user_message) > MAX_MESSAGE_LENGTH:
-        return jsonify({"error": f"Message trop long (max {MAX_MESSAGE_LENGTH} caractères)"}), 400
+        msg = f"Message trop long (max {MAX_MESSAGE_LENGTH} caractères)"
+        return jsonify({"error": msg}), 400
 
     req = GenerateRequest(
         question=user_message,
         history=data.get("history", []),
         top_k=TOP_K,
-        # TODO: remplacer par le vrai nom une fois l'auth implémentée
-        user_name=None,
+        user_name=None,  # remplacer par la valeur de session une fois l'auth intégrée
     )
 
     def _stream() -> Iterator[str]:
