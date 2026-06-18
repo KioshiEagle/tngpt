@@ -25,15 +25,11 @@ def chat() -> Response:
 
     user_message = data["message"]
     top_k = data.get("top_k", 15)
-
-    if "history" not in session:
-        session["history"] = []
-    session["history"].append({"role": "user", "content": user_message})
-    session.modified = True
+    history = data.get("history", [])
 
     def _stream() -> Iterator[str]:
         try:
-            yield from generate_answer(user_message, top_k=top_k)
+            yield from generate_answer(user_message, history=history, top_k=top_k)
         except Exception as e:  # noqa: BLE001
             yield f"Erreur : {e!s}"
 

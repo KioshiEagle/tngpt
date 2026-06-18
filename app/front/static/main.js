@@ -127,6 +127,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     scrollBtn.addEventListener('click', scrollToBottom);
 
+    const conversationHistory = [];
+
     // --- Form submit ---
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -144,6 +146,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.title = shortTitle + ' – TN-GPT';
         }
 
+        conversationHistory.push({ role: 'user', content: text });
         appendMessage('user', text);
         inp.value = '';
         inp.style.height = 'auto';
@@ -168,7 +171,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch('/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: text })
+                body: JSON.stringify({ message: text, history: conversationHistory.slice(-4) })
             });
 
             if (!response.ok) throw new Error();
@@ -203,6 +206,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (bubbleContainer) bubbleContainer.dataset.raw = rawText;
                 scrollToBottom();
             }
+            if (rawText) conversationHistory.push({ role: 'assistant', content: rawText });
         } catch {
             clearTimeout(slowTimer);
             if (oiiaAudio) { oiiaAudio.pause(); oiiaAudio = null; }
