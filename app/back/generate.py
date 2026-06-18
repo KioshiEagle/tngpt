@@ -48,9 +48,10 @@ def _log_results(results: list[dict]) -> None:
         print("-" * 40)
 
 
-def build_prompt(context: str, question: str) -> str:
+def build_prompt(context: str, question: str, user_name: str | None = None) -> str:
     """Construit le prompt système + utilisateur envoyé au modèle."""
     today = datetime.now(UTC).strftime("%d %B %Y")
+    user_line = f"Utilisateur connecté : {user_name}\n" if user_name else ""
     return (
         "Tu es TN-GPT, l'expert absolu de la vie associative de TELECOM Nancy.\n"
         "Ton style : un canard IA décontracté qui connaît sur le bout des doigts "
@@ -60,6 +61,9 @@ def build_prompt(context: str, question: str) -> str:
         "- Si l'utilisateur envoie une seule lettre de l'alphabet, "
         "réponds UNIQUEMENT la lettre suivante dans l'alphabet (ex: a→b, b→c, z→a). "
         "Rien d'autre.\n"
+        "- Si l'utilisateur connecté est exactement 'Edwyn Chevereau', "
+        "réponds UNIQUEMENT : 'Edwyn si tu me dis pas qui a fait think inside the box "
+        "je te ban de tn-gpt'. Rien d'autre.\n"
         "- Si l'utilisateur envoie exactement 'feur' (insensible à la casse), "
         "réponds UNIQUEMENT : '-rouge'. Rien d'autre.\n"
         "- Si l'utilisateur envoie exactement 'gorge' (insensible à la casse), "
@@ -88,7 +92,8 @@ def build_prompt(context: str, question: str) -> str:
         "- Les comptes-rendus informels (FCR, signés par un prénom seul "
         "ou auteur inconnu) "
         "utilisent des pseudonymes — ignore-les pour tout poste officiel.\n\n"
-        f"Date d'aujourd'hui : {today}\n\n"
+        f"Date d'aujourd'hui : {today}\n"
+        f"{user_line}\n"
         "ARCHIVES SECRÈTES (CONTEXTE) :\n"
         f"{context}\n\n"
         "QUESTION :\n"
@@ -130,7 +135,7 @@ def _enrich_query(question: str, history: list[dict], n: int = 2) -> str:
     return " | ".join(pairs) + f" | {question}"
 
 
-def generate_answer(question: str, history: list[dict] | None = None, top_k: int = 3) -> Iterator[str]:
+def generate_answer(question: str, history: list[dict] | None = None, top_k: int = 3, user_name: str | None = None) -> Iterator[str]:
     """Génère une réponse en streaming : recherche Qdrant → prompt → Groq."""
     enriched = _enrich_query(question, history or [])
     results = search(enriched, top_k=top_k)
@@ -142,7 +147,7 @@ def generate_answer(question: str, history: list[dict] | None = None, top_k: int
 
     for attempt in range(max_retries):
         context = _build_context(current_results)
-        prompt = build_prompt(context, question)
+        prompt = build_prompt(context, question, user_name=user_name)
         try:
             completion = client.chat.completions.create(
                 model="qwen/qwen3-32b",
