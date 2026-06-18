@@ -54,7 +54,9 @@ def _freshness_score(date_str: str) -> float:
         return 0.5
 
 
-def search(query: str, top_k: int = 5, collection_name: str = "documents") -> list[SearchResult]:
+def search(
+    query: str, top_k: int = 5, collection_name: str = "documents"
+) -> list[SearchResult]:
     """Recherche hybride (sémantique + fraîcheur) dans Qdrant."""
     query_vector = model.encode(f"query: {query}").tolist()
     response = _get_client().query_points(
@@ -95,13 +97,16 @@ if __name__ == "__main__":
     res = search(query_test)
 
     if not res:
-        logger.warning("Aucun résultat pertinent trouvé (Score < %.2f).", SCORE_THRESHOLD)
+        logger.warning(
+            "Aucun résultat pertinent trouvé (Score < %.2f).", SCORE_THRESHOLD
+        )
     else:
         for r in res:
             m = r["metadata"]
             title = m.get("title", m.get("source", "?"))
             logger.info(
-                "%s | Auteur: %s | Date: %s | Score hybride: %.4f (sémantique: %.4f, fraîcheur: %.4f)\n  Extrait: %s...",
+                "%s | Auteur: %s | Date: %s | Score: %.4f "
+                "(sem: %.4f, fraîcheur: %.4f)\n  Extrait: %s...",
                 title,
                 m.get("author", "?"),
                 m.get("date", "?"),
