@@ -107,8 +107,13 @@ def _log_results(results: list[SearchResult]) -> None:
         logger.debug(
             "[%d] %s | Auteur: %s | Date: %s | Score: %.4f "
             "(sem: %.4f, fraîcheur: %.4f)\n    Extrait: %s...",
-            i + 1, title, m.get("author", "?"), m.get("date", "?"),
-            res["score"], res["semantic_score"], res["freshness_score"],
+            i + 1,
+            title,
+            m.get("author", "?"),
+            m.get("date", "?"),
+            res["score"],
+            res["semantic_score"],
+            res["freshness_score"],
             res["content"][:150],
         )
 
@@ -142,7 +147,7 @@ def _stream_chunks(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
             if idx != -1:
                 if not in_thought and idx > 0:
                     yield buf[:idx]
-                buf = buf[idx + len(tag):]
+                buf = buf[idx + len(tag) :]
                 in_thought = not in_thought
             else:
                 if not in_thought:
