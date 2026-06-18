@@ -464,19 +464,38 @@ body {
     font-weight: 500;
     padding: 2px 0;
     white-space: nowrap;
-    transition: opacity 0.15s;
+    transition: opacity 0.15s, color 0.15s;
     flex-shrink: 0;
 }
 .send:hover { opacity: 0.7; }
 .send:disabled { color: #c7c7cc; cursor: default; }
+.send.stop-mode { color: var(--text-muted); }
+.send.stop-mode:hover { opacity: 1; color: #e11d48; }
 
 .hint { font-size: 10px; color: #c7c7cc; margin-top: 8px; font-family: 'IBM Plex Mono', monospace; }
+.hint kbd {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    background: var(--bg-sidebar);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 4px;
+    color: var(--text-muted);
+}
 
 .thinking-text {
     background: none !important;
     color: var(--text-muted) !important;
     padding: 4px 2px !important;
     font-size: 13px !important;
+}
+
+.msg-text.streaming::after {
+    content: '▌';
+    display: inline;
+    color: var(--primary);
+    animation: blink-cursor 0.75s step-end infinite;
+    margin-left: 1px;
 }
 
 /* --- SIDEBAR FOOTER --- */
@@ -536,6 +555,31 @@ body {
 
 .user-name { font-size: 13px; font-weight: 500; }
 
+.authors-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+}
+.authors-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    flex-shrink: 0;
+}
+.author-logo {
+    height: 22px;
+    width: auto;
+    object-fit: contain;
+    opacity: 0.75;
+    transition: opacity 0.15s;
+    filter: var(--logo-filter, none);
+}
+.author-logo:hover { opacity: 1; }
+[data-theme="dark"] { --logo-filter: brightness(0) invert(1); }
+
 /* --- MOBILE RESPONSIVE --- */
 @media (max-width: 640px) {
     .hamburger { display: flex; }
@@ -561,3 +605,4 @@ body {
 
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+@keyframes blink-cursor { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }

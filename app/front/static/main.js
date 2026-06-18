@@ -127,13 +127,36 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     scrollBtn.addEventListener('click', scrollToBottom);
 
+    // --- Stop button state ---
+    let abortController = null;
+
+    function setStreaming(active) {
+        if (active) {
+            sendBtn.textContent = '⏹ stop';
+            sendBtn.disabled = false;
+            sendBtn.classList.add('stop-mode');
+        } else {
+            sendBtn.textContent = 'envoyer →';
+            sendBtn.disabled = false;
+            sendBtn.classList.remove('stop-mode');
+            abortController = null;
+        }
+    }
+
+    sendBtn.addEventListener('click', (e) => {
+        if (sendBtn.classList.contains('stop-mode')) {
+            e.preventDefault();
+            if (abortController) abortController.abort();
+        }
+    });
+
     const conversationHistory = [];
 
     // --- Form submit ---
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const text = inp.value.trim();
-        if (!text) return;
+        if (!text || sendBtn.classList.contains('stop-mode')) return;
 
         const emptyState = document.getElementById('empty-state');
         const isFirstMessage = !!emptyState;
@@ -150,10 +173,10 @@ document.addEventListener('DOMContentLoaded', () => {
         appendMessage('user', text);
         inp.value = '';
         inp.style.height = 'auto';
-        sendBtn.disabled = true;
 
         duckyImg.classList.add('spinning');
         const thinkingDiv = appendThinking(randomFrom(THINKING_PHRASES));
+        setStreaming(true);
 
         let oiiaAudio = null;
         const slowTimer = setTimeout(() => {
@@ -166,12 +189,27 @@ document.addEventListener('DOMContentLoaded', () => {
         let rawText = '';
         let textContainer = null;
         let bubbleContainer = null;
+        let rafPending = false;
+
+        function scheduleRender() {
+            if (rafPending) return;
+            rafPending = true;
+            requestAnimationFrame(() => {
+                rafPending = false;
+                if (textContainer) textContainer.innerHTML = marked.parse(rawText);
+                if (bubbleContainer) bubbleContainer.dataset.raw = rawText;
+                scrollToBottom();
+            });
+        }
+
+        abortController = new AbortController();
 
         try {
             const response = await fetch('/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: text, history: conversationHistory.slice(-4) })
+                body: JSON.stringify({ message: text, history: conversationHistory.slice(-4) }),
+                signal: abortController.signal,
             });
 
             if (!response.ok) throw new Error();
@@ -196,26 +234,33 @@ document.addEventListener('DOMContentLoaded', () => {
                     const assistantMsgDiv = appendMessage('assistant', '');
                     textContainer = assistantMsgDiv.querySelector('.msg-text');
                     bubbleContainer = assistantMsgDiv.querySelector('.msg-bubble');
+                    textContainer.classList.add('streaming');
                     rawText = trimmed;
-                    textContainer.innerHTML = marked.parse(rawText);
                     firstChunk = false;
                 } else {
                     rawText += chunk;
-                    textContainer.innerHTML = marked.parse(rawText);
                 }
-                if (bubbleContainer) bubbleContainer.dataset.raw = rawText;
-                scrollToBottom();
+                scheduleRender();
             }
-            if (rawText) conversationHistory.push({ role: 'assistant', content: rawText });
-        } catch {
+        } catch (err) {
             clearTimeout(slowTimer);
             if (oiiaAudio) { oiiaAudio.pause(); oiiaAudio = null; }
             thinkingDiv.remove();
-            appendMessage('assistant', "Désolé, j'ai eu un bug de transmission. Réessaie ?");
+            if (err.name !== 'AbortError') {
+                appendMessage('assistant', "Désolé, j'ai eu un bug de transmission. Réessaie ?");
+            }
         } finally {
+            clearTimeout(slowTimer);
+            if (oiiaAudio) { oiiaAudio.pause(); oiiaAudio = null; }
             thinkingDiv.remove();
             duckyImg.classList.remove('spinning');
-            sendBtn.disabled = false;
+            if (textContainer) {
+                textContainer.classList.remove('streaming');
+                // rendu final propre
+                textContainer.innerHTML = marked.parse(rawText);
+            }
+            if (rawText) conversationHistory.push({ role: 'assistant', content: rawText });
+            setStreaming(false);
             inp.focus();
         }
     });
