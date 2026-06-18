@@ -2,6 +2,7 @@ import os
 
 from flask import Flask
 
+from app.extensions import limiter
 from app.routes import bp
 
 app = Flask(
@@ -11,6 +12,7 @@ app = Flask(
 )
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "change-moi-en-prod")
 
+limiter.init_app(app)
 app.register_blueprint(bp)
 
 if __name__ == "__main__":
