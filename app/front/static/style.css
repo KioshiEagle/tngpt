@@ -563,6 +563,7 @@ body {
     padding: 10px 20px;
     flex-shrink: 0;
 }
+.author-link { display: flex; align-items: center; }
 .author-logo {
     height: 32px;
     width: auto;
@@ -571,7 +572,7 @@ body {
     transition: opacity 0.15s;
     filter: var(--logo-filter, none);
 }
-.author-logo:hover { opacity: 1; }
+.author-link:hover .author-logo { opacity: 1; }
 [data-theme="dark"] { --logo-filter: brightness(0) invert(1); }
 
 /* --- MOBILE RESPONSIVE --- */
