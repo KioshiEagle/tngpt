@@ -1,9 +1,16 @@
+import logging
 import os
 
 from flask import Flask
 
 from app.extensions import limiter
 from app.routes import bp
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
 
 app = Flask(
     __name__,
