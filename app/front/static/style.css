@@ -374,7 +374,7 @@ body {
     font-weight: 400;
 }
 .msg.user .copy-btn { align-self: flex-end; }
-.msg:hover .copy-btn { opacity: 1; }
+.copy-btn.visible { opacity: 1; }
 .copy-btn:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
 
 /* Scroll-to-bottom button */
