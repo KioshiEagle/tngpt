@@ -6,10 +6,20 @@
     <title>TN-GPT</title>
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='ducky_cassis.png') }}?v=2">
     <link rel="stylesheet" href="/static/style.css">
+    <!-- Prevent dark-mode flash -->
+    <script>
+        (function () {
+            var t = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            document.documentElement.setAttribute('data-theme', t);
+        })();
+    </script>
 </head>
 <body>
 
-    <aside class="sidebar">
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+    <button class="hamburger" id="hamburger" aria-label="Ouvrir le menu">☰</button>
+
+    <aside class="sidebar" id="sidebar">
         <div class="sidebar-header">
             <div class="logo-zone-mini">
                 <img src="/static/ducky_cassis.png" class="logo-img-mini" id="sidebar-ducky" alt="NeuraTN">
@@ -19,13 +29,14 @@
         </div>
 
         <a href="/" class="new-btn">+ nouvelle conv.</a>
-        
+
         <div class="conv-section">Récent</div>
         <nav class="conv-list">
             <a href="#" class="conv-item active">Salles libres ce soir</a>
         </nav>
 
         <div class="sidebar-footer">
+            <button class="theme-toggle" id="theme-toggle" aria-label="Changer le thème"></button>
             <a href="#" class="user-tab" title="Compte (bientôt disponible)">
                 <div class="user-avatar">?</div>
                 <span class="user-name">Mon compte</span>
@@ -36,30 +47,26 @@
     <main class="main">
         <div class="messages" id="messages">
             <div class="empty" id="empty-state">
-                
                 <div class="hero-zone">
                     <h1 class="hero-title">TN-<span>GPT</span></h1>
                     <p class="hero-subtitle">Pose-moi n'importe quelle question et j'y répondrai intelligemment :)</p>
                 </div>
-
-                <div class="chips">
-                    <button class="chip" data-query="Salles libres maintenant">salles libres</button>
-                    <button class="chip" data-query="Infos drive 1A">drive 1A</button>
-                    <button class="chip" data-query="Lore de TELECOM Nancy">lore TN</button>
-                    <button class="chip" data-query="Menu du self cette semaine">menu du self</button>
-                </div>
+                <div class="chips" id="chips-container"></div>
             </div>
         </div>
 
+        <button class="scroll-btn" id="scroll-btn" aria-label="Descendre">↓</button>
+
         <div class="input-area">
             <form class="input-row" id="chat-form">
-                <input type="text" id="inp" placeholder="Donne 5 raisons de se gooner en public (urgent)..." autocomplete="off" required>
+                <textarea id="inp" placeholder="Donne 5 raisons de se gooner en public (urgent)..." autocomplete="off" rows="1"></textarea>
                 <button type="submit" class="send" id="sbtn">envoyer →</button>
             </form>
             <div class="hint">TN-GPT peut faire des erreurs. Il est aussi fiable que le BDE.</div>
         </div>
     </main>
 
+    <script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
     <script src="/static/main.js"></script>
 </body>
 </html>
