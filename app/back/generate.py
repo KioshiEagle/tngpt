@@ -111,9 +111,25 @@ def _stream_chunks(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
                 yield content
 
 
-def generate_answer(question: str, top_k: int = 3) -> Iterator[str]:
+def _enrich_query(question: str, history: list[dict], n: int = 2) -> str:
+    """Enrichit la query Qdrant avec les N derniers échanges Q/R de l'historique."""
+    pairs = []
+    i = len(history) - 1
+    while i >= 1 and len(pairs) < n:
+        if history[i]["role"] == "assistant" and history[i - 1]["role"] == "user":
+            pairs.insert(0, f"Q: {history[i - 1]['content']} R: {history[i]['content']}")
+            i -= 2
+        else:
+            i -= 1
+    if not pairs:
+        return question
+    return " | ".join(pairs) + f" | {question}"
+
+
+def generate_answer(question: str, history: list[dict] | None = None, top_k: int = 3) -> Iterator[str]:
     """Génère une réponse en streaming : recherche Qdrant → prompt → Groq."""
-    results = search(question, top_k=top_k)
+    enriched = _enrich_query(question, history or [])
+    results = search(enriched, top_k=top_k)
     _log_results(results)
 
     client = Groq(api_key=os.getenv("GROQ_API_KEY"))
