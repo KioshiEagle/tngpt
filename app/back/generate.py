@@ -94,6 +94,7 @@ def build_prompt(context: str, question: str) -> str:
 
 
 _HTTP_429 = 429
+_HTTP_413 = 413
 
 
 def _stream_chunks(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
@@ -115,12 +116,13 @@ def generate_answer(question: str, top_k: int = 3) -> Iterator[str]:
     results = search(question, top_k=top_k)
     _log_results(results)
 
-    context = _build_context(results)
-    prompt = build_prompt(context, question)
-
     client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+    current_results = results
     max_retries = 3
+
     for attempt in range(max_retries):
+        context = _build_context(current_results)
+        prompt = build_prompt(context, question)
         try:
             completion = client.chat.completions.create(
                 model="qwen/qwen3-32b",
@@ -138,6 +140,9 @@ def generate_answer(question: str, top_k: int = 3) -> Iterator[str]:
         except APIStatusError as e:
             if e.status_code == _HTTP_429 and attempt < max_retries - 1:
                 time.sleep(2**attempt)
+                continue
+            if e.status_code == _HTTP_413 and attempt < max_retries - 1:
+                current_results = current_results[: max(1, len(current_results) // 2)]
                 continue
             yield f"Erreur avec Groq : statut {e.status_code}."
             return
