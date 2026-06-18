@@ -22,7 +22,7 @@ TOP_K = 5
 
 @bp.route("/chat", methods=["POST"])
 @limiter.limit("20 per minute")
-def chat() -> Response:
+def chat() -> Response | tuple[Response, int]:
     """Répond en streaming à un message utilisateur."""
     data = request.get_json()
     if not data or "message" not in data:
