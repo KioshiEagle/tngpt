@@ -575,7 +575,6 @@ body {
 .author-link:hover .author-logo { opacity: 1; }
 [data-theme="dark"] { --logo-filter: brightness(0) invert(1); }
 [data-theme="dark"] .author-logo { opacity: 0.85; }
-[data-theme="dark"] .author-logo[alt="Neura'TN"] { filter: invert(1); opacity: 0.85; }
 
 /* --- MOBILE RESPONSIVE --- */
 @media (max-width: 640px) {
