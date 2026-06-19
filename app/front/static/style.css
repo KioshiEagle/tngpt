@@ -565,7 +565,7 @@ body {
 }
 .author-link { display: flex; align-items: center; }
 .author-logo {
-    height: 44px;
+    height: 56px;
     width: auto;
     object-fit: contain;
     opacity: 0.6;
