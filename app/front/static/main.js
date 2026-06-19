@@ -24,16 +24,16 @@ const WRITING_PHRASES = [
 
 const ALL_CHIPS = [
     { label: 'salles libres', query: 'Salles libres maintenant' },
-    { label: 'drive 1A', query: 'Infos drive 1A' },
+    { label: "Planning de l'inté", query: "Balance le planning de l'intégration 2026" },
     { label: 'lore TN', query: 'Lore de TELECOM Nancy' },
     { label: 'menu du self', query: 'Menu du self cette semaine' },
     { label: 'clubs & assos', query: 'Liste des clubs et associations à TELECOM Nancy' },
     { label: 'agenda BDE', query: "Quels sont les prochains événements du BDE ?" },
     { label: 'jobs & stages', query: "Comment trouver un stage ou une alternance depuis TN ?" },
     { label: 'imprimer à TN', query: "Où et comment imprimer à TELECOM Nancy ?" },
-    { label: 'options 3A', query: "Quelles sont les options disponibles en 3ème année ?" },
+    { label: 'Appros à TN', query: "Quelles sont les approfondissements disponibles en à TN ?" },
     { label: 'wifi campus', query: "Comment se connecter au wifi de TELECOM Nancy ?" },
-    { label: 'histoire de TN', query: "Quelle est l'histoire de TELECOM Nancy ?" },
+    { label: 'Histoire de TN', query: "Quelle est l'histoire de TELECOM Nancy ?" },
 ];
 
 function randomFrom(arr) {
