@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TN-GPT</title>
-    <link rel="icon" type="image/png" href="{{ url_for('static', filename='ducky_cassis.png') }}?v=2">
+    <link rel="icon" type="image/webp" href="/static/ducky_cassis.webp">
     <link rel="stylesheet" href="/static/style.css">
     <!-- Prevent dark-mode flash -->
     <script>
@@ -22,7 +22,7 @@
     <aside class="sidebar" id="sidebar">
         <div class="sidebar-header">
             <div class="logo-zone-mini">
-                <img src="/static/ducky_cassis.png" class="logo-img-mini" id="sidebar-ducky" alt="NeuraTN">
+                <img src="/static/ducky_cassis.webp" class="logo-img-mini" id="sidebar-ducky" alt="NeuraTN" width="68" height="68">
                 <div class="speech-bubble mini" id="sidebar-bubble">{{ quote }}</div>
             </div>
             <div class="brand">Discussions</div>
@@ -47,10 +47,10 @@
     <main class="main">
         <div class="authors-corner">
             <a href="https://ceten.fr" target="_blank" rel="noopener" class="author-link">
-                <img src="/static/logo_ceten.webp" class="author-logo" alt="CETEN" title="CETEN">
+                <img src="/static/logo_ceten.webp" class="author-logo" alt="CETEN" title="CETEN" width="277" height="112">
             </a>
             <a href="https://neuratn.ath0ms.fr" target="_blank" rel="noopener" class="author-link">
-                <img src="/static/logo_ecriture.webp" class="author-logo" alt="Neura'TN" title="Neura'TN">
+                <img src="/static/logo_ecriture.webp" class="author-logo" alt="Neura'TN" title="Neura'TN" width="226" height="112">
             </a>
         </div>
         <div class="messages" id="messages">
@@ -74,7 +74,7 @@
         </div>
     </main>
 
-    <script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
+    <script src="/static/marked.min.js"></script>
     <script src="/static/main.js"></script>
 </body>
 </html>
