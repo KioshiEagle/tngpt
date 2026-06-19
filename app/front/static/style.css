@@ -18,7 +18,7 @@
     --bg-sidebar: #f3f0eb;
     --bg-input: #f5f2ed;
     --text-main: #1c1917;
-    --text-muted: #78716c;
+    --text-muted: #6b6560;
     --bubble-user: #6d28d9;
     --bubble-user-text: #fff;
     --bubble-assistant: #efede8;
@@ -187,7 +187,7 @@ body {
 .conv-section {
     font-family: 'IBM Plex Mono', monospace;
     font-size: 13px;
-    color: #c7c7cc;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     margin-bottom: 8px;
@@ -288,7 +288,7 @@ body {
 .msg-who {
     font-family: 'IBM Plex Mono', monospace;
     font-size: 9px;
-    color: #c7c7cc;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.06em;
     display: flex;
@@ -482,7 +482,7 @@ body {
 .send.stop-mode { color: var(--text-muted); }
 .send.stop-mode:hover { opacity: 1; color: #e11d48; }
 
-.hint { font-size: 10px; color: #c7c7cc; margin-top: 8px; font-family: 'IBM Plex Mono', monospace; }
+.hint { font-size: 10px; color: var(--text-muted); margin-top: 8px; font-family: 'IBM Plex Mono', monospace; }
 .hint kbd {
     font-family: 'IBM Plex Mono', monospace;
     font-size: 9px;
