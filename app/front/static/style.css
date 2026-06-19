@@ -34,7 +34,7 @@
 
 body {
     font-family: 'Nunito', sans-serif;
-    font-size: 14px;
+    font-size: 40px;
     color: var(--text-main);
     background: var(--bg);
     height: 100vh;
@@ -176,7 +176,7 @@ body {
 
 .conv-section {
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 9px;
+    font-size: 13px;
     color: #c7c7cc;
     text-transform: uppercase;
     letter-spacing: 0.08em;
@@ -185,8 +185,8 @@ body {
 .conv-list { flex: 1; overflow-y: auto; }
 .conv-item {
     display: block;
-    padding: 8px 10px;
-    font-size: 13px;
+    padding: 10px 12px;
+    font-size: 15.5px;
     color: var(--text-muted);
     text-decoration: none;
     white-space: nowrap;
