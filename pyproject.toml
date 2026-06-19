@@ -21,6 +21,7 @@ dependencies = [
     "torch>=2.12.0",
     "datetime>=6.0",
     "flask-limiter>=4.1.1",
+    "flask-compress>=1.24",
 ]
 
 [dependency-groups]
