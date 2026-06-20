@@ -130,7 +130,7 @@ body {
     background: var(--bg);
     padding: 8px 11px;
     border-radius: 10px;
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.5;
     position: relative;
     border: 1px solid var(--border);
@@ -163,7 +163,7 @@ body {
     border-color: transparent var(--bg) transparent transparent;
 }
 
-.brand { font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 500; }
+.brand { font-family: 'IBM Plex Mono', monospace; font-size: 17px; font-weight: 500; }
 .hero-zone span { color: var(--primary); }
 
 .new-btn {
@@ -172,7 +172,7 @@ body {
     border: 1px solid var(--border);
     border-radius: 8px;
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
     padding: 9px 12px;
     margin-bottom: 20px;
@@ -197,7 +197,7 @@ body {
 .conv-item {
     display: block;
     padding: 10px 12px;
-    font-size: 15.5px;
+    font-size: 17px;
     color: var(--text-muted);
     text-decoration: none;
     white-space: nowrap;
@@ -243,7 +243,7 @@ body {
 
 .hero-title {
     font-family: 'Nunito', sans-serif;
-    font-size: 32px;
+    font-size: 40px;
     font-weight: 600;
     color: var(--text-main);
     margin-bottom: 8px;
@@ -251,7 +251,7 @@ body {
 }
 
 .hero-subtitle {
-    font-size: 15px;
+    font-size: 18px;
     font-weight: 400;
     color: var(--text-muted);
     line-height: 1.65;
@@ -263,7 +263,7 @@ body {
     border: 1px solid var(--border);
     padding: 7px 15px;
     border-radius: 20px;
-    font-size: 12.5px;
+    font-size: 15px;
     font-weight: 500;
     cursor: pointer;
     color: var(--text-muted);
@@ -288,7 +288,7 @@ body {
 
 .msg-who {
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 9px;
+    font-size: 12px;
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.06em;
@@ -300,7 +300,7 @@ body {
 
 .msg-time {
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 9px;
+    font-size: 12px;
     color: var(--text-muted);
     text-transform: none;
     letter-spacing: 0;
@@ -312,7 +312,7 @@ body {
 }
 
 .msg-text {
-    font-size: 14.5px;
+    font-size: 17px;
     line-height: 1.7;
     font-weight: 400;
     padding: 10px 15px;
@@ -341,7 +341,7 @@ body {
 .msg.assistant .msg-text li { margin-bottom: 0.2em; }
 .msg.assistant .msg-text code {
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 12.5px;
+    font-size: 14.5px;
     background: rgba(0, 0, 0, 0.07);
     padding: 1px 5px;
     border-radius: 4px;
@@ -453,7 +453,7 @@ body {
     outline: none;
     padding: 0;
     font-family: inherit;
-    font-size: 14px;
+    font-size: 16px;
     background: transparent;
     color: var(--text-main);
     resize: none;
@@ -469,7 +469,7 @@ body {
     background: none;
     border: none;
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 12px;
+    font-size: 14px;
     color: var(--primary);
     cursor: pointer;
     font-weight: 500;
@@ -483,10 +483,10 @@ body {
 .send.stop-mode { color: var(--text-muted); }
 .send.stop-mode:hover { opacity: 1; color: #e11d48; }
 
-.hint { font-size: 10px; color: var(--text-muted); margin-top: 8px; font-family: 'IBM Plex Mono', monospace; }
+.hint { font-size: 13px; color: var(--text-muted); margin-top: 8px; font-family: 'IBM Plex Mono', monospace; }
 .hint kbd {
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 9px;
+    font-size: 11px;
     background: var(--bg-sidebar);
     border: 1px solid var(--border);
     border-radius: 4px;
@@ -498,7 +498,7 @@ body {
     background: none !important;
     color: var(--text-muted) !important;
     padding: 4px 2px !important;
-    font-size: 13px !important;
+    font-size: 14px !important;
 }
 
 .msg-text.streaming::after {
@@ -607,7 +607,7 @@ body.landing .empty {
     gap: 4px;
     padding-bottom: 16px;
 }
-body.landing .hero-title { font-size: 38px; text-align: center; }
+body.landing .hero-title { font-size: 48px; text-align: center; }
 body.landing .hero-subtitle { text-align: center; }
 body.landing .input-area {
     border-top: none;
@@ -649,7 +649,7 @@ body:not(.landing) #chips-container { display: none; }
     .messages > *,
     .input-area > * { padding: 0 16px; }
 
-    .hero-title { font-size: 24px; }
+    .hero-title { font-size: 28px; }
     .msg-bubble { max-width: 92%; }
 }
 
