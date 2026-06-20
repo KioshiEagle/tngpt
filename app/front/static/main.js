@@ -91,6 +91,11 @@ document.addEventListener('DOMContentLoaded', () => {
         backdrop.classList.remove('visible');
     });
 
+    // --- Landing mode ---
+    if (document.getElementById('empty-state')) {
+        document.body.classList.add('landing');
+    }
+
     // --- Chips aléatoires ---
     const chipsContainer = document.getElementById('chips-container');
     shuffle(ALL_CHIPS).slice(0, 4).forEach(chip => {
@@ -160,7 +165,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const emptyState = document.getElementById('empty-state');
         const isFirstMessage = !!emptyState;
-        if (emptyState) emptyState.remove();
+        if (emptyState) {
+            emptyState.remove();
+            document.getElementById('chips-container')?.remove();
+            document.body.classList.remove('landing');
+        }
 
         if (isFirstMessage) {
             const shortTitle = text.length > 40 ? text.slice(0, 40).trimEnd() + '…' : text;
