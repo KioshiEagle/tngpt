@@ -584,6 +584,51 @@ body {
 .author-link:hover .author-logo { opacity: 1; }
 [data-theme="dark"] .author-logo { filter: invert(1); opacity: 0.85; }
 
+/* --- LANDING MODE (état vide centré, style Gemini) --- */
+body.landing .main {
+    justify-content: center;
+    position: relative;
+}
+body.landing .authors-corner {
+    position: absolute;
+    bottom: 16px;
+    right: 20px;
+    padding: 0;
+}
+body.landing .scroll-btn { display: none; }
+body.landing .messages {
+    flex: 0 0 auto;
+    overflow: visible;
+    padding: 0;
+}
+body.landing .empty {
+    align-items: center;
+    gap: 4px;
+    padding-bottom: 16px;
+}
+body.landing .hero-title { font-size: 38px; text-align: center; }
+body.landing .hero-subtitle { text-align: center; }
+body.landing .input-area {
+    border-top: none;
+    padding: 0 0 10px;
+}
+body.landing .input-row {
+    border-radius: 50px;
+    padding: 14px 20px;
+}
+body.landing .hint { display: none; }
+body.landing #chips-container {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 28px 0;
+    max-width: 720px;
+    width: 100%;
+    margin: 0 auto;
+}
+body:not(.landing) #chips-container { display: none; }
+
 /* --- MOBILE RESPONSIVE --- */
 @media (max-width: 640px) {
     .hamburger { display: flex; }
