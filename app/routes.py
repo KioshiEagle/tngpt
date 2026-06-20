@@ -1,5 +1,3 @@
-"""Routes Flask de l'application TN-GPT."""
-
 import random
 from collections.abc import Iterator
 
@@ -13,29 +11,38 @@ from flask import (
     stream_with_context,
 )
 
-from .back.generate import generate_answer
+from .back.generate import GenerateRequest, generate_answer
+from .extensions import limiter
 
 bp = Blueprint("chat", __name__)
 
+MAX_MESSAGE_LENGTH = 500
+TOP_K = 5
+
 
 @bp.route("/chat", methods=["POST"])
-def chat() -> Response:
+@limiter.limit("20 per minute")
+def chat() -> Response | tuple[Response, int]:
     """Répond en streaming à un message utilisateur."""
     data = request.get_json()
     if not data or "message" not in data:
-        return jsonify({"error": "Message manquant"})
+        return jsonify({"error": "Message manquant"}), 400
 
     user_message = data["message"]
-    top_k = data.get("top_k", 15)
+    if len(user_message) > MAX_MESSAGE_LENGTH:
+        msg = f"Message trop long (max {MAX_MESSAGE_LENGTH} caractères)"
+        return jsonify({"error": msg}), 400
 
-    if "history" not in session:
-        session["history"] = []
-    session["history"].append({"role": "user", "content": user_message})
-    session.modified = True
+    req = GenerateRequest(
+        question=user_message,
+        history=data.get("history", []),
+        top_k=TOP_K,
+        user_name=None,  # remplacer par la valeur de session une fois l'auth intégrée
+    )
 
     def _stream() -> Iterator[str]:
         try:
-            yield from generate_answer(user_message, top_k=top_k)
+            yield from generate_answer(req)
         except Exception as e:  # noqa: BLE001
             yield f"Erreur : {e!s}"
 
@@ -57,18 +64,20 @@ def clear_history() -> Response:
 
 Citation = tuple[str, int]
 CITATIONS: list[Citation] = [
-    ("Qu'avez-vous à dire pour votre défense ?", 10),
-    ("Envie de jiguer, pas vous ?", 15),
-    ("En date avec Crazy François", 15),
-    ("* en train de barboter dans l'évier cancéreux du bar *", 20),
-    ("on vient de me barouder aled", 7),
+    ("Qu'avez-vous à dire pour votre défense ?", 5),
+    ("Envie de jiguer, pas vous ?", 7),
+    ("En date avec Crazy François", 5),
+    ("* en train de barboter dans l'évier cancéreux du bar *", 7),
+    ("on vient de me barouder aled", 5),
     ("ici ça bz", 5),
     ("Je ne suis pas un projet de TNS (mdr)", 5),
-    ("on m'a forcé à prendre du thé", 5),
-    ("nique le cheval whatsapp", 15),
+    ("on m'a forcé à prendre du thé", 6),
+    ("nique le cheval whatsapp", 5),
     ("after chez camille", 1),
-    ("Prompt injection et tu vas repartir mal mon compaing", 7),
-    ("Pétition pour remettre l'Oriental", 5),
+    ("Prompt injection et tu vas repartir mal mon compaing", 5),
+    ("Pétition pour remettre l'Oriental au bar", 5),
+    ("Absolute Bouthier", 5),
+    ("plus qu'une salle et la carte sera complétée.....", 1),
 ]
 
 

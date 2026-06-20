@@ -1,3 +1,4 @@
+import logging
 import math
 import os
 from datetime import UTC, datetime
@@ -7,13 +8,33 @@ from dotenv import load_dotenv
 from qdrant_client import QdrantClient
 from sentence_transformers import SentenceTransformer
 
+from .types import SearchResult
+
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
+logger = logging.getLogger(__name__)
+
 model = SentenceTransformer("intfloat/multilingual-e5-small")
 
 # Poids du score sémantique dans le score hybride (1 - ALPHA = poids fraîcheur)
 FRESHNESS_ALPHA = 0.7
 # Taux de décroissance : demi-vie ≈ 350 jours (un document d'un an vaut ~0.5)
 DECAY_RATE = 0.002
+SCORE_THRESHOLD = 0.72
+CANDIDATE_MULTIPLIER = 20
+
+_client: QdrantClient | None = None
+
+
+def _get_client() -> QdrantClient:
+    global _client  # noqa: PLW0603
+    if _client is None:
+        _client = QdrantClient(
+            url=os.getenv("QDRANT_URL"),
+            api_key=os.getenv("QDRANT_API_KEY"),
+            check_compatibility=False,
+        )
+    return _client
 
 
 def _freshness_score(date_str: str) -> float:
@@ -33,30 +54,21 @@ def _freshness_score(date_str: str) -> float:
         return 0.5
 
 
-def search(query: str, top_k: int = 5, collection_name: str = "documents") -> list:
-    """Recherche hybride (sémantique + fraîcheur) dans Qdrant.
-
-    Le pool de candidats est volontairement large (top_k * 20) pour ne pas
-    écarter des documents pertinents avant la re-notation par fraîcheur.
-    Retourne jusqu'à `top_k` résultats triés par score hybride décroissant.
-    """
-    client = QdrantClient(
-        url=os.getenv("QDRANT_URL"),
-        api_key=os.getenv("QDRANT_API_KEY"),
-        check_compatibility=False,
-    )
-
+def search(
+    query: str, top_k: int = 5, collection_name: str = "documents"
+) -> list[SearchResult]:
+    """Recherche hybride (sémantique + fraîcheur) dans Qdrant."""
     query_vector = model.encode(f"query: {query}").tolist()
-    response = client.query_points(
+    response = _get_client().query_points(
         collection_name=collection_name,
         query=query_vector,
-        limit=top_k * 20,
-        score_threshold=0.72,
+        limit=top_k * CANDIDATE_MULTIPLIER,
+        score_threshold=SCORE_THRESHOLD,
         with_payload=True,
         with_vectors=False,
     )
 
-    results = []
+    results: list[SearchResult] = []
     for point in response.points:
         semantic = point.score
         payload = point.payload or {}
@@ -64,13 +76,13 @@ def search(query: str, top_k: int = 5, collection_name: str = "documents") -> li
         hybrid = FRESHNESS_ALPHA * semantic + (1 - FRESHNESS_ALPHA) * freshness
 
         results.append(
-            {
-                "content": payload.get("text", "Texte non trouvé"),
-                "metadata": {k: v for k, v in payload.items() if k != "text"},
-                "score": hybrid,
-                "semantic_score": semantic,
-                "freshness_score": round(freshness, 4),
-            }
+            SearchResult(
+                content=payload.get("text", "Texte non trouvé"),
+                metadata={k: v for k, v in payload.items() if k != "text"},
+                score=hybrid,
+                semantic_score=semantic,
+                freshness_score=round(freshness, 4),
+            )
         )
 
     results.sort(key=lambda x: x["score"], reverse=True)
@@ -78,23 +90,28 @@ def search(query: str, top_k: int = 5, collection_name: str = "documents") -> li
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.DEBUG)
     query_test = "Sabeur Aridhi"
-    print(f"🔍 Recherche hybride pour : '{query_test}'...")
+    logger.info("Recherche hybride pour : '%s'...", query_test)
 
     res = search(query_test)
 
     if not res:
-        print("⚠️ Aucun résultat pertinent trouvé (Score < 0.72).")
+        logger.warning(
+            "Aucun résultat pertinent trouvé (Score < %.2f).", SCORE_THRESHOLD
+        )
     else:
         for r in res:
             m = r["metadata"]
             title = m.get("title", m.get("source", "?"))
-            print(
-                f"\n📄 {title} | Auteur: {m.get('author', '?')} "
-                f"| Date: {m.get('date', '?')}"
+            logger.info(
+                "%s | Auteur: %s | Date: %s | Score: %.4f "
+                "(sem: %.4f, fraîcheur: %.4f)\n  Extrait: %s...",
+                title,
+                m.get("author", "?"),
+                m.get("date", "?"),
+                r["score"],
+                r["semantic_score"],
+                r["freshness_score"],
+                r["content"][:200],
             )
-            print(
-                f"   Score hybride: {r['score']:.4f}  (sémantique: "
-                f"{r['semantic_score']:.4f}, fraîcheur: {r['freshness_score']:.4f})"
-            )
-            print(f"   Extrait: {r['content'][:200]}...")
