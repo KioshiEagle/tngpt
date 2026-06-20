@@ -123,6 +123,7 @@ body {
     flex-shrink: 0;
     z-index: 2;
 }
+.logo-img-mini:hover:not(.spinning) { animation: duck-wobble 0.5s ease-in-out infinite; }
 .logo-img-mini.spinning { animation: spin 1s linear infinite; }
 
 .speech-bubble.mini {
@@ -653,5 +654,6 @@ body:not(.landing) #chips-container { display: none; }
 }
 
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes duck-wobble { 0%, 100% { transform: rotate(0deg); } 25% { transform: rotate(-12deg); } 75% { transform: rotate(12deg); } }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 @keyframes blink-cursor { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
