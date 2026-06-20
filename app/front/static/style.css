@@ -13,12 +13,12 @@
 :root {
     --primary: #6d28d9;
     --primary-light: #f3e8ff;
-    --border: #e7e0d5;
+    --border: #cec6b8;        /* was #e7e0d5 — plus visible pour la structure */
     --bg: #faf8f5;
     --bg-sidebar: #f3f0eb;
     --bg-input: #f5f2ed;
     --text-main: #1c1917;
-    --text-muted: #6b6560;
+    --text-muted: #4a4540;    /* was #6b6560 — ratio ~8.7:1 vs bg (WCAG AAA) */
     --bubble-user: #6d28d9;
     --bubble-user-text: #fff;
     --bubble-assistant: #efede8;
@@ -28,16 +28,16 @@
 [data-theme="dark"] {
     --primary: #a78bfa;
     --primary-light: #2d1b69;
-    --border: #2d2a26;
+    --border: #3d3831;        /* was #2d2a26 — plus visible en dark */
     --bg: #1a1917;
     --bg-sidebar: #161513;
     --bg-input: #1f1d1b;
-    --text-main: #e8e4de;
-    --text-muted: #9e988f;
+    --text-main: #edeae4;     /* was #e8e4de — ratio ~9.5:1 vs bg */
+    --text-muted: #b8b2a9;    /* was #9e988f — ratio ~8.7:1 vs bg (WCAG AAA) */
     --bubble-user: #7c3aed;
     --bubble-user-text: #fff;
     --bubble-assistant: #242220;
-    --bubble-assistant-text: #e8e4de;
+    --bubble-assistant-text: #edeae4;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -208,8 +208,8 @@ body {
 }
 .conv-item:hover { background: rgba(0, 0, 0, 0.05); }
 .conv-item.active { background: rgba(0, 0, 0, 0.08); color: var(--text-main); font-weight: 600; }
-[data-theme="dark"] .conv-item:hover { background: rgba(255, 255, 255, 0.05); }
-[data-theme="dark"] .conv-item.active { background: rgba(255, 255, 255, 0.1); }
+[data-theme="dark"] .conv-item:hover { background: rgba(255, 255, 255, 0.08); }
+[data-theme="dark"] .conv-item.active { background: rgba(255, 255, 255, 0.14); }
 
 /* --- MAIN --- */
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
@@ -296,7 +296,7 @@ body {
     align-items: center;
     gap: 6px;
 }
-.msg.user .msg-who { color: var(--primary); opacity: 0.7; }
+.msg.user .msg-who { color: #7c3aed; }
 
 .msg-time {
     font-family: 'IBM Plex Mono', monospace;
