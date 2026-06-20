@@ -1,95 +1,335 @@
+const THINKING_PHRASES = [
+    "Je consulte mes neurones...",
+    "Hmm, laisse-moi réfléchir...",
+    "Je mobilise mes deux neurones non connectés...",
+    "Calcul quantique en cours...",
+    "Je demande à ChatGPT...",
+    "Lecture des archives du MiniTel...",
+    "Je demande à Tek les outils nécessaires...",
+    "J'emprunte des balles au BDS...",
+    "Je demande du café à TNS...",
+    "Je cours chercher une flutte au BDA...",
+    "Je fais semblant de comprendre...",
+];
+
+const SLOW_PHRASE = "Ouh hihi ha, ouh hihi ha...";
+
+const WRITING_PHRASES = [
+    "En train d'écrire...",
+    "Je demande à Gemini d'écrire le prompt à ma place...",
+    "je tape avec la machine à écrire du MiniTel...",
+    "je demande au BDE s'ils ont la réponse...pas sûr...",
+    "Presque là !",
+];
+
+const ALL_CHIPS = [
+    { label: 'salles libres', query: 'Salles libres maintenant' },
+    { label: "Planning de l'inté", query: "Balance le planning de l'intégration 2026" },
+    { label: 'lore TN', query: 'Lore de TELECOM Nancy' },
+    { label: 'menu du self', query: 'Menu du self cette semaine' },
+    { label: 'clubs & assos', query: 'Liste des clubs et associations à TELECOM Nancy' },
+    { label: 'agenda BDE', query: "Quels sont les prochains événements du BDE ?" },
+    { label: 'jobs & stages', query: "Comment trouver un stage ou une alternance depuis TN ?" },
+    { label: 'imprimer à TN', query: "Où et comment imprimer à TELECOM Nancy ?" },
+    { label: 'Appros à TN', query: "Quelles sont les approfondissements disponibles en à TN ?" },
+    { label: 'wifi campus', query: "Comment se connecter au wifi de TELECOM Nancy ?" },
+    { label: 'Histoire de TN', query: "Quelle est l'histoire de TELECOM Nancy ?" },
+];
+
+function randomFrom(arr) {
+    return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function shuffle(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+}
+
+function formatTime() {
+    const now = new Date();
+    return now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const form = document.getElementById('chat-form');
-    const input = document.getElementById('inp');
+    const inp = document.getElementById('inp');
     const messagesContainer = document.getElementById('messages');
     const sendBtn = document.getElementById('sbtn');
     const duckyImg = document.getElementById('sidebar-ducky');
-    const sidebarBubble = document.getElementById('sidebar-bubble');
+    const scrollBtn = document.getElementById('scroll-btn');
+    const themeToggle = document.getElementById('theme-toggle');
+    const hamburger = document.getElementById('hamburger');
+    const sidebar = document.getElementById('sidebar');
+    const backdrop = document.getElementById('sidebar-backdrop');
 
-    // Gestion des clics sur les "chips" (suggestions)
-    document.querySelectorAll('.chip').forEach(chip => {
-        chip.addEventListener('click', () => {
-            input.value = chip.dataset.query;
-            form.dispatchEvent(new Event('submit'));
-        });
+    // --- Theme toggle ---
+    function updateThemeLabel() {
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        themeToggle.textContent = isDark ? '☀ mode clair' : '☾ mode sombre';
+    }
+    updateThemeLabel();
+
+    themeToggle.addEventListener('click', () => {
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        const next = isDark ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        localStorage.setItem('theme', next);
+        updateThemeLabel();
     });
 
+    // --- Mobile sidebar ---
+    hamburger.addEventListener('click', () => {
+        sidebar.classList.add('open');
+        backdrop.classList.add('visible');
+    });
+    backdrop.addEventListener('click', () => {
+        sidebar.classList.remove('open');
+        backdrop.classList.remove('visible');
+    });
+
+    // --- Landing mode ---
+    if (document.getElementById('empty-state')) {
+        document.body.classList.add('landing');
+    }
+
+    // --- Chips aléatoires ---
+    const chipsContainer = document.getElementById('chips-container');
+    shuffle(ALL_CHIPS).slice(0, 4).forEach(chip => {
+        const btn = document.createElement('button');
+        btn.className = 'chip';
+        btn.textContent = chip.label;
+        btn.addEventListener('click', () => {
+            inp.value = chip.query;
+            autoResize();
+            form.dispatchEvent(new Event('submit'));
+        });
+        chipsContainer.appendChild(btn);
+    });
+
+    // --- Textarea auto-resize ---
+    function autoResize() {
+        inp.style.height = 'auto';
+        inp.style.height = Math.min(inp.scrollHeight, 120) + 'px';
+    }
+    inp.addEventListener('input', autoResize);
+
+    // Enter = envoyer, Shift+Enter = saut de ligne
+    inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            if (!sendBtn.disabled) form.dispatchEvent(new Event('submit'));
+        }
+    });
+
+    // --- Scroll indicator ---
+    messagesContainer.addEventListener('scroll', () => {
+        const distFromBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight;
+        scrollBtn.classList.toggle('visible', distFromBottom > 120);
+    });
+    scrollBtn.addEventListener('click', scrollToBottom);
+
+    // --- Stop button state ---
+    let abortController = null;
+
+    function setStreaming(active) {
+        if (active) {
+            sendBtn.textContent = '⏹ stop';
+            sendBtn.disabled = false;
+            sendBtn.classList.add('stop-mode');
+        } else {
+            sendBtn.textContent = 'envoyer →';
+            sendBtn.disabled = false;
+            sendBtn.classList.remove('stop-mode');
+            abortController = null;
+        }
+    }
+
+    sendBtn.addEventListener('click', (e) => {
+        if (sendBtn.classList.contains('stop-mode')) {
+            e.preventDefault();
+            if (abortController) abortController.abort();
+        }
+    });
+
+    const conversationHistory = [];
+
+    // --- Form submit ---
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const text = input.value.trim();
-        if (!text) return;
+        const text = inp.value.trim();
+        if (!text || sendBtn.classList.contains('stop-mode')) return;
 
-        // Nettoyage interface
         const emptyState = document.getElementById('empty-state');
-        if (emptyState) emptyState.remove();
+        const isFirstMessage = !!emptyState;
+        if (emptyState) {
+            emptyState.remove();
+            document.getElementById('chips-container')?.remove();
+            document.body.classList.remove('landing');
+        }
 
-        // Afficher message utilisateur
+        if (isFirstMessage) {
+            const shortTitle = text.length > 40 ? text.slice(0, 40).trimEnd() + '…' : text;
+            const convItem = document.querySelector('.conv-item.active');
+            if (convItem) convItem.textContent = shortTitle;
+            document.title = shortTitle + ' – TN-GPT';
+        }
+
+        conversationHistory.push({ role: 'user', content: text });
         appendMessage('user', text);
-        input.value = '';
-        sendBtn.disabled = true;
+        inp.value = '';
+        inp.style.height = 'auto';
 
-        // État "Réflexion"
         duckyImg.classList.add('spinning');
-        sidebarBubble.textContent = "Je réfléchis...";
+        const thinkingDiv = appendThinking(randomFrom(THINKING_PHRASES));
+        setStreaming(true);
 
-        // Préparer bulle assistant
-        const assistantMsgDiv = appendMessage('assistant', '');
-        const textContainer = assistantMsgDiv.querySelector('.msg-text');
+        // Audio créé dans le contexte du clic pour contourner la politique autoplay
+        const oiiaAudioElem = new Audio('/static/sounds/OIIA_OIIA.mp3');
+        oiiaAudioElem.loop = true;
+        let oiiaAudio = null;
+        const slowTimer = setTimeout(() => {
+            thinkingDiv.querySelector('em').textContent = SLOW_PHRASE;
+            oiiaAudio = oiiaAudioElem;
+            oiiaAudio.play().catch(() => {});
+        }, 7000);
+
+        let rawText = '';
+        let textContainer = null;
+        let bubbleContainer = null;
+        let rafPending = false;
+
+        function scheduleRender() {
+            if (rafPending) return;
+            rafPending = true;
+            requestAnimationFrame(() => {
+                rafPending = false;
+                if (textContainer) textContainer.innerHTML = marked.parse(rawText);
+                if (bubbleContainer) bubbleContainer.dataset.raw = rawText;
+                scrollToBottom();
+            });
+        }
+
+        abortController = new AbortController();
 
         try {
             const response = await fetch('/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: text })
+                body: JSON.stringify({ message: text, history: conversationHistory.slice(-4) }),
+                signal: abortController.signal,
             });
 
             if (!response.ok) throw new Error();
 
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
-            
-            // Premier chunk reçu : on change le statut
             let firstChunk = true;
 
             while (true) {
                 const { value, done } = await reader.read();
                 if (done) break;
 
-                if (firstChunk) {
-                    duckyImg.classList.remove('spinning');
-                    sidebarBubble.textContent = "En train d'écrire...";
-                    firstChunk = false;
-                }
+                const chunk = decoder.decode(value);
 
-                textContainer.textContent += decoder.decode(value);
-                scrollToBottom();
+                if (firstChunk) {
+                    const trimmed = chunk.trimStart();
+                    if (!trimmed) continue;
+                    clearTimeout(slowTimer);
+                    if (oiiaAudio) { oiiaAudio.pause(); oiiaAudio = null; }
+                    duckyImg.classList.remove('spinning');
+                    thinkingDiv.querySelector('em').textContent = randomFrom(WRITING_PHRASES);
+                    const assistantMsgDiv = appendMessage('assistant', '');
+                    textContainer = assistantMsgDiv.querySelector('.msg-text');
+                    bubbleContainer = assistantMsgDiv.querySelector('.msg-bubble');
+                    textContainer.classList.add('streaming');
+                    rawText = trimmed;
+                    firstChunk = false;
+                } else {
+                    rawText += chunk;
+                }
+                scheduleRender();
             }
         } catch (err) {
-            textContainer.textContent = "Désolé, j'ai eu un bug de transmission. Réessaie ?";
+            clearTimeout(slowTimer);
+            if (oiiaAudio) { oiiaAudio.pause(); oiiaAudio = null; }
+            thinkingDiv.remove();
+            if (err.name !== 'AbortError') {
+                appendMessage('assistant', "Désolé, j'ai eu un bug de transmission. Réessaie ?");
+            }
         } finally {
+            clearTimeout(slowTimer);
+            if (oiiaAudio) { oiiaAudio.pause(); oiiaAudio = null; }
+            thinkingDiv.remove();
             duckyImg.classList.remove('spinning');
-            sidebarBubble.textContent = "ici ça bz.";
-            sendBtn.disabled = false;
-            input.focus();
+            if (textContainer) {
+                textContainer.classList.remove('streaming');
+                // rendu final propre
+                textContainer.innerHTML = marked.parse(rawText);
+            }
+            if (rawText) conversationHistory.push({ role: 'assistant', content: rawText });
+            setStreaming(false);
+            inp.focus();
         }
     });
 
+    function appendThinking(phrase) {
+        const div = document.createElement('div');
+        div.className = 'msg assistant';
+        div.innerHTML = `<div class="msg-text thinking-text"><em>${phrase}</em></div>`;
+        messagesContainer.appendChild(div);
+        scrollToBottom();
+        return div;
+    }
+
     function appendMessage(role, content) {
+        const time = formatTime();
         const msgDiv = document.createElement('div');
         msgDiv.className = `msg ${role}`;
-        msgDiv.innerHTML = `
-            <div class="msg-who">${role === 'user' ? 'vous' : 'TN-GPT'}</div>
-            <div class="msg-text">${content}</div>
-        `;
+
+        const whoDiv = document.createElement('div');
+        whoDiv.className = 'msg-who';
+        whoDiv.innerHTML = `${role === 'user' ? 'vous' : 'TN-GPT'} <span class="msg-time">${time}</span>`;
+
+        const bubbleDiv = document.createElement('div');
+        bubbleDiv.className = 'msg-bubble';
+        if (role === 'user') bubbleDiv.dataset.raw = content;
+
+        const textDiv = document.createElement('div');
+        textDiv.className = 'msg-text';
+        if (role === 'assistant') {
+            textDiv.innerHTML = content ? marked.parse(content) : '';
+        } else {
+            textDiv.textContent = content;
+        }
+
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'copy-btn';
+        copyBtn.title = 'Copier';
+        copyBtn.textContent = '⎘';
+        copyBtn.addEventListener('click', () => {
+            const raw = bubbleDiv.dataset.raw || textDiv.textContent;
+            navigator.clipboard.writeText(raw).then(() => {
+                copyBtn.textContent = '✓';
+                setTimeout(() => { copyBtn.textContent = '⎘'; }, 1500);
+            });
+        });
+
+        bubbleDiv.appendChild(textDiv);
+        msgDiv.appendChild(whoDiv);
+        msgDiv.appendChild(bubbleDiv);
+        msgDiv.appendChild(copyBtn);
+        msgDiv.addEventListener('mouseenter', () => copyBtn.classList.add('visible'));
+        msgDiv.addEventListener('mouseleave', () => copyBtn.classList.remove('visible'));
         messagesContainer.appendChild(msgDiv);
         scrollToBottom();
         return msgDiv;
     }
 
     function scrollToBottom() {
-        messagesContainer.scrollTo({
-            top: messagesContainer.scrollHeight,
-            behavior: 'smooth'
-        });
+        messagesContainer.scrollTo({ top: messagesContainer.scrollHeight, behavior: 'smooth' });
     }
 });
