@@ -607,6 +607,15 @@ body.landing .empty {
     gap: 4px;
     padding-bottom: 16px;
 }
+.landing-ducky {
+    display: none;
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin-bottom: 12px;
+}
+body.landing .landing-ducky { display: block; }
 body.landing .hero-title { font-size: 48px; text-align: center; }
 body.landing .hero-subtitle { text-align: center; }
 body.landing .input-area {
