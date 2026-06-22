@@ -1,16 +1,15 @@
 services:
-  app:
-    build: .
+  tngpt-app:
+    image: ${IMAGE_TAG}
     container_name: tn-gpt-python
     ports:
       - "8501:8501"
     volumes:
-      - .:/app
       - hf_cache:/root/.cache/huggingface
     environment:
       - PYTHONUNBUFFERED=1
       - TRANSFORMERS_OFFLINE=1
-    restart: unless-stopped
+    restart: always
 
 volumes:
   hf_cache:

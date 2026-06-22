@@ -17,6 +17,27 @@ uv sync
 ⚙️ Configuration (Indispensable)
 Le projet nécessite deux fichiers de configuration à la racine pour fonctionner. Ne jamais les commit sur Git.
 
+Utiliser l'extension ruff pour vscode pour appliquer directemnent les bonnes pratiques et configurations settings.json :
+```json
+"editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+        "source.fixAll.ruff": "always",
+        "source.organizeImports.ruff": "always"
+    },
+
+    "files.trimTrailingWhitespace": true,
+    "files.insertFinalNewline": true,
+    "files.trimFinalNewlines": true,
+
+    "[python]": {
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "editor.formatOnSave": true
+    },
+
+    "ruff.nativeServer": "on",
+    "ruff.organizeImports": true,
+    "ruff.fixAll": true
+```
 1. Fichier .env
 Crée un fichier .env à la racine du projet et remplis les variables suivantes :
 
