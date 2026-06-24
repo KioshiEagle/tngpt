@@ -3,7 +3,7 @@ import os
 from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app, session, abort
 from flask_login import current_user, login_user, logout_user, login_required
 
-from app.forms import LoginForm, RegisterForm, UpdateUserForm, ChangePWForm, ChangeEmailForm
+from forms import LoginForm
 
 CLIENT_CONFIG = {
     "web": {
@@ -27,4 +27,15 @@ def login_page():
     if current_user.is_authenticated:
         return redirect('/')
 
-    #form = LoginForm()
+    form = LoginForm()
+    user = None
+
+    # Special account check
+    if form.is_submitted() and form.usermail.data in current_app.config['special_accounts_mails']:
+        pass
+    
+    elif not form.validate_on_submit():
+        return render_template('login.html', form=form)
+
+    if user is None:   # Not equal to None when special account
+        user: Utilisateur = Utilisateur.query.where(Utilisateur.mail_utilisateur == form.usermail.data).scalar()
