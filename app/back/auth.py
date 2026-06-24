@@ -2,6 +2,7 @@ import os
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app, session, abort
 from flask_login import current_user, login_user, logout_user, login_required
+from google_auth_oauthlib.flow import Flow
 
 from forms import LoginForm
 from models import User
@@ -54,4 +55,20 @@ def login_page():
     flash(f'Utilisateur⋅trice {user.user_firstname} {user.user_surname} connecté⋅e', "success")
     return redirect(next_page)
 
+@auth_bp.route("/login_google")
+def login_google():
+    flow = Flow.from_client_config(
+        CLIENT_CONFIG, 
+        scopes=["https://www.googleapis.com/auth/userinfo.email", "openid"]
+    )
+
+    flow.redirect_uri = url_for('auth.callback', _external=True)
+
+    authorization_url, state = flow.authorization_url(
+        access_type='offline',
+        prompt='select_account'
+    )
+
+    session['oauth_state'] = state 
+    return redirect(authorization_url)
 
