@@ -1,7 +1,8 @@
 from flask import flash, request, redirect, url_for
-from flask_login import current_user
+from flask_login import current_user, LoginManager
 from functools import wraps
-from config import login_manager
+
+login_manager = LoginManager()
 
 permission_table = [
     'User Management', # 0
