@@ -1,11 +1,14 @@
-import os
+import os, secrets
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app, session, abort
 from flask_login import current_user, login_user, logout_user, login_required
+from google.oauth2 import id_token
 from google_auth_oauthlib.flow import Flow
+from google.auth.transport.requests import Request
 
 from forms import LoginForm
-from models import User
+from models import User, db
+from permissions import encode_perms
 
 CLIENT_CONFIG = {
     "web": {
@@ -71,4 +74,44 @@ def login_google():
 
     session['oauth_state'] = state 
     return redirect(authorization_url)
+
+@auth_bp.route("/callback")
+def callback():
+    flow = Flow.from_client_config(CLIENT_CONFIG, scopes=["https://www.googleapis.com/auth/userinfo.email", "openid"])
+    flow.redirect_uri = url_for('auth.callback', _external=True)
+
+    flow.fetch_token(authorization_response=request.url)
+
+    if not session.get('oauth_state') == request.args.get('state'):
+        abort(500)
+
+    credentials = flow.credentials
+    # fetch user info (mail) via id_token
+    info = id_token.verify_oauth2_token(credentials.id_token, Request(), CLIENT_CONFIG['web']['client_id'])
+
+    mail = info.get('email')
+    user = User.query.filter_by(user_mail=mail).first()
+
+    if not user:
+        full_name = mail.split("@")[0]
+        firstname_lower, surname_lower = full_name.split(".")[0], full_name.split(".")[1]
+        firstname, name = firstname_lower[0].upper() + firstname_lower[1:], surname_lower[0].upper() + surname_lower[1:]
+        user = User(
+            mail_utilisateur=mail,
+            prenom_utilisateur=firstname,
+            nom_utilisateur=name,
+            permission=encode_perms([]) # Aucune permission par défaut
+        )
+
+        token_impossible = secrets.token_urlsafe(32)
+        user.set_password(token_impossible)
+        # Google defines pwd by itself
+        db.session.add(user)
+        db.session.commit()
+        flash("Compte créé automatiquement avec Google.", "info")
+    
+    login_user(user)
+    return redirect("/")
+
+
 
