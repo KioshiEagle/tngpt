@@ -2,7 +2,7 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import Enum as SAEnum
 from bcrypt import hashpw, gensalt, checkpw
 
-from permissions import all_perms
+from permissions import all_perms, can_manage_users
 
 db = SQLAlchemy()
 
@@ -41,6 +41,9 @@ class User(db.Model):
         
     def get_id(self):
         return self.user_id
+    
+    def can_manage_users(self) -> bool:
+        return can_manage_users(self)
     
     def is_admin(self) -> bool:
         return self.permission == all_perms
