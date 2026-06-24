@@ -4,6 +4,7 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request,
 from flask_login import current_user, login_user, logout_user, login_required
 
 from forms import LoginForm
+from models import User
 
 CLIENT_CONFIG = {
     "web": {
@@ -38,4 +39,19 @@ def login_page():
         return render_template('login.html', form=form)
 
     if user is None:   # Not equal to None when special account
-        user: Utilisateur = Utilisateur.query.where(Utilisateur.mail_utilisateur == form.usermail.data).scalar()
+        user: User = User.query.where(Utilisateur.user_mail == form.usermail.data).scalar()
+    if user is None or not user.check_password(form.password.data):
+        flash("Mot de passe invalide", "danger")
+        return redirect(url_for('auth.login_page'))
+    
+    login_user(user, remember=form.remember_me.data)
+
+    next_page = request.args.get('next') # redirection
+
+    if not next_page or urlsplit(next_page).netloc != '':
+        next_page = '/'
+
+    flash(f'Utilisateur⋅trice {user.user_firstname} {user.user_surname} connecté⋅e', "success")
+    return redirect(next_page)
+
+
