@@ -113,5 +113,11 @@ def callback():
     login_user(user)
     return redirect("/")
 
+@auth_bp.route('/logout')
+def logout():
+    logout_user()
+    flash('Utilisateur⋅trice déconnecté⋅e', 'info')
+    return redirect(url_for('auth.login_page'))
+
 
 
