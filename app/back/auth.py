@@ -24,8 +24,8 @@ AUTH_URL = 'https://accounts.google.com/o/oauth2/auth'
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
 
-
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+if os.environ.get('FLASK_ENV') == 'development':
+    os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
 @auth_bp.route("/login", methods=["GET", "POST"])
 def login_page():
@@ -81,10 +81,11 @@ def callback():
     flow = Flow.from_client_config(CLIENT_CONFIG, scopes=["https://www.googleapis.com/auth/userinfo.email", "openid"])
     flow.redirect_uri = url_for('auth.callback', _external=True)
 
-    flow.fetch_token(authorization_response=request.url)
+    if os.environ.get('FLASK_ENV') == 'development':
+        os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
     if not session.get('oauth_state') == request.args.get('state'):
-        abort(500)
+        abort(403)
 
     credentials = flow.credentials
     # fetch user info (mail) via id_token
@@ -92,6 +93,9 @@ def callback():
 
     mail = info.get('email')
     user = User.query.filter_by(user_mail=mail).first()
+
+    if not mail or not mail.endswith("@telecomnancy.net"):
+        abort(403)
 
     if not user:
         full_name = mail.split("@")[0]
