@@ -5,6 +5,7 @@ from flask_login import current_user, login_user, logout_user, login_required
 from google.oauth2 import id_token
 from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request
+from urllib.parse import urlsplit
 
 from forms import LoginForm
 from models import User, db
@@ -43,7 +44,7 @@ def login_page():
         return render_template('login.html', form=form)
 
     if user is None:   # Not equal to None when special account
-        user: User = User.query.where(Utilisateur.user_mail == form.usermail.data).scalar()
+        user: User = User.query.where(User.user_mail == form.user_mail.data).scalar()
     if user is None or not user.check_password(form.password.data):
         flash("Mot de passe invalide", "danger")
         return redirect(url_for('auth.login_page'))
@@ -97,10 +98,10 @@ def callback():
         firstname_lower, surname_lower = full_name.split(".")[0], full_name.split(".")[1]
         firstname, name = firstname_lower[0].upper() + firstname_lower[1:], surname_lower[0].upper() + surname_lower[1:]
         user = User(
-            mail_utilisateur=mail,
-            prenom_utilisateur=firstname,
-            nom_utilisateur=name,
-            permission=encode_perms([]) # Aucune permission par défaut
+            user_mail=mail,
+            user_firstname=firstname,
+            user_surname=name,
+            user_permissions=encode_perms([]) # Aucune permission par défaut
         )
 
         token_impossible = secrets.token_urlsafe(32)
