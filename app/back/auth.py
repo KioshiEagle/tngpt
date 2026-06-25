@@ -1,7 +1,7 @@
 import base64, hashlib, os, secrets
 from datetime import datetime, UTC
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request, session, abort
+from flask import Blueprint, render_template, redirect, url_for, request, session, abort
 from flask_login import current_user, login_user, logout_user
 from google.oauth2 import id_token
 from google_auth_oauthlib.flow import Flow
@@ -97,7 +97,6 @@ def callback():
         token_impossible = secrets.token_urlsafe(32)
         user.set_password(token_impossible)
         db.session.add(user)
-        flash("Compte créé automatiquement avec Google.", "info")
     else:
         user.user_picture = picture
 
@@ -108,7 +107,6 @@ def callback():
 @auth_bp.route('/logout')
 def logout():
     logout_user()
-    flash('Utilisateur⋅trice déconnecté⋅e', 'info')
     return redirect(url_for('auth.login_page'))
 
 
