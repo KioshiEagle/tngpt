@@ -662,6 +662,75 @@ body:not(.landing) #chips-container { display: none; }
     .msg-bubble { max-width: 92%; }
 }
 
+/* --- LOGIN PAGE --- */
+body.login-page {
+    justify-content: center;
+    align-items: center;
+}
+
+.login-main {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+}
+
+.login-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    text-align: center;
+    padding: 0 24px;
+}
+
+.login-ducky {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin-bottom: 8px;
+}
+
+.login-title {
+    font-family: 'Nunito', sans-serif;
+    font-size: 40px;
+    font-weight: 600;
+    color: var(--text-main);
+    letter-spacing: -0.3px;
+}
+
+.login-subtitle {
+    font-size: 17px;
+    color: var(--text-muted);
+}
+
+.btn-google {
+    display: inline-block;
+    text-decoration: none;
+    background: var(--primary);
+    color: #fff;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 13px 28px;
+    border-radius: 10px;
+    margin-top: 8px;
+    transition: opacity 0.15s;
+}
+.btn-google:hover { opacity: 0.85; }
+
+.login-flash {
+    font-size: 14px;
+    font-family: 'IBM Plex Mono', monospace;
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+}
+.login-flash--danger { color: #e11d48; border-color: #fda4af; }
+.login-flash--info   { color: var(--primary); border-color: var(--primary); }
+
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 @keyframes duck-wobble { 0%, 100% { transform: rotate(0deg); } 25% { transform: rotate(-12deg); } 75% { transform: rotate(12deg); } }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }

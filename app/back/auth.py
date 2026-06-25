@@ -6,8 +6,8 @@ from google.oauth2 import id_token
 from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request
 
-from models import User, db
-from permissions import encode_perms
+from .models import User, db
+from .permissions import encode_perms
 
 CLIENT_CONFIG = {
     "web": {
@@ -20,7 +20,7 @@ CLIENT_CONFIG = {
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
 
-if os.environ.get('FLASK_ENV') == 'development':
+if os.environ.get('FLASK_DEBUG', '').lower() in ('1', 'true'):
     os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
 @auth_bp.route("/login")
