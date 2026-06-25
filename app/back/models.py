@@ -46,7 +46,7 @@ class User(db.Model):
         return can_manage_users(self)
     
     def is_admin(self) -> bool:
-        return self.permission == all_perms
+        return self.user_permissions == all_perms
 
 
 
