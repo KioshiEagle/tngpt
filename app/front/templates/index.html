@@ -38,9 +38,13 @@
 
         <div class="sidebar-footer">
             <button class="theme-toggle" id="theme-toggle" aria-label="Changer le thème"></button>
-            <a href="#" class="user-tab" title="Compte (bientôt disponible)">
-                <div class="user-avatar">?</div>
-                <span class="user-name">Mon compte</span>
+            <a href="#" class="user-tab" title="{{ current_user.user_firstname }} {{ current_user.user_surname }}">
+                {% if current_user.user_picture %}
+                    <img src="{{ current_user.user_picture }}" class="user-avatar" alt="" referrerpolicy="no-referrer">
+                {% else %}
+                    <div class="user-avatar">{{ current_user.user_firstname[0] }}{{ current_user.user_surname[0] }}</div>
+                {% endif %}
+                <span class="user-name">{{ current_user.user_firstname }} {{ current_user.user_surname }}</span>
             </a>
         </div>
     </aside>

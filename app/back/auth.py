@@ -74,6 +74,7 @@ def callback():
     info = id_token.verify_oauth2_token(credentials.id_token, Request(), CLIENT_CONFIG['web']['client_id'])
 
     mail = info.get('email')
+    picture = info.get('picture')
 
     if not mail or not mail.endswith("@telecomnancy.net"):
         abort(403)
@@ -91,15 +92,16 @@ def callback():
             user_surname=name,
             user_permissions=encode_perms([]),
             first_login_at=datetime.now(UTC),
+            user_picture=picture,
         )
-
         token_impossible = secrets.token_urlsafe(32)
         user.set_password(token_impossible)
-        # Google defines pwd by itself
         db.session.add(user)
-        db.session.commit()
         flash("Compte créé automatiquement avec Google.", "info")
-    
+    else:
+        user.user_picture = picture
+
+    db.session.commit()
     login_user(user)
     return redirect("/")
 

@@ -20,6 +20,7 @@ class User(UserMixin, db.Model):
     user_permissions= db.Column(db.Integer, nullable=False, default=0)
     first_login_at  = db.Column(db.DateTime(timezone=True), nullable=True)
     theme           = db.Column(db.String(5), nullable=False, default='light')
+    user_picture    = db.Column(db.String(500), nullable=True)
 
     conversations   = db.relationship('Conversation', back_populates='user', lazy='dynamic')
 
