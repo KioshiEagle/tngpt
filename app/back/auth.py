@@ -1,13 +1,11 @@
 import os, secrets
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app, session, abort
-from flask_login import current_user, login_user, logout_user, login_required
+from flask import Blueprint, render_template, redirect, url_for, flash, request, session, abort
+from flask_login import current_user, login_user, logout_user
 from google.oauth2 import id_token
 from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request
-from urllib.parse import urlsplit
 
-from forms import LoginForm
 from models import User, db
 from permissions import encode_perms
 
@@ -20,44 +18,16 @@ CLIENT_CONFIG = {
     }
 }
 
-AUTH_URL = 'https://accounts.google.com/o/oauth2/auth'
-
 auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
 
 if os.environ.get('FLASK_ENV') == 'development':
     os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
-@auth_bp.route("/login", methods=["GET", "POST"])
+@auth_bp.route("/login")
 def login_page():
-
     if current_user.is_authenticated:
         return redirect('/')
-
-    form = LoginForm()
-    user = None
-
-    # Special account check
-    if form.is_submitted() and form.user_mail.data in current_app.config['special_accounts_mails']:
-        pass
-    
-    elif not form.validate_on_submit():
-        return render_template('login.html', form=form)
-
-    if user is None:   # Not equal to None when special account
-        user: User = User.query.where(User.user_mail == form.user_mail.data).scalar()
-    if user is None or not user.check_password(form.password.data):
-        flash("Mot de passe invalide", "danger")
-        return redirect(url_for('auth.login_page'))
-    
-    login_user(user, remember=form.remember_me.data)
-
-    next_page = request.args.get('next') # redirection
-
-    if not next_page or urlsplit(next_page).netloc != '':
-        next_page = '/'
-
-    flash(f'Utilisateur⋅trice {user.user_firstname} {user.user_surname} connecté⋅e', "success")
-    return redirect(next_page)
+    return render_template('login.html')
 
 @auth_bp.route("/login_google")
 def login_google():
@@ -81,7 +51,7 @@ def callback():
     flow = Flow.from_client_config(CLIENT_CONFIG, scopes=["https://www.googleapis.com/auth/userinfo.email", "openid"])
     flow.redirect_uri = url_for('auth.callback', _external=True)
 
-    if not session.get('oauth_state') == request.args.get('state'):
+    if not session.pop('oauth_state') == request.args.get('state'):
         abort(403)
 
     flow.fetch_token(authorization_response=request.url)
