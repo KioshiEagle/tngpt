@@ -1,4 +1,5 @@
 import base64, hashlib, os, secrets
+from datetime import datetime, UTC
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, session, abort
 from flask_login import current_user, login_user, logout_user
@@ -88,7 +89,8 @@ def callback():
             user_mail=mail,
             user_firstname=firstname,
             user_surname=name,
-            user_permissions=encode_perms([]) # Aucune permission par défaut
+            user_permissions=encode_perms([]),
+            first_login_at=datetime.now(UTC),
         )
 
         token_impossible = secrets.token_urlsafe(32)
