@@ -1,9 +1,9 @@
 import logging
 import os
 
+from dotenv import load_dotenv
 from flask import Flask
 from flask_compress import Compress
-from dotenv import load_dotenv
 
 from app.back.auth import auth_bp
 from app.back.models import User, db
@@ -36,6 +36,7 @@ login_manager.login_view = "auth.login_page"
 
 @login_manager.user_loader
 def load_user(user_id: str) -> User | None:
+    """Charge un utilisateur depuis la session Flask-Login."""
     return db.session.get(User, int(user_id))
 
 app.register_blueprint(bp)
