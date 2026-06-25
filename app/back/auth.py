@@ -34,7 +34,7 @@ def login_page():
 def login_google():
     flow = Flow.from_client_config(
         CLIENT_CONFIG,
-        scopes=["https://www.googleapis.com/auth/userinfo.email", "openid"]
+        scopes=["openid", "https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile"]
     )
 
     redirect_uri = url_for('auth.callback', _external=True)
@@ -59,7 +59,7 @@ def login_google():
 
 @auth_bp.route("/callback")
 def callback():
-    flow = Flow.from_client_config(CLIENT_CONFIG, scopes=["https://www.googleapis.com/auth/userinfo.email", "openid"])
+    flow = Flow.from_client_config(CLIENT_CONFIG, scopes=["openid", "https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile"])
     flow.redirect_uri = url_for('auth.callback', _external=True)
 
     if not session.pop('oauth_state') == request.args.get('state'):
