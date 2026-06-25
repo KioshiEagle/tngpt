@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 
 from flask import (
     Blueprint,
-    Response,
     abort,
     redirect,
     render_template,
@@ -18,6 +17,7 @@ from flask_login import current_user, login_user, logout_user
 from google.auth.transport.requests import Request
 from google.oauth2 import id_token
 from google_auth_oauthlib.flow import Flow
+from werkzeug.wrappers import Response
 
 from .models import User, db
 from .permissions import encode_perms
