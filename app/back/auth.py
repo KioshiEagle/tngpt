@@ -37,7 +37,7 @@ def login_page():
     user = None
 
     # Special account check
-    if form.is_submitted() and form.usermail.data in current_app.config['special_accounts_mails']:
+    if form.is_submitted() and form.user_mail.data in current_app.config['special_accounts_mails']:
         pass
     
     elif not form.validate_on_submit():
@@ -81,25 +81,25 @@ def callback():
     flow = Flow.from_client_config(CLIENT_CONFIG, scopes=["https://www.googleapis.com/auth/userinfo.email", "openid"])
     flow.redirect_uri = url_for('auth.callback', _external=True)
 
-    if os.environ.get('FLASK_ENV') == 'development':
-        os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
-
     if not session.get('oauth_state') == request.args.get('state'):
         abort(403)
 
+    flow.fetch_token(authorization_response=request.url)
     credentials = flow.credentials
     # fetch user info (mail) via id_token
     info = id_token.verify_oauth2_token(credentials.id_token, Request(), CLIENT_CONFIG['web']['client_id'])
 
     mail = info.get('email')
-    user = User.query.filter_by(user_mail=mail).first()
 
     if not mail or not mail.endswith("@telecomnancy.net"):
         abort(403)
+    user = User.query.filter_by(user_mail=mail).first()
 
     if not user:
         full_name = mail.split("@")[0]
-        firstname_lower, surname_lower = full_name.split(".")[0], full_name.split(".")[1]
+        parts = full_name.split(".", 1)
+        firstname_lower = parts[0]
+        surname_lower = parts[1] if len(parts) > 1 else parts[0]
         firstname, name = firstname_lower[0].upper() + firstname_lower[1:], surname_lower[0].upper() + surname_lower[1:]
         user = User(
             user_mail=mail,

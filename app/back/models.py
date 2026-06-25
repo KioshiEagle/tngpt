@@ -22,6 +22,9 @@ class User(db.Model):
     def __repr__(self):
         return f"User {self.user_surname} {self.user_firstname}"
     
+    def set_password(self, password: str) -> None:
+        self.user_pwd = hashpw(password.encode('utf-8'), gensalt()).decode('utf-8')
+
     def check_password(self, pw_candidate: str) -> bool:
         """
         Verifies the password against the stored bcrypt hash.

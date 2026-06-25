@@ -24,7 +24,7 @@ def decode_perms(perms: int) -> list[int]:
     return [perm for perm in range(max_perm) if check_perm(perms, perm)]
 
 def check_user_perm(user, perm: int) -> bool:
-    return check_perm(user.permission, perm)
+    return check_perm(user.user_permissions, perm)
 
 def list_perm(user) -> list[str]:
     perms = []
@@ -48,7 +48,6 @@ def perm_required(perm: int):
                     return redirect(request.referrer)
 
             return func(*args, **kwargs)
-            return current_app.ensure_sync(func)(*args, **kwargs)
         return decorated_view
     return decorator
 
