@@ -41,6 +41,9 @@ def load_user(user_id: str) -> User | None:
 app.register_blueprint(bp)
 app.register_blueprint(auth_bp)
 
+with app.app_context():
+    db.create_all()
+
 if __name__ == "__main__":
     debug_mode = os.environ.get("FLASK_DEBUG", "True").lower() in ["true", "1", "t"]
     app.run(host="127.0.0.1", debug=debug_mode, port=8501)
