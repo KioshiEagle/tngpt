@@ -517,6 +517,7 @@ body {
     display: flex;
     flex-direction: column;
     gap: 6px;
+    position: relative;
 }
 
 .theme-toggle {
@@ -566,6 +567,100 @@ body {
 }
 
 .user-name { font-size: 13px; font-weight: 500; }
+
+/* --- USER TAB (button reset) --- */
+button.user-tab {
+    width: 100%;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+}
+
+/* --- USER MENU POPOVER --- */
+.user-menu {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 0;
+    right: 0;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+    padding: 12px;
+    z-index: 200;
+}
+.user-menu.open { display: block; }
+[data-theme="dark"] .user-menu { box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+
+.user-menu-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.user-menu-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+.user-menu-avatar--initials {
+    background: var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+.user-menu-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+.user-menu-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.user-menu-mail {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.user-menu-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 10px 0;
+}
+
+.user-menu-item {
+    display: block;
+    width: 100%;
+    padding: 7px 8px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: 'IBM Plex Mono', monospace;
+    text-decoration: none;
+    color: var(--text-muted);
+    transition: background 0.12s, color 0.12s;
+}
+.user-menu-item:hover { background: rgba(0,0,0,0.05); color: var(--text-main); }
+[data-theme="dark"] .user-menu-item:hover { background: rgba(255,255,255,0.08); }
+.user-menu-logout:hover { color: #e11d48; }
 
 .authors-corner {
     display: flex;

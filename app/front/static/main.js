@@ -81,6 +81,17 @@ document.addEventListener('DOMContentLoaded', () => {
         updateThemeLabel();
     });
 
+    // --- User menu ---
+    const userTab = document.getElementById('user-tab');
+    const userMenu = document.getElementById('user-menu');
+    userTab.addEventListener('click', (e) => {
+        e.stopPropagation();
+        userMenu.classList.toggle('open');
+    });
+    document.addEventListener('click', (e) => {
+        if (!userMenu.contains(e.target)) userMenu.classList.remove('open');
+    });
+
     // --- Mobile sidebar ---
     hamburger.addEventListener('click', () => {
         sidebar.classList.add('open');
