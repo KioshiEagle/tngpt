@@ -38,14 +38,30 @@
 
         <div class="sidebar-footer">
             <button class="theme-toggle" id="theme-toggle" aria-label="Changer le thème"></button>
-            <a href="#" class="user-tab" title="{{ current_user.user_firstname }} {{ current_user.user_surname }}">
+            <div class="user-menu" id="user-menu">
+                <div class="user-menu-header">
+                    {% if current_user.user_picture %}
+                        <img src="{{ current_user.user_picture }}" class="user-menu-avatar" alt="" referrerpolicy="no-referrer">
+                    {% else %}
+                        <div class="user-menu-avatar user-menu-avatar--initials">{{ current_user.user_firstname[0] }}{{ current_user.user_surname[0] }}</div>
+                    {% endif %}
+                    <div class="user-menu-info">
+                        <span class="user-menu-name">{{ current_user.user_firstname }} {{ current_user.user_surname }}</span>
+                        <span class="user-menu-mail">{{ current_user.user_mail }}</span>
+                    </div>
+                </div>
+                <div class="user-menu-divider"></div>
+                <a href="/auth/logout" class="user-menu-item user-menu-logout">Se déconnecter</a>
+            </div>
+
+            <button class="user-tab" id="user-tab">
                 {% if current_user.user_picture %}
                     <img src="{{ current_user.user_picture }}" class="user-avatar" alt="" referrerpolicy="no-referrer">
                 {% else %}
                     <div class="user-avatar">{{ current_user.user_firstname[0] }}{{ current_user.user_surname[0] }}</div>
                 {% endif %}
                 <span class="user-name">{{ current_user.user_firstname }} {{ current_user.user_surname }}</span>
-            </a>
+            </button>
         </div>
     </aside>
 
