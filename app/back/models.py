@@ -1,7 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
 from bcrypt import hashpw, gensalt, checkpw
 
-from permissions import all_perms, can_manage_users
+from .permissions import all_perms, can_manage_users
 
 db = SQLAlchemy()
 

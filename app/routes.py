@@ -10,6 +10,7 @@ from flask import (
     session,
     stream_with_context,
 )
+from flask_login import login_required
 
 from .back.generate import GenerateRequest, generate_answer
 from .extensions import limiter
@@ -90,6 +91,7 @@ def quote() -> str:
 
 
 @bp.route("/")
+@login_required
 def index() -> str:
     """Affiche la page d'accueil."""
     return render_template("index.html", quote=quote())
