@@ -1,4 +1,4 @@
-import os, secrets
+import base64, hashlib, os, secrets
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, session, abort
 from flask_login import current_user, login_user, logout_user
@@ -32,18 +32,28 @@ def login_page():
 @auth_bp.route("/login_google")
 def login_google():
     flow = Flow.from_client_config(
-        CLIENT_CONFIG, 
+        CLIENT_CONFIG,
         scopes=["https://www.googleapis.com/auth/userinfo.email", "openid"]
     )
 
-    flow.redirect_uri = url_for('auth.callback', _external=True)
+    redirect_uri = url_for('auth.callback', _external=True)
+    print(f"[AUTH] redirect_uri envoyée à Google : {redirect_uri}")
+    flow.redirect_uri = redirect_uri
+
+    code_verifier = secrets.token_urlsafe(96)
+    code_challenge = base64.urlsafe_b64encode(
+        hashlib.sha256(code_verifier.encode()).digest()
+    ).rstrip(b'=').decode()
 
     authorization_url, state = flow.authorization_url(
         access_type='offline',
-        prompt='select_account'
+        prompt='select_account',
+        code_challenge=code_challenge,
+        code_challenge_method='S256',
     )
 
-    session['oauth_state'] = state 
+    session['oauth_state'] = state
+    session['code_verifier'] = code_verifier
     return redirect(authorization_url)
 
 @auth_bp.route("/callback")
@@ -54,7 +64,10 @@ def callback():
     if not session.pop('oauth_state') == request.args.get('state'):
         abort(403)
 
-    flow.fetch_token(authorization_response=request.url)
+    flow.fetch_token(
+        authorization_response=request.url,
+        code_verifier=session.pop('code_verifier', None),
+    )
     credentials = flow.credentials
     # fetch user info (mail) via id_token
     info = id_token.verify_oauth2_token(credentials.id_token, Request(), CLIENT_CONFIG['web']['client_id'])

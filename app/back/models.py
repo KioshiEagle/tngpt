@@ -1,11 +1,12 @@
 from flask_sqlalchemy import SQLAlchemy
+from flask_login import UserMixin
 from bcrypt import hashpw, gensalt, checkpw
 
 from .permissions import all_perms, can_manage_users
 
 db = SQLAlchemy()
 
-class User(db.Model):
+class User(UserMixin, db.Model):
     """
     Core User model handling authentication and identity.
     """
