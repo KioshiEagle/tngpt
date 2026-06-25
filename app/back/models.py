@@ -14,15 +14,15 @@ class User(UserMixin, db.Model):
 
     __tablename__ = "users"
 
-    user_id          = db.Column(db.Integer, primary_key=True)
-    user_firstname   = db.Column(db.String(100), nullable=False)
-    user_surname     = db.Column(db.String(100), nullable=False)
-    user_mail        = db.Column(db.String(150), nullable=False, unique=True)
-    user_pwd         = db.Column(db.String(255), nullable=False)
+    user_id = db.Column(db.Integer, primary_key=True)
+    user_firstname = db.Column(db.String(100), nullable=False)
+    user_surname = db.Column(db.String(100), nullable=False)
+    user_mail = db.Column(db.String(150), nullable=False, unique=True)
+    user_pwd = db.Column(db.String(255), nullable=False)
     user_permissions = db.Column(db.Integer, nullable=False, default=0)
-    first_login_at   = db.Column(db.DateTime(timezone=True), nullable=True)
-    theme            = db.Column(db.String(5), nullable=False, default="light")
-    user_picture     = db.Column(db.String(500), nullable=True)
+    first_login_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    theme = db.Column(db.String(5), nullable=False, default="light")
+    user_picture = db.Column(db.String(500), nullable=True)
 
     conversations = db.relationship(
         "Conversation", back_populates="user", lazy="dynamic"
@@ -67,10 +67,8 @@ class Conversation(db.Model):
     __tablename__ = "conversations"
 
     conversation_id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(
-        db.Integer, db.ForeignKey("users.user_id"), nullable=False
-    )
-    title    = db.Column(db.String(200), nullable=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=False)
+    title = db.Column(db.String(200), nullable=True)
     messages = db.Column(db.JSON, nullable=False, default=list)
     created_at = db.Column(
         db.DateTime(timezone=True),

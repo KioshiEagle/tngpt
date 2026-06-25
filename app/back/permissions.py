@@ -48,8 +48,10 @@ def list_perm(user: Any) -> list[str]:
 
 def perm_required(perm: int) -> Callable[..., Any]:
     """Décorateur qui restreint l'accès à une permission spécifique."""
+
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         """Enveloppe la vue avec la vérification de permission."""
+
         @wraps(func)
         def decorated_view(*args: Any, **kwargs: Any) -> Any:
             """Vue décorée vérifiant la permission avant exécution."""
@@ -67,7 +69,9 @@ def perm_required(perm: int) -> Callable[..., Any]:
                 return redirect(request.referrer)
 
             return func(*args, **kwargs)
+
         return decorated_view
+
     return decorator
 
 
