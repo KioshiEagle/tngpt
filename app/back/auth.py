@@ -84,7 +84,9 @@ def callback() -> Response:
     flow = Flow.from_client_config(CLIENT_CONFIG, scopes=SCOPES)
     flow.redirect_uri = url_for("auth.callback", _external=True)
 
-    if session.pop("oauth_state") != request.args.get("state"):
+    # Valeur par défaut (None) pour éviter un KeyError (500) si la session
+    # a expiré ou si la page de callback est rechargée.
+    if session.pop("oauth_state", None) != request.args.get("state"):
         abort(403)
 
     flow.fetch_token(

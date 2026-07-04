@@ -1,11 +1,21 @@
 from collections.abc import Callable
 from functools import wraps
-from typing import Any
+from typing import ParamSpec, Protocol, TypeVar
 
 from flask import flash, redirect, request, url_for
 from flask_login import LoginManager, current_user
+from werkzeug.wrappers import Response
 
 login_manager = LoginManager()
+
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+class HasPermissions(Protocol):
+    """Objet exposant l'entier de permissions d'un utilisateur."""
+
+    user_permissions: int
 
 permission_table = [
     "User Management",  # 0
@@ -32,12 +42,12 @@ def decode_perms(perms: int) -> list[int]:
     return [perm for perm in range(len(permission_table)) if check_perm(perms, perm)]
 
 
-def check_user_perm(user: Any, perm: int) -> bool:
+def check_user_perm(user: HasPermissions, perm: int) -> bool:
     """Vérifie si l'utilisateur possède la permission donnée."""
     return check_perm(user.user_permissions, perm)
 
 
-def list_perm(user: Any) -> list[str]:
+def list_perm(user: HasPermissions) -> list[str]:
     """Retourne la liste des noms de permissions de l'utilisateur."""
     return [
         permission_table[perm]
@@ -46,14 +56,14 @@ def list_perm(user: Any) -> list[str]:
     ]
 
 
-def perm_required(perm: int) -> Callable[..., Any]:
+def perm_required(perm: int) -> Callable[[Callable[P, R]], Callable[P, R | Response]]:
     """Décorateur qui restreint l'accès à une permission spécifique."""
 
-    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+    def decorator(func: Callable[P, R]) -> Callable[P, R | Response]:
         """Enveloppe la vue avec la vérification de permission."""
 
         @wraps(func)
-        def decorated_view(*args: Any, **kwargs: Any) -> Any:
+        def decorated_view(*args: P.args, **kwargs: P.kwargs) -> R | Response:
             """Vue décorée vérifiant la permission avant exécution."""
             if not current_user.is_authenticated:
                 return login_manager.unauthorized()
@@ -78,6 +88,6 @@ def perm_required(perm: int) -> Callable[..., Any]:
 manage_users_required = perm_required(0)
 
 
-def can_manage_users(user: Any) -> bool:
+def can_manage_users(user: HasPermissions) -> bool:
     """Vérifie si l'utilisateur peut gérer les autres utilisateurs."""
     return check_user_perm(user, 0)
