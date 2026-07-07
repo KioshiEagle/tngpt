@@ -17,6 +17,7 @@ class HasPermissions(Protocol):
 
     user_permissions: int
 
+
 permission_table = [
     "User Management",  # 0
 ]
