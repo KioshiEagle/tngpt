@@ -1,6 +1,6 @@
 services:
   tngpt-app:
-    image: ${IMAGE_TAG}
+    image: ${IMAGE_TAG:-tngpt-app}
     container_name: tn-gpt-python
     ports:
       - "8501:8501"
@@ -9,7 +9,30 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - TRANSFORMERS_OFFLINE=1
+      - DATABASE_URL=postgresql://tngpt:${POSTGRES_PASSWORD}@db:5432/tngpt
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+  db:
+    image: postgres:16-alpine
+    container_name: tn-gpt-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=tngpt
+      - POSTGRES_USER=tngpt
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tngpt -d tngpt"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     restart: always
 
 volumes:
   hf_cache:
+  postgres_data:
