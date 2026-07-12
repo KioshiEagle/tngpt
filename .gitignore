@@ -11,6 +11,7 @@ core
 *.pyc
 *cache
 .python-version
+*.db
 
 # fichiers d'output
 processed_files.json
