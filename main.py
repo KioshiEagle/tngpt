@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 from flask import Flask, Response, jsonify, redirect, request, url_for
@@ -37,6 +38,11 @@ if not database_url:
     msg = "DATABASE_URL est absent de l'environnement (voir .env)."
     raise RuntimeError(msg)
 app.config["SQLALCHEMY_DATABASE_URI"] = database_url
+
+# Fichiers déposés dans le panel admin : zone de transit uniquement. Ils sont
+# supprimés dès l'ingestion terminée, le contenu vivant ensuite dans Qdrant.
+app.config["UPLOAD_DIR"] = Path(__file__).parent / "uploads"
+app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024  # 32 Mo par requête
 
 Compress(app)
 limiter.init_app(app)

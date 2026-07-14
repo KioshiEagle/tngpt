@@ -31,8 +31,10 @@
                class="admin-nav-item {% if request.endpoint == 'admin.permissions_page' %}is-active{% endif %}">
                 Permissions
             </a>
-            <span class="admin-nav-item is-disabled">Documents <em>à venir</em></span>
-            <span class="admin-nav-item is-disabled">Catalogue <em>à venir</em></span>
+            <a href="{{ url_for('admin.catalog_page') }}"
+               class="admin-nav-item {% if request.endpoint == 'admin.catalog_page' %}is-active{% endif %}">
+                Catalogue &amp; documents
+            </a>
             <span class="admin-nav-item is-disabled">Chunks <em>à venir</em></span>
             <span class="admin-nav-item is-disabled">Modération <em>à venir</em></span>
             <span class="admin-nav-item is-disabled">Quotas <em>à venir</em></span>
