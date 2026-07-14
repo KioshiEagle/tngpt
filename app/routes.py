@@ -10,7 +10,7 @@ from flask import (
     session,
     stream_with_context,
 )
-from flask_login import login_required
+from flask_login import current_user, login_required
 
 from .back.generate import GenerateRequest, generate_answer
 from .extensions import limiter
@@ -22,6 +22,7 @@ TOP_K = 5
 
 
 @bp.route("/chat", methods=["POST"])
+@login_required
 @limiter.limit("20 per minute")
 def chat() -> Response | tuple[Response, int]:
     """Répond en streaming à un message utilisateur."""
@@ -34,11 +35,15 @@ def chat() -> Response | tuple[Response, int]:
         msg = f"Message trop long (max {MAX_MESSAGE_LENGTH} caractères)"
         return jsonify({"error": msg}), 400
 
+    # Résolu hors du générateur : le contexte de requête ne doit pas être
+    # une dépendance du streaming.
+    user_name = current_user.user_firstname
+
     req = GenerateRequest(
         question=user_message,
         history=data.get("history", []),
         top_k=TOP_K,
-        user_name=None,  # remplacer par la valeur de session une fois l'auth intégrée
+        user_name=user_name,
     )
 
     def _stream() -> Iterator[str]:
@@ -51,12 +56,14 @@ def chat() -> Response | tuple[Response, int]:
 
 
 @bp.route("/history", methods=["GET"])
+@login_required
 def history() -> Response:
     """Renvoie l'historique de la conversation."""
     return jsonify(session.get("history", []))
 
 
 @bp.route("/history", methods=["DELETE"])
+@login_required
 def clear_history() -> Response:
     """Efface l'historique de la conversation."""
     session.pop("history", None)
