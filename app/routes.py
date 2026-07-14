@@ -12,7 +12,8 @@ from flask import (
 )
 from flask_login import current_user, login_required
 
-from .back.generate import GenerateRequest, generate_answer
+from .back.generate import GenerateRequest, generate_answer, retrieve
+from .back.usage import log_retrieval
 from .extensions import limiter
 
 bp = Blueprint("chat", __name__)
@@ -35,9 +36,10 @@ def chat() -> Response | tuple[Response, int]:
         msg = f"Message trop long (max {MAX_MESSAGE_LENGTH} caractères)"
         return jsonify({"error": msg}), 400
 
-    # Résolu hors du générateur : le contexte de requête ne doit pas être
+    # Résolus hors du générateur : le contexte de requête ne doit pas être
     # une dépendance du streaming.
     user_name = current_user.user_firstname
+    user_id = current_user.user_id
 
     req = GenerateRequest(
         question=user_message,
@@ -46,9 +48,20 @@ def chat() -> Response | tuple[Response, int]:
         user_name=user_name,
     )
 
+    # Recherche et journalisation avant le streaming : l'événement est ainsi
+    # enregistré même si le client se déconnecte pendant la réponse, et on
+    # n'écrit pas en base depuis un générateur dont le contexte se démonte.
+    results = retrieve(req)
+    log_retrieval(
+        user_id=user_id,
+        question=user_message,
+        top_k=TOP_K,
+        results=results,
+    )
+
     def _stream() -> Iterator[str]:
         try:
-            yield from generate_answer(req)
+            yield from generate_answer(req, results)
         except Exception as e:  # noqa: BLE001
             yield f"Erreur : {e!s}"
 

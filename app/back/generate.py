@@ -178,11 +178,27 @@ def _enrich_query(question: str, history: list[HistoryMessage], n: int = 2) -> s
     return " | ".join(pairs) + f" | {question}"
 
 
-def generate_answer(req: GenerateRequest) -> Iterator[str]:
-    """Génère une réponse en streaming : enrichissement → Qdrant → prompt → Groq."""
+def retrieve(req: GenerateRequest) -> list[SearchResult]:
+    """Enrichit la question avec l'historique puis interroge Qdrant.
+
+    Exposé séparément de la génération pour que l'appelant puisse journaliser
+    les chunks retrouvés avant que le streaming ne commence.
+    """
     enriched = _enrich_query(req.question, req.history)
     results = search(enriched, top_k=req.top_k)
     _log_results(results)
+    return results
+
+
+def generate_answer(
+    req: GenerateRequest, results: list[SearchResult] | None = None
+) -> Iterator[str]:
+    """Génère une réponse en streaming : enrichissement → Qdrant → prompt → Groq.
+
+    `results` évite de refaire la recherche quand l'appelant l'a déjà effectuée.
+    """
+    if results is None:
+        results = retrieve(req)
 
     client = _get_groq_client()
     current_results = results

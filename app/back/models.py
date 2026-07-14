@@ -27,6 +27,7 @@ class User(UserMixin, db.Model):
     conversations = db.relationship(
         "Conversation", back_populates="user", lazy="dynamic"
     )
+    queries = db.relationship("Query", back_populates="user", lazy="dynamic")
 
     def __repr__(self) -> str:
         """Représentation lisible de l'utilisateur."""
@@ -87,3 +88,75 @@ class Conversation(db.Model):
     def __repr__(self) -> str:
         """Représentation lisible de la conversation."""
         return f"Conversation {self.conversation_id} — {self.title!r}"
+
+
+class Query(db.Model):
+    """Une question posée à TN-GPT.
+
+    Une ligne par question : c'est l'unité de comptage des quotas d'usage.
+    """
+
+    __tablename__ = "queries"
+
+    query_id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey("users.user_id"), nullable=False, index=True
+    )
+    question = db.Column(db.String(500), nullable=False)
+    top_k = db.Column(db.Integer, nullable=False)
+    # Nombre de chunks réellement retournés : 0 signale une question sans
+    # contexte trouvé (sous le seuil de score), signal utile en monitoring.
+    result_count = db.Column(db.Integer, nullable=False, default=0)
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        index=True,
+    )
+
+    user = db.relationship("User", back_populates="queries")
+    events = db.relationship(
+        "RetrievalEvent", back_populates="query", cascade="all, delete-orphan"
+    )
+
+    def __repr__(self) -> str:
+        """Représentation lisible de la question."""
+        return f"Query {self.query_id} — {self.question[:40]!r}"
+
+
+class RetrievalEvent(db.Model):
+    """Un chunk retrouvé dans Qdrant pour répondre à une question.
+
+    Une ligne par chunk et par question. Alimente le classement des chunks les
+    plus utilisés (candidats à la mise en cache).
+    """
+
+    __tablename__ = "retrieval_events"
+
+    event_id = db.Column(db.Integer, primary_key=True)
+    query_id = db.Column(
+        db.Integer, db.ForeignKey("queries.query_id"), nullable=False, index=True
+    )
+    # Identifiant du point Qdrant : la clé d'agrégation du barchart.
+    point_id = db.Column(db.String(64), nullable=False, index=True)
+    # Document d'origine (drive_id) et titre, dénormalisés : ils permettent
+    # d'afficher les statistiques sans réinterroger Qdrant, et de les conserver
+    # même si le document est supprimé de la base vectorielle.
+    source_id = db.Column(db.String(128), nullable=True, index=True)
+    title = db.Column(db.String(300), nullable=True)
+    rank = db.Column(db.Integer, nullable=False)
+    score = db.Column(db.Float, nullable=False)
+    semantic_score = db.Column(db.Float, nullable=False)
+    freshness_score = db.Column(db.Float, nullable=False)
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        index=True,
+    )
+
+    query = db.relationship("Query", back_populates="events")
+
+    def __repr__(self) -> str:
+        """Représentation lisible de l'événement."""
+        return f"RetrievalEvent {self.point_id} (rang {self.rank})"
