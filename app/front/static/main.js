@@ -234,6 +234,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 signal: abortController.signal,
             });
 
+            if (response.status === 401) {
+                const { login_url } = await response.json();
+                window.location.assign(login_url || '/auth/login');
+                return;
+            }
+
             if (!response.ok) throw new Error();
 
             const reader = response.body.getReader();

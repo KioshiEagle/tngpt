@@ -77,6 +77,7 @@ def search(
 
         results.append(
             SearchResult(
+                point_id=str(point.id),
                 content=payload.get("text", "Texte non trouvé"),
                 metadata={k: v for k, v in payload.items() if k != "text"},
                 score=hybrid,

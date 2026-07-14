@@ -4,7 +4,7 @@ from bcrypt import checkpw, gensalt, hashpw
 from flask_login import UserMixin
 from flask_sqlalchemy import SQLAlchemy
 
-from .permissions import all_perms, can_manage_users
+from .permissions import can_manage_users, is_admin
 
 db = SQLAlchemy()
 
@@ -58,7 +58,7 @@ class User(UserMixin, db.Model):
 
     def is_admin(self) -> bool:
         """Vérifie si l'utilisateur est administrateur."""
-        return self.user_permissions == all_perms
+        return is_admin(self)
 
 
 class Conversation(db.Model):
