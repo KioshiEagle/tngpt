@@ -31,6 +31,16 @@ admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 _HTTP_BAD_REQUEST = 400
 
 
+@admin_bp.app_template_filter("bitwise_has")
+def bitwise_has(perms: int, perm: int) -> bool:
+    """Filtre Jinja : le bit `perm` est-il activé dans le bitmask `perms` ?
+
+    Volontairement brut (pas d'implication du bit Administration) : les cases à
+    cocher doivent refléter les bits réellement stockés, pas les droits effectifs.
+    """
+    return check_perm(perms, perm)
+
+
 @admin_bp.route("/")
 @admin_required
 def index() -> str:

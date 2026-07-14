@@ -1,0 +1,98 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Permissions{% endblock %}
+{% block heading %}Permissions{% endblock %}
+{% block subtitle %}Désignez qui administre TN-GPT. La permission « Administration » implique toutes les autres.{% endblock %}
+
+{% block content %}
+
+    <div class="admin-card">
+        <div class="admin-table-scroll">
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th>Utilisateur</th>
+                        {% for name in permission_table %}
+                            <th class="admin-th-perm">{{ name }}</th>
+                        {% endfor %}
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                        {% set is_me = user.user_id == current_user.user_id %}
+                        <tr>
+                            <td>
+                                <div class="admin-user">
+                                    {% if user.user_picture %}
+                                        <img src="{{ user.user_picture }}" class="admin-avatar" alt="" referrerpolicy="no-referrer" width="32" height="32">
+                                    {% else %}
+                                        <span class="admin-avatar admin-avatar--initials">{{ user.user_firstname[0] }}{{ user.user_surname[0] }}</span>
+                                    {% endif %}
+                                    <span class="admin-user-text">
+                                        <span class="admin-user-name">
+                                            {{ user.user_firstname }} {{ user.user_surname }}
+                                            {% if is_me %}<span class="admin-badge">vous</span>{% endif %}
+                                        </span>
+                                        <span class="admin-user-mail">{{ user.user_mail }}</span>
+                                    </span>
+                                </div>
+                            </td>
+
+                            {% for index in range(permission_table | length) %}
+                                <td class="admin-td-perm">
+                                    <input type="checkbox"
+                                           form="perms-{{ user.user_id }}"
+                                           name="perms"
+                                           value="{{ index }}"
+                                           class="admin-check {% if index == perm_admin %}admin-check--admin{% endif %}"
+                                           data-row="{{ user.user_id }}"
+                                           {% if user.user_permissions | bitwise_has(index) %}checked{% endif %}
+                                           {% if is_me and index == perm_admin %}disabled title="Vous ne pouvez pas retirer votre propre permission Administration."{% endif %}>
+                                </td>
+                            {% endfor %}
+
+                            <td class="admin-td-action">
+                                <form id="perms-{{ user.user_id }}"
+                                      method="post"
+                                      action="{{ url_for('admin.update_permissions', user_id=user.user_id) }}">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    {% if is_me %}
+                                        {# La case est désactivée donc non soumise : on réinjecte le bit pour ne pas le perdre. #}
+                                        <input type="hidden" name="perms" value="{{ perm_admin }}">
+                                    {% endif %}
+                                    <button type="submit" class="admin-btn">Enregistrer</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <p class="admin-note">
+        Le premier administrateur se crée en ligne de commande :
+        <code>flask make-admin &lt;email&gt;</code>. Les suivants se désignent ici.
+    </p>
+
+    <script>
+        // « Administration » implique toutes les autres permissions : on les coche
+        // et on les désactive pour que l'écran reflète les droits réels.
+        document.querySelectorAll('.admin-check--admin').forEach(function (adminBox) {
+            var row = adminBox.dataset.row;
+            var others = document.querySelectorAll('.admin-check[data-row="' + row + '"]:not(.admin-check--admin)');
+
+            function sync() {
+                others.forEach(function (box) {
+                    box.disabled = adminBox.checked;
+                    if (adminBox.checked) box.checked = true;
+                });
+            }
+
+            adminBox.addEventListener('change', sync);
+            sync();
+        });
+    </script>
+
+{% endblock %}
