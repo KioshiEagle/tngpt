@@ -2,8 +2,6 @@ import logging
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import Select
-
 from flask import (
     Blueprint,
     abort,
@@ -16,6 +14,7 @@ from flask import (
     url_for,
 )
 from flask_login import current_user
+from sqlalchemy import Select
 from werkzeug.utils import secure_filename
 from werkzeug.wrappers import Response
 
@@ -247,7 +246,7 @@ def catalog_sync() -> Response:
 @admin_bp.route("/chunks")
 @view_analytics_required
 def chunks_page() -> str:
-    """Fréquence de retrieval des chunks : que gagnerait-on à les mettre en cache ?"""
+    """Fréquence de retrieval des chunks, pour décider lesquels mettre en cache."""
     days = request.args.get("days", default=0, type=int)
     if days not in _WINDOWS:
         days = 0
