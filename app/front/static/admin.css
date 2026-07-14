@@ -1,5 +1,12 @@
 /* Panel admin — s'appuie sur les variables de thème définies dans style.css */
 
+/* Teinte des barres de graphique. Distincte de --primary : le violet clair du
+   thème sombre (#a78bfa) convient au texte et aux boutons mais sort de la bande
+   de luminosité admise pour un aplat de données. Ces deux valeurs sont validées
+   contre leur surface respective (bande, chroma, contraste ≥ 3:1). */
+:root { --chart-bar: #6d28d9; }
+[data-theme="dark"] { --chart-bar: #8b5cf6; }
+
 /* style.css fige le body (height:100vh; overflow:hidden) pour le chat, qui est
    une interface plein écran. Le panel, lui, a du contenu long : on garde le
    body figé et on fait défiler la zone de contenu, la barre latérale restant
@@ -451,7 +458,99 @@
 
 .admin-pagination .admin-note { margin: 0; }
 
+/* --- Barchart horizontal (une seule série : une seule teinte, pas de légende) --- */
+
+.chart {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;            /* respiration entre aplats voisins */
+    margin: 16px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.chart-row {
+    display: grid;
+    grid-template-columns: minmax(0, 260px) 1fr;
+    align-items: center;
+    gap: 12px;
+    padding: 3px 0;
+}
+
+.chart-row:hover { background: var(--bg-input); }
+
+.chart-label {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.chart-label-title {
+    overflow: hidden;
+    color: var(--text-main);   /* l'encre reste de l'encre : jamais la couleur de la série */
+    font-size: 0.82rem;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.chart-label-sub {
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.chart-track {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.chart-bar {
+    height: 14px;                        /* mark fin */
+    min-width: 2px;
+    border-radius: 0 4px 4px 0;          /* extrémité arrondie, ancrée à la ligne de base */
+    background: var(--chart-bar);
+}
+
+.chart-value {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.admin-chart-lede { margin-top: 6px; }
+
+.admin-card--spaced { margin-top: 16px; }
+
+/* --- Sélecteur de fenêtre temporelle --- */
+
+.admin-windows {
+    display: flex;
+    gap: 4px;
+}
+
+.admin-window {
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    text-decoration: none;
+}
+
+.admin-window:hover { color: var(--text-main); }
+
+.admin-window.is-active {
+    border-color: var(--primary);
+    background: var(--primary-light);
+    color: var(--primary);
+    font-weight: 600;
+}
+
 @media (max-width: 720px) {
+    .chart-row { grid-template-columns: minmax(0, 130px) 1fr; }
+
     /* En colonne, la barre latérale est empilée au-dessus du contenu : c'est la
        page entière qui doit défiler, pas la seule zone de contenu. */
     .admin-page {

@@ -1,6 +1,8 @@
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+
+from sqlalchemy import Select
 
 from flask import (
     Blueprint,
@@ -32,6 +34,7 @@ from .models import (
     Conversation,
     Document,
     Query,
+    RetrievalEvent,
     User,
     db,
 )
@@ -45,6 +48,7 @@ from .permissions import (
     manage_users_required,
     nb_perms,
     permission_table,
+    view_analytics_required,
 )
 
 logger = logging.getLogger(__name__)
@@ -55,6 +59,9 @@ _HTTP_BAD_REQUEST = 400
 _PER_PAGE = 50
 _ALLOWED_SUFFIXES = {".pdf", ".md"}
 _MAX_SOURCE_ID = 128
+_TOP_CHUNKS = 20
+_TOP_SOURCES = 10
+_WINDOWS = {0: "Depuis toujours", 7: "7 jours", 30: "30 jours"}
 
 
 @admin_bp.app_template_filter("bitwise_has")
@@ -235,6 +242,99 @@ def catalog_sync() -> Response:
         "success",
     )
     return redirect(url_for("admin.catalog_page"))
+
+
+@admin_bp.route("/chunks")
+@view_analytics_required
+def chunks_page() -> str:
+    """Fréquence de retrieval des chunks : que gagnerait-on à les mettre en cache ?"""
+    days = request.args.get("days", default=0, type=int)
+    if days not in _WINDOWS:
+        days = 0
+
+    since = datetime.now(UTC) - timedelta(days=days) if days else None
+
+    def within_window(statement: Select) -> Select:
+        """Restreint une requête à la fenêtre temporelle choisie."""
+        if since is not None:
+            return statement.where(RetrievalEvent.created_at >= since)
+        return statement
+
+    total_events = (
+        db.session.scalar(
+            within_window(db.select(db.func.count(RetrievalEvent.event_id)))
+        )
+        or 0
+    )
+
+    top_chunks = db.session.execute(
+        within_window(
+            db.select(
+                RetrievalEvent.point_id,
+                RetrievalEvent.title,
+                RetrievalEvent.source_id,
+                db.func.count(RetrievalEvent.event_id).label("hits"),
+                db.func.avg(RetrievalEvent.score).label("avg_score"),
+            )
+        )
+        .group_by(
+            RetrievalEvent.point_id, RetrievalEvent.title, RetrievalEvent.source_id
+        )
+        .order_by(db.desc("hits"))
+        .limit(_TOP_CHUNKS)
+    ).all()
+
+    top_sources = db.session.execute(
+        within_window(
+            db.select(
+                RetrievalEvent.source_id,
+                RetrievalEvent.title,
+                db.func.count(RetrievalEvent.event_id).label("hits"),
+            )
+        )
+        .group_by(RetrievalEvent.source_id, RetrievalEvent.title)
+        .order_by(db.desc("hits"))
+        .limit(_TOP_SOURCES)
+    ).all()
+
+    distinct_chunks = (
+        db.session.scalar(
+            within_window(
+                db.select(db.func.count(db.distinct(RetrievalEvent.point_id)))
+            )
+        )
+        or 0
+    )
+
+    # Couverture cumulée : part des retrievals absorbée par les chunks les plus
+    # sollicités. C'est le chiffre qui décide de l'intérêt d'un cache — un top 20
+    # couvrant 60 % des accès le justifie, 5 % ne le justifie pas.
+    covered = sum(row.hits for row in top_chunks)
+    coverage = round(100 * covered / total_events, 1) if total_events else 0.0
+    max_hits = max((row.hits for row in top_chunks), default=0)
+
+    questions_statement = db.select(db.func.count(Query.query_id))
+    empty_statement = db.select(db.func.count(Query.query_id)).where(
+        Query.result_count == 0
+    )
+    if since is not None:
+        questions_statement = questions_statement.where(Query.created_at >= since)
+        empty_statement = empty_statement.where(Query.created_at >= since)
+
+    return render_template(
+        "admin/chunks.html",
+        top_chunks=top_chunks,
+        top_sources=top_sources,
+        total_events=total_events,
+        distinct_chunks=distinct_chunks,
+        coverage=coverage,
+        max_hits=max_hits,
+        questions=db.session.scalar(questions_statement) or 0,
+        unanswered=db.session.scalar(empty_statement) or 0,
+        days=days,
+        windows=_WINDOWS,
+        top_n=_TOP_CHUNKS,
+    )
 
 
 @admin_bp.route("/permissions")
