@@ -17,6 +17,11 @@ DOC_MISSING = "missing"  # connu du catalogue, absent de Qdrant (désynchronisé
 DOC_ORIGIN_DRIVE = "drive"  # ingéré par la pipeline Google Drive
 DOC_ORIGIN_UPLOAD = "upload"  # déposé depuis le panel admin
 
+# États de modération d'un utilisateur.
+USER_ACTIVE = "active"  # usage normal
+USER_LIMITED = "limited"  # accès conservé, débit fortement réduit
+USER_BANNED = "banned"  # sessions coupées, reconnexion refusée
+
 
 class User(UserMixin, db.Model):
     """Modèle principal gérant l'authentification et l'identité."""
@@ -33,10 +38,20 @@ class User(UserMixin, db.Model):
     theme = db.Column(db.String(5), nullable=False, default="light")
     user_picture = db.Column(db.String(500), nullable=True)
 
+    status = db.Column(db.String(20), nullable=False, default=USER_ACTIVE, index=True)
+    ban_reason = db.Column(db.String(300), nullable=True)
+    moderated_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    moderated_by = db.Column(
+        db.Integer, db.ForeignKey("users.user_id"), nullable=True
+    )  # qui a pris la sanction (auto-référence)
+
     conversations = db.relationship(
         "Conversation", back_populates="user", lazy="dynamic"
     )
     queries = db.relationship("Query", back_populates="user", lazy="dynamic")
+    moderator = db.relationship(
+        "User", remote_side=[user_id], foreign_keys=[moderated_by]
+    )
 
     def __repr__(self) -> str:
         """Représentation lisible de l'utilisateur."""
@@ -69,6 +84,24 @@ class User(UserMixin, db.Model):
     def is_admin(self) -> bool:
         """Vérifie si l'utilisateur est administrateur."""
         return is_admin(self)
+
+    @property
+    def is_active(self) -> bool:
+        """Un banni ne peut pas ouvrir de session.
+
+        Flask-Login consulte cette propriété dans `login_user()` : la surcharger
+        (UserMixin la fixe à True) suffit à refuser toute nouvelle connexion. Les
+        sessions déjà ouvertes, elles, sont coupées dans le `user_loader`.
+        """
+        return self.status != USER_BANNED
+
+    def is_banned(self) -> bool:
+        """Indique si l'accès de l'utilisateur est suspendu."""
+        return self.status == USER_BANNED
+
+    def is_limited(self) -> bool:
+        """Indique si l'utilisateur est en usage restreint."""
+        return self.status == USER_LIMITED
 
 
 class Conversation(db.Model):

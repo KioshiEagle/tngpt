@@ -14,7 +14,7 @@ from flask_login import current_user, login_required
 
 from .back.generate import GenerateRequest, generate_answer, retrieve
 from .back.usage import log_retrieval
-from .extensions import limiter
+from .extensions import chat_rate_limit, limiter
 
 bp = Blueprint("chat", __name__)
 
@@ -24,7 +24,7 @@ TOP_K = 5
 
 @bp.route("/chat", methods=["POST"])
 @login_required
-@limiter.limit("20 per minute")
+@limiter.limit(chat_rate_limit)
 def chat() -> Response | tuple[Response, int]:
     """Répond en streaming à un message utilisateur."""
     data = request.get_json()

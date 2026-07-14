@@ -56,8 +56,16 @@ login_manager.login_view = "auth.login_page"
 
 @login_manager.user_loader
 def load_user(user_id: str) -> User | None:
-    """Charge un utilisateur depuis la session Flask-Login."""
-    return db.session.get(User, int(user_id))
+    """Charge un utilisateur depuis la session Flask-Login.
+
+    Un banni est traité comme non connecté : c'est ce qui rend le bannissement
+    immédiat. Sans ce contrôle, sa session resterait valide jusqu'à expiration du
+    cookie et il continuerait d'utiliser le chat.
+    """
+    user = db.session.get(User, int(user_id))
+    if user is not None and user.is_banned():
+        return None
+    return user
 
 
 @login_manager.unauthorized_handler
