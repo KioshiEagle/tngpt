@@ -152,6 +152,36 @@ class DocumentProcessor:
 
         return meta
 
+    def convert_file(self, pdf_path: Path, output_dir: Path) -> Path:
+        """Convertit un PDF en Markdown avec frontmatter et retourne le chemin du .md.
+
+        Unité de travail de la conversion : `convert_directory` en fait une boucle,
+        et le dépôt d'un fichier unique depuis le panel admin l'appelle directement.
+        """
+        if pdf_path.stat().st_size == 0:
+            msg = f"Fichier vide : {pdf_path.name}"
+            raise ValueError(msg)
+
+        print(f"⚡ PDF -> MD : {pdf_path.name}")
+        md_content = pymupdf4llm.to_markdown(str(pdf_path))
+
+        meta = self._extract_metadata(md_content, pdf_path.stem)
+        title = (meta.get("title") or pdf_path.stem).replace("\n", " ")
+        doc_date = meta.get("date") or ""
+        author = (meta.get("author") or "Inconnu").replace("\n", " ")
+        print(f"   → titre: {title} | date: {doc_date} | auteur: {author}")
+
+        frontmatter = (
+            f'---\ntitle: "{title}"\ndate: "{doc_date}"\nauthor: "{author}"\n---\n\n'
+        )
+
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+        md_path = Path(output_dir) / f"{pdf_path.stem}.md"
+        with md_path.open("w", encoding="utf-8") as f:
+            f.write(frontmatter + md_content)
+
+        return md_path
+
     def convert_directory(
         self, source_dir: Path, output_dir: Path, log_file: Path
     ) -> None:
@@ -161,33 +191,13 @@ class DocumentProcessor:
 
         for pdf_path in Path(source_dir).glob("*.pdf"):
             try:
-                if pdf_path.stat().st_size == 0:
-                    print(f"⚠️ Fichier vide ignoré : {pdf_path.name}")
-                    continue
-
                 current_hash = hashlib.sha256(pdf_path.read_bytes()).hexdigest()
                 md_path = Path(output_dir) / f"{pdf_path.stem}.md"
                 if processed.get(pdf_path.stem) == current_hash and md_path.exists():
                     print(f"⏭️  Déjà converti : {pdf_path.name}")
                     continue
 
-                print(f"⚡ PDF -> MD : {pdf_path.name}")
-                md_content = pymupdf4llm.to_markdown(str(pdf_path))
-
-                meta = self._extract_metadata(md_content, pdf_path.stem)
-                title = (meta.get("title") or pdf_path.stem).replace("\n", " ")
-                doc_date = meta.get("date") or ""
-                author = (meta.get("author") or "Inconnu").replace("\n", " ")
-                print(f"   → titre: {title} | date: {doc_date} | auteur: {author}")
-
-                frontmatter = (
-                    f'---\ntitle: "{title}"\ndate: "{doc_date}"\n'
-                    f'author: "{author}"\n---\n\n'
-                )
-
-                with md_path.open("w", encoding="utf-8") as f:
-                    f.write(frontmatter + md_content)
-
+                self.convert_file(pdf_path, Path(output_dir))
                 processed[pdf_path.stem] = current_hash
 
             except (RuntimeError, ValueError, OSError) as e:

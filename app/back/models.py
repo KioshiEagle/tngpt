@@ -8,6 +8,15 @@ from .permissions import can_manage_users, is_admin
 
 db = SQLAlchemy()
 
+# États d'un document du catalogue.
+DOC_INDEXING = "indexing"  # ingestion en cours
+DOC_INDEXED = "indexed"  # présent dans Qdrant
+DOC_FAILED = "failed"  # l'ingestion a échoué (voir Document.error)
+DOC_MISSING = "missing"  # connu du catalogue, absent de Qdrant (désynchronisé)
+
+DOC_ORIGIN_DRIVE = "drive"  # ingéré par la pipeline Google Drive
+DOC_ORIGIN_UPLOAD = "upload"  # déposé depuis le panel admin
+
 
 class User(UserMixin, db.Model):
     """Modèle principal gérant l'authentification et l'identité."""
@@ -88,6 +97,54 @@ class Conversation(db.Model):
     def __repr__(self) -> str:
         """Représentation lisible de la conversation."""
         return f"Conversation {self.conversation_id} — {self.title!r}"
+
+
+class Document(db.Model):
+    """Un document source présent dans la base vectorielle Qdrant.
+
+    Catalogue de données : reflète ce que contient Qdrant à l'instant t.
+    Remplace le fichier processed_files.json, qui était local au conteneur,
+    éphémère et invisible depuis l'application web.
+    """
+
+    __tablename__ = "documents"
+
+    # Identifiant du document dans Qdrant (payload "source") : l'id Drive pour
+    # la pipeline, le nom du fichier déposé pour un upload manuel.
+    source_id = db.Column(db.String(128), primary_key=True)
+    title = db.Column(db.String(300), nullable=True)
+    author = db.Column(db.String(200), nullable=True)
+    # Date issue du frontmatter, de format libre et stockée telle quelle dans
+    # Qdrant (index KEYWORD) : on la conserve en texte pour rester cohérent.
+    doc_date = db.Column(db.String(50), nullable=True)
+
+    chunk_count = db.Column(db.Integer, nullable=False, default=0)
+    file_hash = db.Column(db.String(64), nullable=True)
+
+    status = db.Column(db.String(20), nullable=False, default=DOC_INDEXED, index=True)
+    origin = db.Column(db.String(20), nullable=False, default=DOC_ORIGIN_DRIVE)
+    error = db.Column(db.Text, nullable=True)
+
+    ingested_by = db.Column(
+        db.Integer, db.ForeignKey("users.user_id"), nullable=True
+    )  # null = pipeline automatique, pas un humain
+    ingested_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+    )
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
+
+    uploader = db.relationship("User")
+
+    def __repr__(self) -> str:
+        """Représentation lisible du document."""
+        return f"Document {self.source_id} — {self.title!r} ({self.status})"
 
 
 class Query(db.Model):

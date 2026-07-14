@@ -1,11 +1,17 @@
 /* Panel admin — s'appuie sur les variables de thème définies dans style.css */
 
+/* style.css fige le body (height:100vh; overflow:hidden) pour le chat, qui est
+   une interface plein écran. Le panel, lui, a du contenu long : on garde le
+   body figé et on fait défiler la zone de contenu, la barre latérale restant
+   visible — comportement attendu d'un dashboard. */
 .admin-page {
     display: flex;
-    min-height: 100vh;
+    height: 100vh;
     margin: 0;
+    overflow: hidden;
     background: var(--bg);
     color: var(--text-main);
+    font-size: 16px;
 }
 
 /* --- Barre latérale --- */
@@ -16,6 +22,7 @@
     flex-shrink: 0;
     width: 240px;
     padding: 20px 14px;
+    overflow-y: auto;
     background: var(--bg-sidebar);
     border-right: 1px solid var(--border);
 }
@@ -90,6 +97,7 @@
     flex: 1;
     min-width: 0;
     padding: 32px 36px;
+    overflow-y: auto;   /* c'est ici que le contenu long défile */
 }
 
 .admin-header { margin-bottom: 24px; }
@@ -292,14 +300,176 @@
     color: var(--primary);
 }
 
+.admin-btn--primary {
+    border-color: var(--primary);
+    background: var(--primary);
+    color: #fff;
+}
+
+.admin-btn--primary:hover {
+    color: #fff;
+    opacity: 0.9;
+}
+
+.admin-btn--danger:hover {
+    border-color: #dc2626;
+    color: #dc2626;
+}
+
+.admin-link {
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--primary);
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+/* --- Zone de dépôt --- */
+
+.admin-drop {
+    margin-bottom: 16px;
+    padding: 26px 20px;
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    background: var(--bg-sidebar);
+    text-align: center;
+    transition: border-color 0.15s, background 0.15s;
+}
+
+.admin-drop.is-hover {
+    border-color: var(--primary);
+    background: var(--primary-light);
+}
+
+.admin-drop-title {
+    margin: 0 0 4px;
+    font-weight: 600;
+}
+
+.admin-drop .admin-note { margin-top: 0; }
+
+.admin-drop-list {
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.admin-drop-item {
+    display: inline-block;
+    margin: 3px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+}
+
+.admin-drop-item--pending { background: var(--bg-input); color: var(--text-muted); }
+.admin-drop-item--error   { background: #fee2e2; color: #991b1b; }
+
+[data-theme="dark"] .admin-drop-item--error { background: #7f1d1d; color: #fecaca; }
+
+.admin-error { cursor: help; }
+
+/* --- Barre d'outils : recherche + actions --- */
+
+.admin-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.admin-search {
+    display: flex;
+    gap: 8px;
+}
+
+.admin-search input {
+    width: min(340px, 60vw);
+    padding: 7px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-input);
+    color: var(--text-main);
+    font-size: 0.85rem;
+    font-family: inherit;
+}
+
+.admin-search input:focus {
+    outline: 2px solid var(--primary);
+    outline-offset: -1px;
+}
+
+/* --- Étiquettes et états --- */
+
+.admin-td-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.admin-tag {
+    padding: 2px 8px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+}
+
+.admin-status {
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 600;
+}
+
+.admin-status--indexed  { background: #dcfce7; color: #166534; }
+.admin-status--indexing { background: #dbeafe; color: #1e40af; }
+.admin-status--missing  { background: #fef3c7; color: #92400e; }
+.admin-status--failed   { background: #fee2e2; color: #991b1b; }
+
+[data-theme="dark"] .admin-status--indexed  { background: #14532d; color: #bbf7d0; }
+[data-theme="dark"] .admin-status--indexing { background: #1e3a8a; color: #bfdbfe; }
+[data-theme="dark"] .admin-status--missing  { background: #78350f; color: #fde68a; }
+[data-theme="dark"] .admin-status--failed   { background: #7f1d1d; color: #fecaca; }
+
+.admin-empty {
+    padding: 28px 10px;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+.admin-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    margin-top: 16px;
+}
+
+.admin-pagination .admin-note { margin: 0; }
+
 @media (max-width: 720px) {
-    .admin-page { flex-direction: column; }
+    /* En colonne, la barre latérale est empilée au-dessus du contenu : c'est la
+       page entière qui doit défiler, pas la seule zone de contenu. */
+    .admin-page {
+        flex-direction: column;
+        height: auto;
+        min-height: 100vh;
+        overflow-y: auto;
+    }
 
     .admin-sidebar {
         width: auto;
+        overflow-y: visible;
         border-right: none;
         border-bottom: 1px solid var(--border);
     }
 
-    .admin-main { padding: 20px 16px; }
+    .admin-main {
+        padding: 20px 16px;
+        overflow-y: visible;
+    }
 }
