@@ -432,15 +432,46 @@
     font-weight: 600;
 }
 
+/* Statuts : couleurs réservées (bon / attention / grave), jamais réutilisées
+   comme couleurs de série, et toujours doublées du libellé — jamais la couleur seule. */
 .admin-status--indexed  { background: #dcfce7; color: #166534; }
 .admin-status--indexing { background: #dbeafe; color: #1e40af; }
 .admin-status--missing  { background: #fef3c7; color: #92400e; }
 .admin-status--failed   { background: #fee2e2; color: #991b1b; }
+.admin-status--active   { background: #dcfce7; color: #166534; }
+.admin-status--limited  { background: #fef3c7; color: #92400e; }
+.admin-status--banned   { background: #fee2e2; color: #991b1b; }
 
 [data-theme="dark"] .admin-status--indexed  { background: #14532d; color: #bbf7d0; }
 [data-theme="dark"] .admin-status--indexing { background: #1e3a8a; color: #bfdbfe; }
 [data-theme="dark"] .admin-status--missing  { background: #78350f; color: #fde68a; }
 [data-theme="dark"] .admin-status--failed   { background: #7f1d1d; color: #fecaca; }
+[data-theme="dark"] .admin-status--active   { background: #14532d; color: #bbf7d0; }
+[data-theme="dark"] .admin-status--limited  { background: #78350f; color: #fde68a; }
+[data-theme="dark"] .admin-status--banned   { background: #7f1d1d; color: #fecaca; }
+
+.admin-cell-muted {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+.admin-moderate {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.admin-moderate input[type="text"] {
+    width: 160px;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-input);
+    color: var(--text-main);
+    font-size: 0.8rem;
+    font-family: inherit;
+}
 
 .admin-empty {
     padding: 28px 10px;

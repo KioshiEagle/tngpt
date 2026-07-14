@@ -18,6 +18,8 @@ from sqlalchemy import Select
 from werkzeug.utils import secure_filename
 from werkzeug.wrappers import Response
 
+from app.extensions import CHAT_RATE_DEFAULT, CHAT_RATE_LIMITED
+
 from .catalog import (
     delete_document,
     reset_stale_ingestions,
@@ -30,6 +32,9 @@ from .models import (
     DOC_INDEXING,
     DOC_MISSING,
     DOC_ORIGIN_UPLOAD,
+    USER_ACTIVE,
+    USER_BANNED,
+    USER_LIMITED,
     Conversation,
     Document,
     Query,
@@ -45,6 +50,7 @@ from .permissions import (
     list_perm,
     manage_documents_required,
     manage_users_required,
+    moderate_required,
     nb_perms,
     permission_table,
     view_analytics_required,
@@ -61,6 +67,11 @@ _MAX_SOURCE_ID = 128
 _TOP_CHUNKS = 20
 _TOP_SOURCES = 10
 _WINDOWS = {0: "Depuis toujours", 7: "7 jours", 30: "30 jours"}
+_MODERATION_ACTIONS = {
+    USER_ACTIVE: "accès rétabli",
+    USER_LIMITED: "usage restreint",
+    USER_BANNED: "accès suspendu",
+}
 
 
 @admin_bp.app_template_filter("bitwise_has")
@@ -334,6 +345,86 @@ def chunks_page() -> str:
         windows=_WINDOWS,
         top_n=_TOP_CHUNKS,
     )
+
+
+@admin_bp.route("/moderation")
+@moderate_required
+def moderation_page() -> str:
+    """Liste les utilisateurs, leur usage et leur statut de modération."""
+    question_counts = dict(
+        db.session.execute(
+            db.select(Query.user_id, db.func.count(Query.query_id)).group_by(
+                Query.user_id
+            )
+        ).all()
+    )
+    last_seen = dict(
+        db.session.execute(
+            db.select(Query.user_id, db.func.max(Query.created_at)).group_by(
+                Query.user_id
+            )
+        ).all()
+    )
+
+    users = db.session.scalars(
+        db.select(User).order_by(User.user_surname, User.user_firstname)
+    ).all()
+
+    return render_template(
+        "admin/moderation.html",
+        users=users,
+        question_counts=question_counts,
+        last_seen=last_seen,
+        statuses=_MODERATION_ACTIONS,
+        rate_default=CHAT_RATE_DEFAULT,
+        rate_limited=CHAT_RATE_LIMITED,
+    )
+
+
+@admin_bp.route("/moderation/<int:user_id>", methods=["POST"])
+@moderate_required
+def moderate_user(user_id: int) -> Response:
+    """Applique une sanction (ou la lève) sur un utilisateur."""
+    user = db.session.get(User, user_id)
+    if user is None:
+        abort(404)
+
+    action = request.form.get("action", "")
+    if action not in _MODERATION_ACTIONS:
+        abort(_HTTP_BAD_REQUEST)
+
+    if user.user_id == current_user.user_id:
+        flash("Vous ne pouvez pas vous modérer vous-même.", "warning")
+        return redirect(url_for("admin.moderation_page"))
+
+    # Un modérateur ne doit pas pouvoir neutraliser un administrateur : sans cette
+    # règle, la permission Moderation seule suffirait à bannir tous les admins et
+    # à prendre le contrôle de l'application.
+    if user.is_admin():
+        flash(
+            f"{user.user_firstname} est administrateur et ne peut pas être modéré.",
+            "warning",
+        )
+        return redirect(url_for("admin.moderation_page"))
+
+    user.status = action
+    user.ban_reason = (request.form.get("reason") or "").strip()[:300] or None
+    user.moderated_at = datetime.now(UTC)
+    user.moderated_by = current_user.user_id
+    db.session.commit()
+
+    logger.info(
+        "Modération : %s -> %s par %s (motif : %s)",
+        user.user_mail,
+        action,
+        current_user.user_mail,
+        user.ban_reason or "aucun",
+    )
+    flash(
+        f"{user.user_firstname} {user.user_surname} : {_MODERATION_ACTIONS[action]}.",
+        "success",
+    )
+    return redirect(url_for("admin.moderation_page"))
 
 
 @admin_bp.route("/permissions")

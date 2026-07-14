@@ -22,12 +22,14 @@ PERM_ADMIN = 0
 PERM_MANAGE_USERS = 1
 PERM_MANAGE_DOCUMENTS = 2
 PERM_VIEW_ANALYTICS = 3
+PERM_MODERATE = 4
 
 permission_table = [
     "Administration",  # 0
     "User Management",  # 1
     "Document Management",  # 2
     "Analytics",  # 3
+    "Moderation",  # 4
 ]
 
 nb_perms = len(permission_table)
@@ -107,6 +109,7 @@ admin_required = perm_required(PERM_ADMIN)
 manage_users_required = perm_required(PERM_MANAGE_USERS)
 manage_documents_required = perm_required(PERM_MANAGE_DOCUMENTS)
 view_analytics_required = perm_required(PERM_VIEW_ANALYTICS)
+moderate_required = perm_required(PERM_MODERATE)
 
 
 def can_manage_users(user: HasPermissions) -> bool:
