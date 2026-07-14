@@ -6,11 +6,12 @@ from flask import Flask, Response, jsonify, redirect, request, url_for
 from flask_compress import Compress
 from flask_migrate import Migrate
 
+from app.back.admin import admin_bp
 from app.back.auth import auth_bp
 from app.back.models import User, db
 from app.back.permissions import login_manager
 from app.cli import register_cli
-from app.extensions import limiter
+from app.extensions import csrf, limiter
 from app.routes import bp
 
 load_dotenv()
@@ -39,6 +40,7 @@ app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 
 Compress(app)
 limiter.init_app(app)
+csrf.init_app(app)
 db.init_app(app)
 migrate = Migrate(app, db)
 
@@ -69,6 +71,11 @@ def unauthorized() -> Response | tuple[Response, int]:
 
 app.register_blueprint(bp)
 app.register_blueprint(auth_bp)
+app.register_blueprint(admin_bp)
+
+# Le chat est appelé en fetch() JSON, sans jeton CSRF : son Content-Type
+# application/json empêche déjà un POST de formulaire cross-origin.
+csrf.exempt(bp)
 
 register_cli(app)
 
