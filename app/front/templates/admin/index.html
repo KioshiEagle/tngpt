@@ -1,0 +1,33 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Vue d'ensemble{% endblock %}
+{% block heading %}Vue d'ensemble{% endblock %}
+{% block subtitle %}État de l'application et de son déploiement.{% endblock %}
+
+{% block content %}
+
+    <section class="admin-stats">
+        <article class="admin-stat">
+            <span class="admin-stat-value">{{ stats.users }}</span>
+            <span class="admin-stat-label">Utilisateurs</span>
+        </article>
+        <article class="admin-stat">
+            <span class="admin-stat-value">{{ stats.admins }}</span>
+            <span class="admin-stat-label">Administrateurs</span>
+        </article>
+        <article class="admin-stat">
+            <span class="admin-stat-value">{{ stats.conversations }}</span>
+            <span class="admin-stat-label">Conversations</span>
+        </article>
+    </section>
+
+    <section class="admin-card">
+        <h2>Prochaines briques</h2>
+        <p class="admin-note">
+            Les métriques d'usage (chunks les plus retrouvés, quotas, catalogue de données)
+            n'existeront qu'une fois le journal de retrieval en place : elles ne peuvent pas
+            être reconstituées rétroactivement, ni depuis Qdrant, ni depuis les logs.
+        </p>
+    </section>
+
+{% endblock %}
