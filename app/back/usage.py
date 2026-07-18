@@ -29,7 +29,7 @@ class QuotaStatus:
 
     @property
     def exceeded(self) -> bool:
-        """Le quota est-il atteint ?"""
+        """Indique si le quota journalier est atteint."""
         return self.limit is not None and self.used >= self.limit
 
 
