@@ -13,7 +13,7 @@ from app.back.models import User, db
 from app.back.permissions import login_manager
 from app.cli import register_cli
 from app.extensions import csrf, limiter
-from app.routes import api_bp, bp
+from app.routes import bp
 
 load_dotenv()
 
@@ -108,13 +108,10 @@ def too_many_requests(error: Exception) -> Response | tuple[Response, int]:
 app.register_blueprint(bp)
 app.register_blueprint(auth_bp)
 app.register_blueprint(admin_bp)
-app.register_blueprint(api_bp)
 
 # Le chat est appelé en fetch() JSON, sans jeton CSRF : son Content-Type
-# application/json empêche déjà un POST de formulaire cross-origin. L'API est
-# authentifiée par clé Bearer, sans session ni cookie : le CSRF est sans objet.
+# application/json empêche déjà un POST de formulaire cross-origin.
 csrf.exempt(bp)
-csrf.exempt(api_bp)
 
 register_cli(app)
 

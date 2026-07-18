@@ -7,6 +7,7 @@ from pathlib import Path
 
 from flask import Flask
 
+from .groqpool import acquire
 from .mdtoqdrant import VectorStore
 from .models import (
     DOC_FAILED,
@@ -214,8 +215,11 @@ def _ingest_worker(app: Flask, source_id: str, stored_path: Path) -> None:
         try:
             markdown_path = stored_path
             if stored_path.suffix.lower() == ".pdf":
+                # Client d'une clé du pool : l'extraction de métadonnées d'un lot
+                # de PDF ne doit pas saturer une seule clé Groq.
+                client, _ = acquire()
                 markdown_path = DocumentProcessor().convert_file(
-                    stored_path, stored_path.parent
+                    stored_path, stored_path.parent, client=client
                 )
 
             result = get_vector_store().upload_file(markdown_path)

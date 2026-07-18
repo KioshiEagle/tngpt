@@ -584,6 +584,12 @@
 
 .admin-key-form select { min-width: 240px; }
 
+.admin-actions-row {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+}
+
 .admin-empty {
     padding: 28px 10px;
     color: var(--text-muted);

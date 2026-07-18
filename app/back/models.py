@@ -52,12 +52,6 @@ class User(UserMixin, db.Model):
         "Conversation", back_populates="user", lazy="dynamic"
     )
     queries = db.relationship("Query", back_populates="user", lazy="dynamic")
-    api_keys = db.relationship(
-        "ApiKey",
-        foreign_keys="ApiKey.user_id",
-        back_populates="user",
-        lazy="dynamic",
-    )
     moderator = db.relationship(
         "User", remote_side=[user_id], foreign_keys=[moderated_by]
     )
@@ -201,9 +195,10 @@ class Query(db.Model):
     user_id = db.Column(
         db.Integer, db.ForeignKey("users.user_id"), nullable=False, index=True
     )
-    # Clé API à l'origine de la question, le cas échéant. NULL = session web.
-    api_key_id = db.Column(
-        db.Integer, db.ForeignKey("api_keys.api_key_id"), nullable=True, index=True
+    # Clé Groq ayant servi à générer la réponse. NULL = clé de repli (.env) ou
+    # question non encore attribuée. Permet de mesurer l'usage par clé.
+    groq_key_id = db.Column(
+        db.Integer, db.ForeignKey("groq_keys.groq_key_id"), nullable=True, index=True
     )
     question = db.Column(db.String(500), nullable=False)
     top_k = db.Column(db.Integer, nullable=False)
@@ -265,43 +260,44 @@ class RetrievalEvent(db.Model):
         return f"RetrievalEvent {self.point_id} (rang {self.rank})"
 
 
-class ApiKey(db.Model):
-    """Clé d'accès programmatique à TN-GPT, rattachée à un utilisateur.
+class GroqKey(db.Model):
+    """Clé d'API Groq du pool.
 
-    Seul le hash de la clé est stocké : la valeur en clair n'est montrée qu'à la
-    création. Le préfixe permet d'identifier la clé à l'écran sans divulguer le
-    secret.
+    TN-GPT appelle Groq avec l'une de ces clés, choisie en round-robin parmi les
+    clés actives, pour qu'aucune ne sature sous le trafic de tous les
+    utilisateurs. Le secret (gsk_…) est nécessaire pour appeler Groq : il est
+    stocké tel quel, affiché masqué.
     """
 
-    __tablename__ = "api_keys"
+    __tablename__ = "groq_keys"
 
-    api_key_id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(
-        db.Integer, db.ForeignKey("users.user_id"), nullable=False, index=True
-    )
+    groq_key_id = db.Column(db.Integer, primary_key=True)
     label = db.Column(db.String(100), nullable=True)
-    key_hash = db.Column(db.String(64), nullable=False, unique=True, index=True)
-    prefix = db.Column(db.String(20), nullable=False)  # affichage : « tngpt_ab12cd »
-    quota_daily = db.Column(db.Integer, nullable=True)  # NULL = défaut global
+    secret = db.Column(db.String(200), nullable=False)
+    active = db.Column(db.Boolean, nullable=False, default=True)
+    request_count = db.Column(db.Integer, nullable=False, default=0)
 
     created_at = db.Column(
         db.DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(UTC),
     )
+    # Ordonne le round-robin (la clé la moins récemment utilisée passe la
+    # première) et affiche la récence d'usage.
     last_used_at = db.Column(db.DateTime(timezone=True), nullable=True)
-    revoked_at = db.Column(db.DateTime(timezone=True), nullable=True)
-    created_by = db.Column(
-        db.Integer, db.ForeignKey("users.user_id"), nullable=True
-    )  # admin émetteur
+    created_by = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=True)
 
-    user = db.relationship("User", foreign_keys=[user_id], back_populates="api_keys")
     creator = db.relationship("User", foreign_keys=[created_by])
 
-    def is_active(self) -> bool:
-        """Indique si la clé est utilisable (non révoquée, propriétaire non banni)."""
-        return self.revoked_at is None and not self.user.is_banned()
+    @property
+    def masked(self) -> str:
+        """Représentation masquée du secret pour l'affichage."""
+        secret = self.secret or ""
+        min_maskable = 10
+        if len(secret) <= min_maskable:
+            return "•" * len(secret)
+        return f"{secret[:6]}…{secret[-4:]}"
 
     def __repr__(self) -> str:
         """Représentation lisible de la clé."""
-        return f"ApiKey {self.prefix}… (user {self.user_id})"
+        return f"GroqKey {self.masked} ({'active' if self.active else 'inactive'})"

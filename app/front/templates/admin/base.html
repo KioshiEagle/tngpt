@@ -47,9 +47,9 @@
                class="admin-nav-item {% if request.endpoint == 'admin.quotas_page' %}is-active{% endif %}">
                 Quotas
             </a>
-            <a href="{{ url_for('admin.api_keys_page') }}"
-               class="admin-nav-item {% if request.endpoint == 'admin.api_keys_page' %}is-active{% endif %}">
-                Clés API
+            <a href="{{ url_for('admin.groq_keys_page') }}"
+               class="admin-nav-item {% if request.endpoint == 'admin.groq_keys_page' %}is-active{% endif %}">
+                Clés Groq
             </a>
         </nav>
 

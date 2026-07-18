@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from flask import current_app
 from sqlalchemy.exc import SQLAlchemyError
 
-from .models import ApiKey, Query, RetrievalEvent, User, db
+from .models import Query, RetrievalEvent, User, db
 from .types import SearchResult
 
 logger = logging.getLogger(__name__)
@@ -94,36 +94,16 @@ def seconds_until_reset() -> int:
     return int((tomorrow - now).total_seconds())
 
 
-def api_key_quota(key: ApiKey) -> int:
-    """Limite quotidienne d'une clé API : la sienne, sinon le défaut global.
+def groq_calls_today_by_key() -> dict[int, int]:
+    """Questions générées aujourd'hui, par clé Groq (un seul agrégat).
 
-    Contrairement aux utilisateurs, une clé n'est jamais illimitée — même celle
-    d'un administrateur : une clé qui fuit doit rester plafonnée.
+    Ne compte que les générations du chat (journalisées comme `queries`), pas
+    les appels Groq d'ingestion — voir `GroqKey.request_count` pour le total.
     """
-    if key.quota_daily is not None:
-        return key.quota_daily
-    return current_app.config["DEFAULT_DAILY_QUOTA"]
-
-
-def key_questions_today(api_key_id: int) -> int:
-    """Nombre de questions posées via cette clé depuis minuit (UTC)."""
-    return (
-        db.session.scalar(
-            db.select(db.func.count(Query.query_id)).where(
-                Query.api_key_id == api_key_id,
-                Query.created_at >= _day_start(),
-            )
-        )
-        or 0
-    )
-
-
-def key_questions_today_all() -> dict[int, int]:
-    """Questions posées aujourd'hui, par clé API (un seul agrégat)."""
     rows = db.session.execute(
-        db.select(Query.api_key_id, db.func.count(Query.query_id))
-        .where(Query.api_key_id.is_not(None), Query.created_at >= _day_start())
-        .group_by(Query.api_key_id)
+        db.select(Query.groq_key_id, db.func.count(Query.query_id))
+        .where(Query.groq_key_id.is_not(None), Query.created_at >= _day_start())
+        .group_by(Query.groq_key_id)
     ).all()
     return dict(rows)
 
@@ -140,11 +120,11 @@ def log_retrieval(
     question: str,
     top_k: int,
     results: list[SearchResult],
-    api_key_id: int | None = None,
+    groq_key_id: int | None = None,
 ) -> int | None:
     """Journalise une question et les chunks retrouvés, et renvoie l'id de requête.
 
-    `api_key_id` attribue la question à une clé API (None = session web).
+    `groq_key_id` attribue la génération à une clé Groq du pool (None = repli .env).
 
     N'échoue jamais : le monitoring ne doit pas pouvoir casser le chat. Une
     erreur d'écriture est tracée puis absorbée, et la réponse part quand même.
@@ -152,7 +132,7 @@ def log_retrieval(
     try:
         query = Query(
             user_id=user_id,
-            api_key_id=api_key_id,
+            groq_key_id=groq_key_id,
             question=question[:_MAX_QUESTION],
             top_k=top_k,
             result_count=len(results),

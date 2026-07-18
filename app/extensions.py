@@ -1,4 +1,3 @@
-from flask import request
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_login import current_user
@@ -29,18 +28,6 @@ def rate_limit_key() -> str:
     """
     if current_user.is_authenticated:
         return f"user:{current_user.get_id()}"
-    return get_remote_address()
-
-
-def api_rate_key() -> str:
-    """Clé de rate limiting de l'API : le jeton Bearer présenté, sinon l'IP.
-
-    Chaque clé a ainsi son propre budget de rafale ; sans cela, tous les scripts
-    derrière une même IP partageraient la même limite.
-    """
-    header = request.headers.get("Authorization", "")
-    if header.startswith("Bearer "):
-        return f"apikey:{header[7:].strip()[:16]}"
     return get_remote_address()
 
 

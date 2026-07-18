@@ -1,4 +1,5 @@
 import logging
+import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -11,7 +12,6 @@ from flask import (
     redirect,
     render_template,
     request,
-    session,
     url_for,
 )
 from flask_login import current_user
@@ -21,7 +21,6 @@ from werkzeug.wrappers import Response
 
 from app.extensions import CHAT_RATE_DEFAULT, CHAT_RATE_LIMITED
 
-from .apikeys import generate_key
 from .catalog import (
     delete_document,
     reset_stale_ingestions,
@@ -37,9 +36,9 @@ from .models import (
     USER_ACTIVE,
     USER_BANNED,
     USER_LIMITED,
-    ApiKey,
     Conversation,
     Document,
+    GroqKey,
     Query,
     RetrievalEvent,
     User,
@@ -58,12 +57,7 @@ from .permissions import (
     permission_table,
     view_analytics_required,
 )
-from .usage import (
-    api_key_quota,
-    daily_quota,
-    key_questions_today_all,
-    questions_today_all,
-)
+from .usage import daily_quota, groq_calls_today_by_key, questions_today_all
 
 logger = logging.getLogger(__name__)
 
@@ -418,98 +412,90 @@ def update_quota(user_id: int) -> Response:
     return redirect(url_for("admin.quotas_page"))
 
 
-@admin_bp.route("/api-keys")
-@manage_users_required
-def api_keys_page() -> str:
-    """Liste les clés API, leur usage du jour et leur propriétaire."""
-    usage = key_questions_today_all()
+@admin_bp.route("/groq-keys")
+@admin_required
+def groq_keys_page() -> str:
+    """Pool de clés Groq : usage par clé et gestion (ajout, activation)."""
+    calls_today = groq_calls_today_by_key()
     keys = db.session.scalars(
-        db.select(ApiKey).order_by(
-            ApiKey.revoked_at.isnot(None), ApiKey.created_at.desc()
-        )
+        db.select(GroqKey).order_by(GroqKey.active.desc(), GroqKey.created_at)
     ).all()
 
     rows = [
         {
             "key": key,
-            "used": usage.get(key.api_key_id, 0),
-            "limit": api_key_quota(key),
+            "today": calls_today.get(key.groq_key_id, 0),
         }
         for key in keys
     ]
-    users = db.session.scalars(
-        db.select(User).order_by(User.user_surname, User.user_firstname)
-    ).all()
-
-    # Clé fraîchement créée à afficher une seule fois (transmise via la session
-    # par flash, puis effacée à l'affichage).
-    new_key = session.pop("new_api_key", None)
-
     return render_template(
-        "admin/api_keys.html",
+        "admin/groq_keys.html",
         rows=rows,
-        users=users,
-        new_key=new_key,
-        default_quota=current_app.config["DEFAULT_DAILY_QUOTA"],
+        env_fallback=bool(os.getenv("GROQ_API_KEY")),
     )
 
 
-@admin_bp.route("/api-keys/create", methods=["POST"])
-@manage_users_required
-def create_api_key() -> Response:
-    """Génère une clé pour un utilisateur et affiche sa valeur une seule fois."""
-    user = db.session.get(User, request.form.get("user_id", type=int))
-    if user is None:
-        flash("Utilisateur introuvable.", "warning")
-        return redirect(url_for("admin.api_keys_page"))
+@admin_bp.route("/groq-keys/create", methods=["POST"])
+@admin_required
+def create_groq_key() -> Response:
+    """Ajoute une clé Groq au pool."""
+    secret = (request.form.get("secret") or "").strip()
+    if not secret:
+        flash("La clé Groq est vide.", "warning")
+        return redirect(url_for("admin.groq_keys_page"))
 
-    raw_quota = (request.form.get("quota_daily") or "").strip()
-    if raw_quota == "":
-        quota_daily = None
-    elif raw_quota.isdigit() and int(raw_quota) <= _MAX_QUOTA:
-        quota_daily = int(raw_quota)
-    else:
-        abort(_HTTP_BAD_REQUEST)
+    if db.session.scalar(db.select(GroqKey).filter_by(secret=secret)):
+        flash("Cette clé est déjà dans le pool.", "warning")
+        return redirect(url_for("admin.groq_keys_page"))
 
-    full_key, key_hash, prefix = generate_key()
-    api_key = ApiKey(
-        user_id=user.user_id,
+    key = GroqKey(
         label=(request.form.get("label") or "").strip()[:100] or None,
-        key_hash=key_hash,
-        prefix=prefix,
-        quota_daily=quota_daily,
+        secret=secret,
         created_by=current_user.user_id,
     )
-    db.session.add(api_key)
+    db.session.add(key)
     db.session.commit()
-
-    # Seule occasion où la clé en clair existe : on la remet une fois via la
-    # session, elle ne sera plus jamais récupérable ensuite.
-    session["new_api_key"] = full_key
-    logger.info(
-        "Clé API créée pour %s par %s (préfixe %s)",
-        user.user_mail,
-        current_user.user_mail,
-        prefix,
-    )
-    flash(f"Clé créée pour {user.user_firstname}. Copiez-la maintenant.", "success")
-    return redirect(url_for("admin.api_keys_page"))
+    logger.info("Clé Groq %s ajoutée par %s", key.masked, current_user.user_mail)
+    flash(f"Clé {key.masked} ajoutée au pool.", "success")
+    return redirect(url_for("admin.groq_keys_page"))
 
 
-@admin_bp.route("/api-keys/<int:api_key_id>/revoke", methods=["POST"])
-@manage_users_required
-def revoke_api_key(api_key_id: int) -> Response:
-    """Révoque une clé : elle cesse immédiatement de fonctionner."""
-    key = db.session.get(ApiKey, api_key_id)
+@admin_bp.route("/groq-keys/<int:groq_key_id>/toggle", methods=["POST"])
+@admin_required
+def toggle_groq_key(groq_key_id: int) -> Response:
+    """Active ou désactive une clé du pool (sans la retirer)."""
+    key = db.session.get(GroqKey, groq_key_id)
     if key is None:
         abort(404)
 
-    if key.revoked_at is None:
-        key.revoked_at = datetime.now(UTC)
-        db.session.commit()
-        logger.info("Clé API %s révoquée par %s", key.prefix, current_user.user_mail)
-        flash(f"Clé {key.prefix}… révoquée.", "success")
-    return redirect(url_for("admin.api_keys_page"))
+    key.active = not key.active
+    db.session.commit()
+    etat = "activée" if key.active else "désactivée"
+    flash(f"Clé {key.masked} {etat}.", "success")
+    return redirect(url_for("admin.groq_keys_page"))
+
+
+@admin_bp.route("/groq-keys/<int:groq_key_id>/delete", methods=["POST"])
+@admin_required
+def delete_groq_key(groq_key_id: int) -> Response:
+    """Retire une clé du pool.
+
+    Les questions déjà attribuées à cette clé conservent la référence via une
+    clé étrangère nullable : on détache d'abord, puis on supprime.
+    """
+    key = db.session.get(GroqKey, groq_key_id)
+    if key is None:
+        abort(404)
+
+    db.session.query(Query).filter_by(groq_key_id=groq_key_id).update(
+        {Query.groq_key_id: None}
+    )
+    masked = key.masked
+    db.session.delete(key)
+    db.session.commit()
+    logger.info("Clé Groq %s retirée par %s", masked, current_user.user_mail)
+    flash(f"Clé {masked} retirée du pool.", "success")
+    return redirect(url_for("admin.groq_keys_page"))
 
 
 @admin_bp.route("/moderation")
