@@ -3,6 +3,7 @@ import json
 import os
 import re
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 
 from qdrant_client import QdrantClient, models
@@ -32,6 +33,18 @@ def _parse_frontmatter(content: str) -> tuple[dict, str]:
     return meta, content[match.end() :]
 
 
+@dataclass
+class IngestResult:
+    """Métadonnées d'un document ingéré dans Qdrant."""
+
+    source_id: str
+    title: str
+    date: str
+    author: str
+    chunk_count: int
+    file_hash: str
+
+
 class VectorStore:
     """Gestionnaire de la base vectorielle Qdrant."""
 
@@ -51,82 +64,104 @@ class VectorStore:
             field_schema=models.PayloadSchemaType.KEYWORD,
         )
 
+    def delete_source(self, source_id: str) -> None:
+        """Supprime de Qdrant tous les chunks d'un document source."""
+        self.client.delete(
+            collection_name=self.collection,
+            points_selector=models.FilterSelector(
+                filter=models.Filter(
+                    must=[
+                        models.FieldCondition(
+                            key="source",
+                            match=models.MatchValue(value=source_id),
+                        )
+                    ]
+                )
+            ),
+        )
+
+    def upload_file(self, md_path: Path) -> IngestResult | None:
+        """Ingère un fichier Markdown dans Qdrant et retourne ses métadonnées.
+
+        Chaque chunk est préfixé avec date et titre avant l'encodage E5 pour
+        améliorer la qualité du matching sémantique ; le texte brut (sans préfixe)
+        est stocké dans le payload pour l'affichage. Les chunks existants du même
+        document sont supprimés d'abord : ré-ingérer remplace, ne duplique pas.
+
+        Retourne None si le document ne produit aucun chunk (fichier vide).
+        """
+        source_id = md_path.stem
+        with md_path.open(encoding="utf-8") as f:
+            content = f.read()
+
+        meta, body = _parse_frontmatter(content)
+        title = meta.get("title", source_id)
+        date = meta.get("date", "")
+        author = meta.get("author", "Inconnu")
+
+        print(f"📤 Ingestion sémantique (E5) : {title or source_id}")
+        chunks = get_hybrid_chunks(body, chunk_size=800, chunk_overlap=240)
+        if not chunks:
+            return None
+
+        self.delete_source(source_id)
+
+        date_prefix = f"[Date: {date}] " if date else ""
+        title_prefix = f"[Source: {title}] " if title else ""
+        prefixed_chunks = [f"passage: {date_prefix}{title_prefix}{c}" for c in chunks]
+        embeddings = self.model.encode(prefixed_chunks).tolist()
+
+        points = [
+            models.PointStruct(
+                id=str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{source_id}_{i}")),
+                vector=embedding,
+                payload={
+                    "text": text,
+                    "source": source_id,
+                    "title": title,
+                    "date": date,
+                    "author": author,
+                },
+            )
+            for i, (text, embedding) in enumerate(zip(chunks, embeddings, strict=False))
+        ]
+
+        batch_size = 50
+        for i in range(0, len(points), batch_size):
+            self.client.upsert(
+                collection_name=self.collection,
+                points=points[i : i + batch_size],
+            )
+
+        return IngestResult(
+            source_id=source_id,
+            title=title,
+            date=date,
+            author=author,
+            chunk_count=len(chunks),
+            file_hash=_file_hash(content),
+        )
+
     def upload_directory(self, md_dir: Path, log_file: Path) -> None:
         """Ingère les fichiers Markdown d'un dossier dans Qdrant.
 
-        Chaque chunk est préfixé avec date et titre avant l'encodage E5
-        pour améliorer la qualité du matching sémantique. Le texte brut
-        (sans préfixe) est stocké dans le payload pour l'affichage.
-        Seuls les fichiers modifiés (hash différent) sont re-ingérés.
+        Seuls les fichiers modifiés (hash différent) sont ré-ingérés.
         """
         raw = json.loads(Path(log_file).read_text()) if Path(log_file).exists() else {}
         processed = dict.fromkeys(raw) if isinstance(raw, list) else raw
 
         for md_path in Path(md_dir).glob("*.md"):
-            drive_id = md_path.stem
-            with md_path.open(encoding="utf-8") as f:
-                content = f.read()
-
-            current_hash = _file_hash(content)
-            if processed.get(drive_id) == current_hash:
-                print(f"⏭️  Déjà à jour : {drive_id}")
+            source_id = md_path.stem
+            current_hash = _file_hash(md_path.read_text(encoding="utf-8"))
+            if processed.get(source_id) == current_hash:
+                print(f"⏭️  Déjà à jour : {source_id}")
                 continue
 
-            meta, body = _parse_frontmatter(content)
-            title = meta.get("title", drive_id)
-            date = meta.get("date", "")
-            author = meta.get("author", "Inconnu")
-
-            print(f"📤 Ingestion sémantique (E5) : {title or drive_id}")
-            chunks = get_hybrid_chunks(body, chunk_size=800, chunk_overlap=240)
-
-            if not chunks:
+            result = self.upload_file(md_path)
+            if result is None:
                 continue
 
-            self.client.delete(
-                collection_name=self.collection,
-                points_selector=models.FilterSelector(
-                    filter=models.Filter(
-                        must=[
-                            models.FieldCondition(
-                                key="source",
-                                match=models.MatchValue(value=drive_id),
-                            )
-                        ]
-                    )
-                ),
-            )
-
-            date_prefix = f"[Date: {date}] " if date else ""
-            title_prefix = f"[Source: {title}] " if title else ""
-            prefixed_chunks = [
-                f"passage: {date_prefix}{title_prefix}{c}" for c in chunks
-            ]
-            embs = self.model.encode(prefixed_chunks).tolist()
-
-            points = [
-                models.PointStruct(
-                    id=str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{drive_id}_{i}")),
-                    vector=emb,
-                    payload={
-                        "text": txt,
-                        "source": drive_id,
-                        "title": title,
-                        "date": date,
-                        "author": author,
-                    },
-                )
-                for i, (txt, emb) in enumerate(zip(chunks, embs, strict=False))
-            ]
-
-            batch_size = 50
-            for i in range(0, len(points), batch_size):
-                self.client.upsert(
-                    collection_name=self.collection,
-                    points=points[i : i + batch_size],
-                )
-
-            processed[drive_id] = current_hash
+            processed[source_id] = result.file_hash
 
         with Path(log_file).open("w") as f:
             json.dump(processed, f)

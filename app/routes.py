@@ -10,19 +10,23 @@ from flask import (
     session,
     stream_with_context,
 )
-from flask_login import login_required
+from flask_login import current_user, login_required
 
-from .back.generate import GenerateRequest, generate_answer
-from .extensions import limiter
+from .back.generate import GenerateRequest, generate_answer, retrieve
+from .back.groqpool import acquire
+from .back.usage import log_retrieval, quota_status, seconds_until_reset
+from .extensions import chat_rate_limit, limiter
 
 bp = Blueprint("chat", __name__)
 
 MAX_MESSAGE_LENGTH = 500
 TOP_K = 5
+_HTTP_TOO_MANY_REQUESTS = 429
 
 
 @bp.route("/chat", methods=["POST"])
-@limiter.limit("20 per minute")
+@login_required
+@limiter.limit(chat_rate_limit)
 def chat() -> Response | tuple[Response, int]:
     """Répond en streaming à un message utilisateur."""
     data = request.get_json()
@@ -34,16 +38,55 @@ def chat() -> Response | tuple[Response, int]:
         msg = f"Message trop long (max {MAX_MESSAGE_LENGTH} caractères)"
         return jsonify({"error": msg}), 400
 
+    # Quota journalier : plafonne le total de questions du jour, là où le
+    # rate-limiter ne borne que la rafale par minute. Vérifié avant le retrieval
+    # pour ne rien consommer quand la limite est atteinte.
+    # current_user est un proxy Flask-Login ; @login_required garantit un User.
+    status = quota_status(current_user)  # ty: ignore[invalid-argument-type]
+    if status.exceeded:
+        return jsonify(
+            {
+                "error": (
+                    f"Quota journalier atteint ({status.limit} questions). "
+                    "Réessaie demain."
+                ),
+                "quota": status.limit,
+                "used": status.used,
+                "reset_in": seconds_until_reset(),
+            }
+        ), _HTTP_TOO_MANY_REQUESTS
+
+    # Résolus hors du générateur : le contexte de requête ne doit pas être
+    # une dépendance du streaming.
+    user_name = current_user.user_firstname
+    user_id = current_user.user_id
+
     req = GenerateRequest(
         question=user_message,
         history=data.get("history", []),
         top_k=TOP_K,
-        user_name=None,  # remplacer par la valeur de session une fois l'auth intégrée
+        user_name=user_name,
+    )
+
+    # Prélève une clé du pool Groq (round-robin) avant le streaming, pour pouvoir
+    # attribuer la question à cette clé dans le journal.
+    client, groq_key_id = acquire()
+
+    # Recherche et journalisation avant le streaming : l'événement est ainsi
+    # enregistré même si le client se déconnecte pendant la réponse, et on
+    # n'écrit pas en base depuis un générateur dont le contexte se démonte.
+    results = retrieve(req)
+    log_retrieval(
+        user_id=user_id,
+        question=user_message,
+        top_k=TOP_K,
+        results=results,
+        groq_key_id=groq_key_id,
     )
 
     def _stream() -> Iterator[str]:
         try:
-            yield from generate_answer(req)
+            yield from generate_answer(req, results, client=client)
         except Exception as e:  # noqa: BLE001
             yield f"Erreur : {e!s}"
 
@@ -51,12 +94,14 @@ def chat() -> Response | tuple[Response, int]:
 
 
 @bp.route("/history", methods=["GET"])
+@login_required
 def history() -> Response:
     """Renvoie l'historique de la conversation."""
     return jsonify(session.get("history", []))
 
 
 @bp.route("/history", methods=["DELETE"])
+@login_required
 def clear_history() -> Response:
     """Efface l'historique de la conversation."""
     session.pop("history", None)

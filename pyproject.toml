@@ -29,6 +29,7 @@ dependencies = [
     "flask-sqlalchemy>=3.1.1",
     "bcrypt>=5.0.0",
     "psycopg2-binary>=2.9",
+    "flask-migrate>=4.1.0",
 ]
 
 [dependency-groups]
@@ -57,10 +58,15 @@ environments = [
     "sys_platform == 'darwin' and platform_machine == 'arm64'",
     "sys_platform == 'linux' and platform_machine == 'x86_64'"
 ]
+# setuptools est tiré comme dépendance de build ; on force la version corrigée
+# (PYSEC-2026-3447) que la résolution normale ne remonte pas.
+override-dependencies = ["setuptools>=83.0.0"]
 
 
 [tool.ruff]
 target-version = "py313"
+# Migrations Alembic : fichiers auto-générés, non soumis au style du projet.
+extend-exclude = ["migrations"]
 
 [tool.ruff.lint]
 select = ["ALL","RUF100"]
@@ -75,6 +81,10 @@ quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
 docstring-code-format = true
+
+[tool.ty.src]
+# Migrations Alembic : auto-générées, non type-checkées.
+exclude = ["migrations"]
 
 [tool.ty.rules]
 unsupported-base = "ignore"

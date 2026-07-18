@@ -234,6 +234,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 signal: abortController.signal,
             });
 
+            if (response.status === 401) {
+                const { login_url } = await response.json();
+                window.location.assign(login_url || '/auth/login');
+                return;
+            }
+
+            // 429 : quota journalier atteint ou rafale trop rapide. On affiche le
+            // message du serveur ; le nettoyage (indicateur, focus) se fait dans finally.
+            if (response.status === 429) {
+                const data = await response.json().catch(() => ({}));
+                appendMessage('assistant', data.error || "Tu as atteint ta limite pour le moment. Réessaie plus tard.");
+                return;
+            }
+
             if (!response.ok) throw new Error();
 
             const reader = response.body.getReader();
