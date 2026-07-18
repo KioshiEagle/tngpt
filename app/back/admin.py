@@ -149,7 +149,9 @@ def catalog_upload() -> tuple[Response, int]:
     if not uploaded:
         return jsonify(error="Aucun fichier reçu."), _HTTP_BAD_REQUEST
 
-    application = current_app._get_current_object()  # noqa: SLF001
+    # current_app est un proxy : _get_current_object() donne l'app réelle à
+    # passer au thread. ty ne connaît pas ce membre du LocalProxy.
+    application = current_app._get_current_object()  # noqa: SLF001  # ty: ignore[unresolved-attribute]
     upload_dir = Path(current_app.config["UPLOAD_DIR"])
     upload_dir.mkdir(parents=True, exist_ok=True)
 
@@ -507,14 +509,18 @@ def moderation_page() -> str:
             db.select(Query.user_id, db.func.count(Query.query_id)).group_by(
                 Query.user_id
             )
-        ).all()
+        )
+        .tuples()
+        .all()
     )
     last_seen = dict(
         db.session.execute(
             db.select(Query.user_id, db.func.max(Query.created_at)).group_by(
                 Query.user_id
             )
-        ).all()
+        )
+        .tuples()
+        .all()
     )
 
     users = db.session.scalars(

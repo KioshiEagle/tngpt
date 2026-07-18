@@ -3,9 +3,11 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, Response, jsonify, redirect, request, url_for
+from flask import Flask, jsonify, redirect, request, url_for
+from flask.typing import ResponseReturnValue
 from flask_compress import Compress
 from flask_migrate import Migrate
+from werkzeug.exceptions import HTTPException
 
 from app.back.admin import admin_bp
 from app.back.auth import auth_bp
@@ -73,7 +75,7 @@ def load_user(user_id: str) -> User | None:
 
 
 @login_manager.unauthorized_handler
-def unauthorized() -> Response | tuple[Response, int]:
+def unauthorized() -> ResponseReturnValue:
     """Redirige la navigation vers le login, mais répond 401 JSON aux appels API.
 
     Sans cela, un fetch() dont la session a expiré suit la redirection et reçoit
@@ -88,7 +90,7 @@ def unauthorized() -> Response | tuple[Response, int]:
 
 
 @app.errorhandler(429)
-def too_many_requests(error: Exception) -> Response | tuple[Response, int]:
+def too_many_requests(error: HTTPException) -> ResponseReturnValue:
     """Répond en JSON aux appels API quand le rate-limiter renvoie un 429.
 
     Le quota journalier renvoie déjà son propre JSON ; ce handler couvre la
@@ -102,7 +104,7 @@ def too_many_requests(error: Exception) -> Response | tuple[Response, int]:
             if description
             else "Trop de requêtes, ralentis un peu."
         ), 429
-    return error  # type: ignore[return-value]
+    return error
 
 
 app.register_blueprint(bp)
