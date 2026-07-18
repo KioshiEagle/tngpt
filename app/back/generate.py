@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -16,6 +17,10 @@ from .types import HistoryMessage, SearchResult
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 logger = logging.getLogger(__name__)
+
+# Modèle Groq de génération. Configurable : Groq retire régulièrement des modèles
+# (qwen/qwen3-32b a ainsi disparu au profit de qwen/qwen3.6-27b).
+_CHAT_MODEL = os.getenv("GROQ_CHAT_MODEL", "qwen/qwen3.6-27b")
 
 _PROMPT_TEMPLATE = (
     "Tu es TN-GPT, l'expert absolu de la vie associative de TELECOM Nancy.\n"
@@ -211,7 +216,7 @@ def _stream_with_retries(
         prompt = build_prompt(context, req.question, user_name=req.user_name)
         try:
             completion = client.chat.completions.create(
-                model="qwen/qwen3-32b",
+                model=_CHAT_MODEL,
                 messages=[
                     {"role": "system", "content": _SYSTEM_MSG},
                     {"role": "user", "content": prompt},
