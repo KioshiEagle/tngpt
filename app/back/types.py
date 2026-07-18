@@ -4,6 +4,7 @@ from typing import TypedDict
 class SearchResult(TypedDict):
     """Résultat d'une recherche hybride Qdrant."""
 
+    point_id: str
     content: str
     metadata: dict
     score: float

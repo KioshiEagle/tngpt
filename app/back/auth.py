@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from flask import (
     Blueprint,
     abort,
+    flash,
     redirect,
     render_template,
     request,
@@ -128,7 +129,15 @@ def callback() -> Response:
         user.user_picture = picture
 
     db.session.commit()
-    login_user(user)
+
+    # login_user() refuse un utilisateur dont `is_active` est faux (banni). Sans
+    # ce traitement, il repartirait vers "/" sans session et rebondirait sur le
+    # login sans jamais savoir pourquoi.
+    if not login_user(user):
+        reason = user.ban_reason or "Aucun motif précisé."
+        flash(f"Votre accès à TN-GPT a été suspendu. Motif : {reason}", "banned")
+        return redirect(url_for("auth.login_page"))
+
     return redirect("/")
 
 

@@ -1,0 +1,109 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Modération{% endblock %}
+{% block heading %}Modération{% endblock %}
+{% block subtitle %}Suspendre un accès ou restreindre l'usage. Un bannissement coupe la session en cours, immédiatement.{% endblock %}
+
+{% block content %}
+
+    <div class="admin-card">
+        <div class="admin-table-scroll">
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th>Utilisateur</th>
+                        <th class="admin-td-num">Questions</th>
+                        <th>Dernière activité</th>
+                        <th>Statut</th>
+                        <th>Sanction</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                        {% set is_me = user.user_id == current_user.user_id %}
+                        {% set protected = is_me or user.is_admin() %}
+                        <tr>
+                            <td>
+                                <div class="admin-user">
+                                    {% if user.user_picture %}
+                                        <img src="{{ user.user_picture }}" class="admin-avatar" alt="" referrerpolicy="no-referrer" width="32" height="32">
+                                    {% else %}
+                                        <span class="admin-avatar admin-avatar--initials">{{ user.user_firstname[0] }}{{ user.user_surname[0] }}</span>
+                                    {% endif %}
+                                    <span class="admin-user-text">
+                                        <span class="admin-user-name">
+                                            {{ user.user_firstname }} {{ user.user_surname }}
+                                            {% if is_me %}<span class="admin-badge">vous</span>
+                                            {% elif user.is_admin() %}<span class="admin-badge">admin</span>{% endif %}
+                                        </span>
+                                        <span class="admin-user-mail">{{ user.user_mail }}</span>
+                                    </span>
+                                </div>
+                            </td>
+
+                            <td class="admin-td-num">{{ question_counts.get(user.user_id, 0) }}</td>
+
+                            <td class="admin-cell-muted">
+                                {% set seen = last_seen.get(user.user_id) %}
+                                {{ seen.strftime('%d/%m/%Y %H:%M') if seen else "—" }}
+                            </td>
+
+                            <td>
+                                <span class="admin-status admin-status--{{ user.status }}">{{ user.status }}</span>
+                                {% if user.ban_reason %}
+                                    <span class="admin-error" title="{{ user.ban_reason }}">⚠</span>
+                                {% endif %}
+                                {% if user.moderated_at and user.status != 'active' %}
+                                    <span class="admin-user-mail">
+                                        par {{ user.moderator.user_firstname if user.moderator else "?" }}
+                                        le {{ user.moderated_at.strftime('%d/%m/%Y') }}
+                                    </span>
+                                {% endif %}
+                            </td>
+
+                            <td>
+                                {% if protected %}
+                                    <span class="admin-cell-muted">
+                                        {{ "Vous-même" if is_me else "Administrateur" }} — non modérable
+                                    </span>
+                                {% else %}
+                                    <form method="post"
+                                          action="{{ url_for('admin.moderate_user', user_id=user.user_id) }}"
+                                          class="admin-moderate">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <input type="text"
+                                               name="reason"
+                                               value="{{ user.ban_reason or '' }}"
+                                               placeholder="Motif (facultatif)"
+                                               maxlength="300"
+                                               aria-label="Motif de la sanction">
+                                        {% for value, label in statuses.items() %}
+                                            {% if value != user.status %}
+                                                <button type="submit"
+                                                        name="action"
+                                                        value="{{ value }}"
+                                                        class="admin-btn {% if value == 'banned' %}admin-btn--danger{% endif %}">
+                                                    {{ label | capitalize }}
+                                                </button>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <p class="admin-note">
+        <strong>Usage restreint</strong> : l'accès est conservé mais le débit passe de
+        {{ rate_default }} à {{ rate_limited }} — la sanction intermédiaire entre ne rien faire
+        et bannir. <strong>Accès suspendu</strong> : la session en cours est invalidée dès la
+        requête suivante et toute reconnexion est refusée, avec le motif affiché à l'écran de
+        connexion. Un administrateur ne peut pas être modéré : sans cette règle, la seule
+        permission « Moderation » suffirait à neutraliser tous les admins.
+    </p>
+
+{% endblock %}

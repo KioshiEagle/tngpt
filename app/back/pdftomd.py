@@ -10,6 +10,21 @@ import pymupdf4llm
 from dotenv import load_dotenv
 from groq import APIConnectionError, APIStatusError, APITimeoutError, Groq
 
+_env_client: Groq | None = None
+
+
+def _fallback_client() -> Groq:
+    """Client Groq bâti sur GROQ_API_KEY (.env) : repli hors du pool.
+
+    Utilisé quand aucun client du pool n'est fourni (ingestion standalone, hors
+    contexte applicatif).
+    """
+    global _env_client  # noqa: PLW0603
+    if _env_client is None:
+        _env_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+    return _env_client
+
+
 BASE_DIR = Path(__file__).parent.resolve()
 
 _GROQ_MODEL = os.getenv("GROQ_METADATA_MODEL", "llama-3.1-8b-instant")
@@ -109,9 +124,8 @@ _METADATA_USER = (
 )
 
 
-def _groq_extract(content: str) -> str | None:
+def _groq_extract(content: str, client: Groq) -> str | None:
     """Appelle Groq pour extraire les métadonnées. Retourne None si indisponible."""
-    client = Groq(api_key=os.getenv("GROQ_API_KEY"))
     try:
         resp = client.chat.completions.create(
             model=_GROQ_MODEL,
@@ -130,11 +144,11 @@ def _groq_extract(content: str) -> str | None:
 class DocumentProcessor:
     """Convertit des PDF en Markdown avec extraction de métadonnées via Groq."""
 
-    def _extract_metadata(self, md_content: str, filename: str) -> dict:
+    def _extract_metadata(self, md_content: str, filename: str, client: Groq) -> dict:
         """Extrait titre, date et auteur via Groq, regex en fallback pour la date."""
         meta: dict = {"title": filename, "date": None, "author": None}
 
-        response = _groq_extract(md_content[:2000])
+        response = _groq_extract(md_content[:2000], client)
         if response:
             match = re.search(r"\{.*\}", response, re.DOTALL)
             if match:
@@ -152,6 +166,43 @@ class DocumentProcessor:
 
         return meta
 
+    def convert_file(
+        self, pdf_path: Path, output_dir: Path, client: Groq | None = None
+    ) -> Path:
+        """Convertit un PDF en Markdown avec frontmatter et retourne le chemin du .md.
+
+        Unité de travail de la conversion : `convert_directory` en fait une boucle,
+        et le dépôt d'un fichier unique depuis le panel admin l'appelle directement.
+        `client` est le client Groq à utiliser (une clé du pool) ; à défaut, la
+        clé de repli .env.
+        """
+        if pdf_path.stat().st_size == 0:
+            msg = f"Fichier vide : {pdf_path.name}"
+            raise ValueError(msg)
+
+        if client is None:
+            client = _fallback_client()
+
+        print(f"⚡ PDF -> MD : {pdf_path.name}")
+        md_content = pymupdf4llm.to_markdown(str(pdf_path))
+
+        meta = self._extract_metadata(md_content, pdf_path.stem, client)
+        title = (meta.get("title") or pdf_path.stem).replace("\n", " ")
+        doc_date = meta.get("date") or ""
+        author = (meta.get("author") or "Inconnu").replace("\n", " ")
+        print(f"   → titre: {title} | date: {doc_date} | auteur: {author}")
+
+        frontmatter = (
+            f'---\ntitle: "{title}"\ndate: "{doc_date}"\nauthor: "{author}"\n---\n\n'
+        )
+
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+        md_path = Path(output_dir) / f"{pdf_path.stem}.md"
+        with md_path.open("w", encoding="utf-8") as f:
+            f.write(frontmatter + md_content)
+
+        return md_path
+
     def convert_directory(
         self, source_dir: Path, output_dir: Path, log_file: Path
     ) -> None:
@@ -161,33 +212,13 @@ class DocumentProcessor:
 
         for pdf_path in Path(source_dir).glob("*.pdf"):
             try:
-                if pdf_path.stat().st_size == 0:
-                    print(f"⚠️ Fichier vide ignoré : {pdf_path.name}")
-                    continue
-
                 current_hash = hashlib.sha256(pdf_path.read_bytes()).hexdigest()
                 md_path = Path(output_dir) / f"{pdf_path.stem}.md"
                 if processed.get(pdf_path.stem) == current_hash and md_path.exists():
                     print(f"⏭️  Déjà converti : {pdf_path.name}")
                     continue
 
-                print(f"⚡ PDF -> MD : {pdf_path.name}")
-                md_content = pymupdf4llm.to_markdown(str(pdf_path))
-
-                meta = self._extract_metadata(md_content, pdf_path.stem)
-                title = (meta.get("title") or pdf_path.stem).replace("\n", " ")
-                doc_date = meta.get("date") or ""
-                author = (meta.get("author") or "Inconnu").replace("\n", " ")
-                print(f"   → titre: {title} | date: {doc_date} | auteur: {author}")
-
-                frontmatter = (
-                    f'---\ntitle: "{title}"\ndate: "{doc_date}"\n'
-                    f'author: "{author}"\n---\n\n'
-                )
-
-                with md_path.open("w", encoding="utf-8") as f:
-                    f.write(frontmatter + md_content)
-
+                self.convert_file(pdf_path, Path(output_dir))
                 processed[pdf_path.stem] = current_hash
 
             except (RuntimeError, ValueError, OSError) as e:

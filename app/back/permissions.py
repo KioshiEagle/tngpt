@@ -18,8 +18,18 @@ class HasPermissions(Protocol):
     user_permissions: int
 
 
+PERM_ADMIN = 0
+PERM_MANAGE_USERS = 1
+PERM_MANAGE_DOCUMENTS = 2
+PERM_VIEW_ANALYTICS = 3
+PERM_MODERATE = 4
+
 permission_table = [
-    "User Management",  # 0
+    "Administration",  # 0
+    "User Management",  # 1
+    "Document Management",  # 2
+    "Analytics",  # 3
+    "Moderation",  # 4
 ]
 
 nb_perms = len(permission_table)
@@ -43,13 +53,22 @@ def decode_perms(perms: int) -> list[int]:
     return [perm for perm in range(len(permission_table)) if check_perm(perms, perm)]
 
 
+def is_admin(user: HasPermissions) -> bool:
+    """Vérifie si l'utilisateur détient le bit Administration."""
+    return check_perm(user.user_permissions, PERM_ADMIN)
+
+
 def check_user_perm(user: HasPermissions, perm: int) -> bool:
-    """Vérifie si l'utilisateur possède la permission donnée."""
-    return check_perm(user.user_permissions, perm)
+    """Vérifie si l'utilisateur possède la permission donnée.
+
+    Le bit Administration implique toutes les autres permissions : ajouter une
+    entrée à permission_table ne retire donc aucun droit aux admins existants.
+    """
+    return is_admin(user) or check_perm(user.user_permissions, perm)
 
 
 def list_perm(user: HasPermissions) -> list[str]:
-    """Retourne la liste des noms de permissions de l'utilisateur."""
+    """Retourne la liste des noms de permissions effectives de l'utilisateur."""
     return [
         permission_table[perm]
         for perm in range(len(permission_table))
@@ -76,7 +95,7 @@ def perm_required(perm: int) -> Callable[[Callable[P, R]], Callable[P, R | Respo
                     "warning",
                 )
                 if request.referrer is None:
-                    return redirect(url_for("dashboard.dashboard"))
+                    return redirect(url_for("chat.index"))
                 return redirect(request.referrer)
 
             return func(*args, **kwargs)
@@ -86,9 +105,13 @@ def perm_required(perm: int) -> Callable[[Callable[P, R]], Callable[P, R | Respo
     return decorator
 
 
-manage_users_required = perm_required(0)
+admin_required = perm_required(PERM_ADMIN)
+manage_users_required = perm_required(PERM_MANAGE_USERS)
+manage_documents_required = perm_required(PERM_MANAGE_DOCUMENTS)
+view_analytics_required = perm_required(PERM_VIEW_ANALYTICS)
+moderate_required = perm_required(PERM_MODERATE)
 
 
 def can_manage_users(user: HasPermissions) -> bool:
     """Vérifie si l'utilisateur peut gérer les autres utilisateurs."""
-    return check_user_perm(user, 0)
+    return check_user_perm(user, PERM_MANAGE_USERS)

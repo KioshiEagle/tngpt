@@ -26,7 +26,8 @@ CANDIDATE_MULTIPLIER = 20
 _client: QdrantClient | None = None
 
 
-def _get_client() -> QdrantClient:
+def get_client() -> QdrantClient:
+    """Client Qdrant partagé (créé à la première utilisation)."""
     global _client  # noqa: PLW0603
     if _client is None:
         _client = QdrantClient(
@@ -59,7 +60,7 @@ def search(
 ) -> list[SearchResult]:
     """Recherche hybride (sémantique + fraîcheur) dans Qdrant."""
     query_vector = model.encode(f"query: {query}").tolist()
-    response = _get_client().query_points(
+    response = get_client().query_points(
         collection_name=collection_name,
         query=query_vector,
         limit=top_k * CANDIDATE_MULTIPLIER,
@@ -77,6 +78,7 @@ def search(
 
         results.append(
             SearchResult(
+                point_id=str(point.id),
                 content=payload.get("text", "Texte non trouvé"),
                 metadata={k: v for k, v in payload.items() if k != "text"},
                 score=hybrid,
