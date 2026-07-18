@@ -1,5 +1,4 @@
 import logging
-import os
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -10,6 +9,7 @@ from dotenv import load_dotenv
 from groq import APIConnectionError, APIStatusError, APITimeoutError, Groq, Stream
 from groq.types.chat import ChatCompletionChunk
 
+from .groqpool import acquire
 from .retrieval import search
 from .types import HistoryMessage, SearchResult
 
@@ -63,15 +63,6 @@ _HTTP_413 = 413
 _THINK_OPEN = "<think>"
 _THINK_CLOSE = "</think>"
 _SYSTEM_MSG = "Tu es un étudiant de Telecom Nancy."
-
-_groq_client: Groq | None = None
-
-
-def _get_groq_client() -> Groq:
-    global _groq_client  # noqa: PLW0603
-    if _groq_client is None:
-        _groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-    return _groq_client
 
 
 @dataclass
@@ -191,16 +182,27 @@ def retrieve(req: GenerateRequest) -> list[SearchResult]:
 
 
 def generate_answer(
-    req: GenerateRequest, results: list[SearchResult] | None = None
+    req: GenerateRequest,
+    results: list[SearchResult] | None = None,
+    client: Groq | None = None,
 ) -> Iterator[str]:
     """Génère une réponse en streaming : enrichissement → Qdrant → prompt → Groq.
 
     `results` évite de refaire la recherche quand l'appelant l'a déjà effectuée.
+    `client` est le client Groq choisi dans le pool par l'appelant ; à défaut,
+    une clé est prélevée du pool ici.
     """
     if results is None:
         results = retrieve(req)
+    if client is None:
+        client, _ = acquire()
+    yield from _stream_with_retries(req, results, client)
 
-    client = _get_groq_client()
+
+def _stream_with_retries(
+    req: GenerateRequest, results: list[SearchResult], client: Groq
+) -> Iterator[str]:
+    """Appelle Groq avec repli (429 : backoff, 413 : moins de contexte)."""
     current_results = results
     max_retries = 3
 
