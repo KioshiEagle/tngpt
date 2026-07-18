@@ -11,6 +11,7 @@ from flask import (
     redirect,
     render_template,
     request,
+    session,
     url_for,
 )
 from flask_login import current_user
@@ -20,6 +21,7 @@ from werkzeug.wrappers import Response
 
 from app.extensions import CHAT_RATE_DEFAULT, CHAT_RATE_LIMITED
 
+from .apikeys import generate_key
 from .catalog import (
     delete_document,
     reset_stale_ingestions,
@@ -35,6 +37,7 @@ from .models import (
     USER_ACTIVE,
     USER_BANNED,
     USER_LIMITED,
+    ApiKey,
     Conversation,
     Document,
     Query,
@@ -55,7 +58,12 @@ from .permissions import (
     permission_table,
     view_analytics_required,
 )
-from .usage import daily_quota, questions_today_all
+from .usage import (
+    api_key_quota,
+    daily_quota,
+    key_questions_today_all,
+    questions_today_all,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -408,6 +416,100 @@ def update_quota(user_id: int) -> Response:
             "success",
         )
     return redirect(url_for("admin.quotas_page"))
+
+
+@admin_bp.route("/api-keys")
+@manage_users_required
+def api_keys_page() -> str:
+    """Liste les clés API, leur usage du jour et leur propriétaire."""
+    usage = key_questions_today_all()
+    keys = db.session.scalars(
+        db.select(ApiKey).order_by(
+            ApiKey.revoked_at.isnot(None), ApiKey.created_at.desc()
+        )
+    ).all()
+
+    rows = [
+        {
+            "key": key,
+            "used": usage.get(key.api_key_id, 0),
+            "limit": api_key_quota(key),
+        }
+        for key in keys
+    ]
+    users = db.session.scalars(
+        db.select(User).order_by(User.user_surname, User.user_firstname)
+    ).all()
+
+    # Clé fraîchement créée à afficher une seule fois (transmise via la session
+    # par flash, puis effacée à l'affichage).
+    new_key = session.pop("new_api_key", None)
+
+    return render_template(
+        "admin/api_keys.html",
+        rows=rows,
+        users=users,
+        new_key=new_key,
+        default_quota=current_app.config["DEFAULT_DAILY_QUOTA"],
+    )
+
+
+@admin_bp.route("/api-keys/create", methods=["POST"])
+@manage_users_required
+def create_api_key() -> Response:
+    """Génère une clé pour un utilisateur et affiche sa valeur une seule fois."""
+    user = db.session.get(User, request.form.get("user_id", type=int))
+    if user is None:
+        flash("Utilisateur introuvable.", "warning")
+        return redirect(url_for("admin.api_keys_page"))
+
+    raw_quota = (request.form.get("quota_daily") or "").strip()
+    if raw_quota == "":
+        quota_daily = None
+    elif raw_quota.isdigit() and int(raw_quota) <= _MAX_QUOTA:
+        quota_daily = int(raw_quota)
+    else:
+        abort(_HTTP_BAD_REQUEST)
+
+    full_key, key_hash, prefix = generate_key()
+    api_key = ApiKey(
+        user_id=user.user_id,
+        label=(request.form.get("label") or "").strip()[:100] or None,
+        key_hash=key_hash,
+        prefix=prefix,
+        quota_daily=quota_daily,
+        created_by=current_user.user_id,
+    )
+    db.session.add(api_key)
+    db.session.commit()
+
+    # Seule occasion où la clé en clair existe : on la remet une fois via la
+    # session, elle ne sera plus jamais récupérable ensuite.
+    session["new_api_key"] = full_key
+    logger.info(
+        "Clé API créée pour %s par %s (préfixe %s)",
+        user.user_mail,
+        current_user.user_mail,
+        prefix,
+    )
+    flash(f"Clé créée pour {user.user_firstname}. Copiez-la maintenant.", "success")
+    return redirect(url_for("admin.api_keys_page"))
+
+
+@admin_bp.route("/api-keys/<int:api_key_id>/revoke", methods=["POST"])
+@manage_users_required
+def revoke_api_key(api_key_id: int) -> Response:
+    """Révoque une clé : elle cesse immédiatement de fonctionner."""
+    key = db.session.get(ApiKey, api_key_id)
+    if key is None:
+        abort(404)
+
+    if key.revoked_at is None:
+        key.revoked_at = datetime.now(UTC)
+        db.session.commit()
+        logger.info("Clé API %s révoquée par %s", key.prefix, current_user.user_mail)
+        flash(f"Clé {key.prefix}… révoquée.", "success")
+    return redirect(url_for("admin.api_keys_page"))
 
 
 @admin_bp.route("/moderation")

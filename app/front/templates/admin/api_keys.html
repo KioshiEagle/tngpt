@@ -1,0 +1,126 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Clés API{% endblock %}
+{% block heading %}Clés API{% endblock %}
+{% block subtitle %}Accès programmatique à TN-GPT. Chaque clé appartient à un utilisateur et a son propre quota journalier.{% endblock %}
+
+{% block content %}
+
+    {% if new_key %}
+        <div class="admin-card admin-newkey">
+            <h2>Clé créée — copiez-la maintenant</h2>
+            <p class="admin-note">
+                Elle ne sera plus jamais affichée : seul son hash est conservé. En cas de perte,
+                révoquez-la et générez-en une nouvelle.
+            </p>
+            <div class="admin-newkey-row">
+                <code id="new-key-value">{{ new_key }}</code>
+                <button type="button" class="admin-btn admin-btn--primary" id="copy-key">Copier</button>
+            </div>
+        </div>
+    {% endif %}
+
+    <div class="admin-card">
+        <h2>Créer une clé</h2>
+        <form method="post" action="{{ url_for('admin.create_api_key') }}" class="admin-key-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label>
+                <span>Utilisateur</span>
+                <select name="user_id" required>
+                    {% for user in users %}
+                        <option value="{{ user.user_id }}">{{ user.user_firstname }} {{ user.user_surname }} — {{ user.user_mail }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>
+                <span>Libellé (facultatif)</span>
+                <input type="text" name="label" maxlength="100" placeholder="ex. script de veille">
+            </label>
+            <label>
+                <span>Quota / jour</span>
+                <input type="number" name="quota_daily" min="0" max="100000" placeholder="{{ default_quota }} (défaut)">
+            </label>
+            <button type="submit" class="admin-btn admin-btn--primary">Générer la clé</button>
+        </form>
+    </div>
+
+    <div class="admin-card admin-card--spaced">
+        <div class="admin-table-scroll">
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th>Clé</th>
+                        <th>Propriétaire</th>
+                        <th>Aujourd'hui</th>
+                        <th>Dernier usage</th>
+                        <th>État</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                        {% set key = row.key %}
+                        <tr>
+                            <td>
+                                <span class="admin-user-text">
+                                    <span class="admin-user-name admin-mono">{{ key.prefix }}…</span>
+                                    <span class="admin-user-mail">{{ key.label or "sans libellé" }}</span>
+                                </span>
+                            </td>
+                            <td>
+                                <span class="admin-user-text">
+                                    <span class="admin-user-name">{{ key.user.user_firstname }} {{ key.user.user_surname }}</span>
+                                    <span class="admin-user-mail">{{ key.user.user_mail }}</span>
+                                </span>
+                            </td>
+                            <td class="admin-cell-muted">{{ row.used }} / {{ row.limit }}</td>
+                            <td class="admin-cell-muted">
+                                {{ key.last_used_at.strftime('%d/%m/%Y %H:%M') if key.last_used_at else "jamais" }}
+                            </td>
+                            <td>
+                                {% if key.revoked_at %}
+                                    <span class="admin-status admin-status--banned">révoquée</span>
+                                {% elif key.user.is_banned() %}
+                                    <span class="admin-status admin-status--limited">propriétaire banni</span>
+                                {% else %}
+                                    <span class="admin-status admin-status--active">active</span>
+                                {% endif %}
+                            </td>
+                            <td class="admin-td-action">
+                                {% if not key.revoked_at %}
+                                    <form method="post"
+                                          action="{{ url_for('admin.revoke_api_key', api_key_id=key.api_key_id) }}"
+                                          onsubmit="return confirm('Révoquer cette clé ? Elle cessera immédiatement de fonctionner.');">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="admin-btn admin-btn--danger">Révoquer</button>
+                                    </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% else %}
+                        <tr><td colspan="6" class="admin-empty">Aucune clé émise pour l'instant.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <p class="admin-note">
+        Appel : <code>POST /api/chat</code> avec l'en-tête <code>Authorization: Bearer &lt;clé&gt;</code>
+        et un corps JSON <code>{"message": "…"}</code>. La réponse contient la réponse générée et ses
+        sources. Une clé révoquée ou dont le propriétaire est banni est refusée (401).
+    </p>
+
+    {% if new_key %}
+        <script>
+            document.getElementById('copy-key').addEventListener('click', function () {
+                navigator.clipboard.writeText(document.getElementById('new-key-value').textContent).then(function () {
+                    var b = document.getElementById('copy-key');
+                    b.textContent = 'Copié ✓';
+                    setTimeout(function () { b.textContent = 'Copier'; }, 2000);
+                });
+            });
+        </script>
+    {% endif %}
+
+{% endblock %}

@@ -52,6 +52,12 @@ class User(UserMixin, db.Model):
         "Conversation", back_populates="user", lazy="dynamic"
     )
     queries = db.relationship("Query", back_populates="user", lazy="dynamic")
+    api_keys = db.relationship(
+        "ApiKey",
+        foreign_keys="ApiKey.user_id",
+        back_populates="user",
+        lazy="dynamic",
+    )
     moderator = db.relationship(
         "User", remote_side=[user_id], foreign_keys=[moderated_by]
     )
@@ -195,6 +201,10 @@ class Query(db.Model):
     user_id = db.Column(
         db.Integer, db.ForeignKey("users.user_id"), nullable=False, index=True
     )
+    # Clé API à l'origine de la question, le cas échéant. NULL = session web.
+    api_key_id = db.Column(
+        db.Integer, db.ForeignKey("api_keys.api_key_id"), nullable=True, index=True
+    )
     question = db.Column(db.String(500), nullable=False)
     top_k = db.Column(db.Integer, nullable=False)
     # Nombre de chunks réellement retournés : 0 signale une question sans
@@ -253,3 +263,45 @@ class RetrievalEvent(db.Model):
     def __repr__(self) -> str:
         """Représentation lisible de l'événement."""
         return f"RetrievalEvent {self.point_id} (rang {self.rank})"
+
+
+class ApiKey(db.Model):
+    """Clé d'accès programmatique à TN-GPT, rattachée à un utilisateur.
+
+    Seul le hash de la clé est stocké : la valeur en clair n'est montrée qu'à la
+    création. Le préfixe permet d'identifier la clé à l'écran sans divulguer le
+    secret.
+    """
+
+    __tablename__ = "api_keys"
+
+    api_key_id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey("users.user_id"), nullable=False, index=True
+    )
+    label = db.Column(db.String(100), nullable=True)
+    key_hash = db.Column(db.String(64), nullable=False, unique=True, index=True)
+    prefix = db.Column(db.String(20), nullable=False)  # affichage : « tngpt_ab12cd »
+    quota_daily = db.Column(db.Integer, nullable=True)  # NULL = défaut global
+
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+    )
+    last_used_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    revoked_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    created_by = db.Column(
+        db.Integer, db.ForeignKey("users.user_id"), nullable=True
+    )  # admin émetteur
+
+    user = db.relationship("User", foreign_keys=[user_id], back_populates="api_keys")
+    creator = db.relationship("User", foreign_keys=[created_by])
+
+    def is_active(self) -> bool:
+        """Indique si la clé est utilisable (non révoquée, propriétaire non banni)."""
+        return self.revoked_at is None and not self.user.is_banned()
+
+    def __repr__(self) -> str:
+        """Représentation lisible de la clé."""
+        return f"ApiKey {self.prefix}… (user {self.user_id})"

@@ -12,15 +12,24 @@ from flask import (
 )
 from flask_login import current_user, login_required
 
+from .back.apikeys import authenticate, touch
 from .back.generate import GenerateRequest, generate_answer, retrieve
-from .back.usage import log_retrieval, quota_status, seconds_until_reset
-from .extensions import chat_rate_limit, limiter
+from .back.usage import (
+    api_key_quota,
+    key_questions_today,
+    log_retrieval,
+    quota_status,
+    seconds_until_reset,
+)
+from .extensions import api_rate_key, chat_rate_limit, limiter
 
 bp = Blueprint("chat", __name__)
+api_bp = Blueprint("api", __name__, url_prefix="/api")
 
 MAX_MESSAGE_LENGTH = 500
 TOP_K = 5
 _HTTP_TOO_MANY_REQUESTS = 429
+_HTTP_UNAUTHORIZED = 401
 
 
 @bp.route("/chat", methods=["POST"])
@@ -84,6 +93,68 @@ def chat() -> Response | tuple[Response, int]:
             yield f"Erreur : {e!s}"
 
     return Response(stream_with_context(_stream()), mimetype="text/plain")
+
+
+@api_bp.route("/chat", methods=["POST"])
+@limiter.limit("60 per minute", key_func=api_rate_key)
+def api_chat() -> tuple[Response, int] | Response:
+    """Point d'accès programmatique : authentifié par clé API, réponse JSON.
+
+    Non streamé, contrairement au chat web : un client d'API attend la réponse
+    complète et ses sources en une fois.
+    """
+    key = authenticate(request.headers.get("Authorization"))
+    if key is None:
+        return jsonify(error="Clé API invalide ou révoquée."), _HTTP_UNAUTHORIZED
+
+    data = request.get_json(silent=True) or {}
+    question = data.get("message") or data.get("question")
+    if not question:
+        return jsonify(error="Champ 'message' manquant."), 400
+    if len(question) > MAX_MESSAGE_LENGTH:
+        return jsonify(
+            error=f"Message trop long (max {MAX_MESSAGE_LENGTH} caractères)."
+        ), 400
+
+    # Quota propre à la clé, appliqué avant tout appel réseau. Aucune exemption,
+    # même si le propriétaire est administrateur.
+    limit = api_key_quota(key)
+    used = key_questions_today(key.api_key_id)
+    if used >= limit:
+        return jsonify(
+            error=f"Quota de la clé atteint ({limit} questions/jour).",
+            quota=limit,
+            used=used,
+            reset_in=seconds_until_reset(),
+        ), _HTTP_TOO_MANY_REQUESTS
+
+    touch(key)
+
+    req = GenerateRequest(
+        question=question,
+        history=data.get("history", []),
+        top_k=TOP_K,
+        user_name=key.user.user_firstname,
+    )
+    results = retrieve(req)
+    log_retrieval(
+        user_id=key.user_id,
+        question=question,
+        top_k=TOP_K,
+        results=results,
+        api_key_id=key.api_key_id,
+    )
+
+    answer = "".join(generate_answer(req, results))
+    sources = [
+        {
+            "title": result["metadata"].get("title"),
+            "source_id": result["metadata"].get("source"),
+            "score": round(result["score"], 4),
+        }
+        for result in results
+    ]
+    return jsonify(answer=answer, sources=sources)
 
 
 @bp.route("/history", methods=["GET"])
