@@ -58,6 +58,9 @@ environments = [
     "sys_platform == 'darwin' and platform_machine == 'arm64'",
     "sys_platform == 'linux' and platform_machine == 'x86_64'"
 ]
+# setuptools est tiré comme dépendance de build ; on force la version corrigée
+# (PYSEC-2026-3447) que la résolution normale ne remonte pas.
+override-dependencies = ["setuptools>=83.0.0"]
 
 
 [tool.ruff]
