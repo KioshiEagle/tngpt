@@ -44,6 +44,10 @@ app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 app.config["UPLOAD_DIR"] = Path(__file__).parent / "uploads"
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024  # 32 Mo par requête
 
+# Quota de questions par jour appliqué aux utilisateurs sans surcharge explicite.
+# Les administrateurs n'y sont pas soumis.
+app.config["DEFAULT_DAILY_QUOTA"] = int(os.environ.get("DEFAULT_DAILY_QUOTA", "100"))
+
 Compress(app)
 limiter.init_app(app)
 csrf.init_app(app)
@@ -81,6 +85,24 @@ def unauthorized() -> Response | tuple[Response, int]:
             error="Session expirée", login_url=url_for("auth.login_page")
         ), 401
     return redirect(url_for("auth.login_page", next=request.path))
+
+
+@app.errorhandler(429)
+def too_many_requests(error: Exception) -> Response | tuple[Response, int]:
+    """Répond en JSON aux appels API quand le rate-limiter renvoie un 429.
+
+    Le quota journalier renvoie déjà son propre JSON ; ce handler couvre la
+    rafale bloquée par flask-limiter, qui produirait sinon une page HTML que le
+    front afficherait comme une réponse du chat.
+    """
+    if request.is_json or request.accept_mimetypes.best == "application/json":
+        description = getattr(error, "description", None)
+        return jsonify(
+            error=f"Trop de requêtes. {description}"
+            if description
+            else "Trop de requêtes, ralentis un peu."
+        ), 429
+    return error  # type: ignore[return-value]
 
 
 app.register_blueprint(bp)
