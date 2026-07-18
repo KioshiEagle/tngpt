@@ -65,6 +65,20 @@ def questions_today(user_id: int) -> int:
     )
 
 
+def questions_today_all() -> dict[int, int]:
+    """Questions posées aujourd'hui, par utilisateur.
+
+    Un seul agrégat pour toute la liste : évite une requête de comptage par
+    utilisateur sur l'écran des quotas.
+    """
+    rows = db.session.execute(
+        db.select(Query.user_id, db.func.count(Query.query_id))
+        .where(Query.created_at >= _day_start())
+        .group_by(Query.user_id)
+    ).all()
+    return dict(rows)
+
+
 def quota_status(user: User) -> QuotaStatus:
     """Usage du jour, limite effective et solde restant pour un utilisateur."""
     limit = daily_quota(user)

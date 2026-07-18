@@ -1,0 +1,96 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Quotas{% endblock %}
+{% block heading %}Quotas d'utilisation{% endblock %}
+{% block subtitle %}Nombre de questions autorisées par jour et par utilisateur. Le compteur repart à zéro chaque nuit (UTC).{% endblock %}
+
+{% block content %}
+
+    <div class="admin-card">
+        <div class="admin-table-scroll">
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th>Utilisateur</th>
+                        <th>Aujourd'hui</th>
+                        <th class="admin-td-num">Restant</th>
+                        <th>Limite / jour</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                        {% set user = row.user %}
+                        <tr>
+                            <td>
+                                <div class="admin-user">
+                                    {% if user.user_picture %}
+                                        <img src="{{ user.user_picture }}" class="admin-avatar" alt="" referrerpolicy="no-referrer" width="32" height="32">
+                                    {% else %}
+                                        <span class="admin-avatar admin-avatar--initials">{{ user.user_firstname[0] }}{{ user.user_surname[0] }}</span>
+                                    {% endif %}
+                                    <span class="admin-user-text">
+                                        <span class="admin-user-name">
+                                            {{ user.user_firstname }} {{ user.user_surname }}
+                                            {% if user.is_admin() %}<span class="admin-badge">admin</span>{% endif %}
+                                        </span>
+                                        <span class="admin-user-mail">{{ user.user_mail }}</span>
+                                    </span>
+                                </div>
+                            </td>
+
+                            <td class="admin-quota-usage">
+                                {% if row.limit is none %}
+                                    <span class="admin-cell-muted">{{ row.used }} question(s) — illimité</span>
+                                {% else %}
+                                    <span class="admin-meter" title="{{ row.used }} / {{ row.limit }}">
+                                        <span class="admin-meter-fill {% if row.remaining == 0 %}admin-meter-fill--full{% endif %}"
+                                              style="width: {{ row.pct }}%;"></span>
+                                    </span>
+                                    <span class="admin-meter-label">{{ row.used }} / {{ row.limit }}</span>
+                                {% endif %}
+                            </td>
+
+                            <td class="admin-td-num">
+                                {% if row.remaining is none %}
+                                    ∞
+                                {% elif row.remaining == 0 %}
+                                    <span class="admin-status admin-status--banned">atteint</span>
+                                {% else %}
+                                    {{ row.remaining }}
+                                {% endif %}
+                            </td>
+
+                            <td>
+                                {% if user.is_admin() %}
+                                    <span class="admin-cell-muted">Administrateur — non plafonné</span>
+                                {% else %}
+                                    <form method="post"
+                                          action="{{ url_for('admin.update_quota', user_id=user.user_id) }}"
+                                          class="admin-quota-form">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <input type="number"
+                                               name="quota_daily"
+                                               value="{{ row.override if row.override is not none else '' }}"
+                                               min="0"
+                                               max="100000"
+                                               placeholder="{{ default_quota }} (défaut)"
+                                               aria-label="Limite quotidienne de {{ user.user_firstname }}">
+                                        <button type="submit" class="admin-btn">Enregistrer</button>
+                                    </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <p class="admin-note">
+        Un champ <strong>vide</strong> applique le quota par défaut ({{ default_quota }} questions/jour),
+        défini au déploiement. Une valeur le surcharge pour cet utilisateur. <strong>0</strong> bloque
+        toutes ses questions sans le bannir. Les administrateurs ne sont jamais plafonnés. Ce quota
+        plafonne le total quotidien ; la rafale (par minute) reste gérée séparément.
+    </p>
+
+{% endblock %}

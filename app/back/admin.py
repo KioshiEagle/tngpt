@@ -55,6 +55,7 @@ from .permissions import (
     permission_table,
     view_analytics_required,
 )
+from .usage import daily_quota, questions_today_all
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,7 @@ _MODERATION_ACTIONS = {
     USER_LIMITED: "usage restreint",
     USER_BANNED: "accès suspendu",
 }
+_MAX_QUOTA = 100_000
 
 
 @admin_bp.app_template_filter("bitwise_has")
@@ -345,6 +347,67 @@ def chunks_page() -> str:
         windows=_WINDOWS,
         top_n=_TOP_CHUNKS,
     )
+
+
+@admin_bp.route("/quotas")
+@manage_users_required
+def quotas_page() -> str:
+    """Usage du jour et limite quotidienne de chaque utilisateur."""
+    counts = questions_today_all()
+    users = db.session.scalars(
+        db.select(User).order_by(User.user_surname, User.user_firstname)
+    ).all()
+
+    rows = []
+    for user in users:
+        used = counts.get(user.user_id, 0)
+        limit = daily_quota(user)  # None pour un admin (illimité)
+        rows.append(
+            {
+                "user": user,
+                "used": used,
+                "limit": limit,
+                "remaining": None if limit is None else max(limit - used, 0),
+                "pct": min(100, round(100 * used / limit)) if limit else 0,
+                "override": user.quota_daily,
+            }
+        )
+
+    return render_template(
+        "admin/quotas.html",
+        rows=rows,
+        default_quota=current_app.config["DEFAULT_DAILY_QUOTA"],
+    )
+
+
+@admin_bp.route("/quotas/<int:user_id>", methods=["POST"])
+@manage_users_required
+def update_quota(user_id: int) -> Response:
+    """Fixe (ou réinitialise) la limite quotidienne d'un utilisateur."""
+    user = db.session.get(User, user_id)
+    if user is None:
+        abort(404)
+
+    raw = (request.form.get("quota_daily") or "").strip()
+    if raw == "":
+        # Champ vide : on retire la surcharge, l'utilisateur repasse au défaut global.
+        user.quota_daily = None
+    elif raw.isdigit() and int(raw) <= _MAX_QUOTA:
+        # isdigit() n'accepte que des entiers >= 0 : pas de négatif, pas de texte.
+        user.quota_daily = int(raw)
+    else:
+        abort(_HTTP_BAD_REQUEST)
+
+    db.session.commit()
+
+    if user.quota_daily is None:
+        flash(f"{user.user_firstname} : quota par défaut rétabli.", "success")
+    else:
+        flash(
+            f"{user.user_firstname} : quota fixé à {user.quota_daily} questions/jour.",
+            "success",
+        )
+    return redirect(url_for("admin.quotas_page"))
 
 
 @admin_bp.route("/moderation")
