@@ -75,8 +75,8 @@ def questions_today_all() -> dict[int, int]:
         db.select(Query.user_id, db.func.count(Query.query_id))
         .where(Query.created_at >= _day_start())
         .group_by(Query.user_id)
-    ).all()
-    return dict(rows)
+    ).tuples()
+    return dict(rows.all())
 
 
 def quota_status(user: User) -> QuotaStatus:
@@ -104,8 +104,8 @@ def groq_calls_today_by_key() -> dict[int, int]:
         db.select(Query.groq_key_id, db.func.count(Query.query_id))
         .where(Query.groq_key_id.is_not(None), Query.created_at >= _day_start())
         .group_by(Query.groq_key_id)
-    ).all()
-    return dict(rows)
+    ).tuples()
+    return dict(rows.all())
 
 
 def _truncate(value: object, length: int) -> str | None:

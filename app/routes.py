@@ -41,7 +41,8 @@ def chat() -> Response | tuple[Response, int]:
     # Quota journalier : plafonne le total de questions du jour, là où le
     # rate-limiter ne borne que la rafale par minute. Vérifié avant le retrieval
     # pour ne rien consommer quand la limite est atteinte.
-    status = quota_status(current_user)
+    # current_user est un proxy Flask-Login ; @login_required garantit un User.
+    status = quota_status(current_user)  # ty: ignore[invalid-argument-type]
     if status.exceeded:
         return jsonify(
             {
