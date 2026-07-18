@@ -13,13 +13,14 @@ from flask import (
 from flask_login import current_user, login_required
 
 from .back.generate import GenerateRequest, generate_answer, retrieve
-from .back.usage import log_retrieval
+from .back.usage import log_retrieval, quota_status, seconds_until_reset
 from .extensions import chat_rate_limit, limiter
 
 bp = Blueprint("chat", __name__)
 
 MAX_MESSAGE_LENGTH = 500
 TOP_K = 5
+_HTTP_TOO_MANY_REQUESTS = 429
 
 
 @bp.route("/chat", methods=["POST"])
@@ -35,6 +36,23 @@ def chat() -> Response | tuple[Response, int]:
     if len(user_message) > MAX_MESSAGE_LENGTH:
         msg = f"Message trop long (max {MAX_MESSAGE_LENGTH} caractères)"
         return jsonify({"error": msg}), 400
+
+    # Quota journalier : plafonne le total de questions du jour, là où le
+    # rate-limiter ne borne que la rafale par minute. Vérifié avant le retrieval
+    # pour ne rien consommer quand la limite est atteinte.
+    status = quota_status(current_user)
+    if status.exceeded:
+        return jsonify(
+            {
+                "error": (
+                    f"Quota journalier atteint ({status.limit} questions). "
+                    "Réessaie demain."
+                ),
+                "quota": status.limit,
+                "used": status.used,
+                "reset_in": seconds_until_reset(),
+            }
+        ), _HTTP_TOO_MANY_REQUESTS
 
     # Résolus hors du générateur : le contexte de requête ne doit pas être
     # une dépendance du streaming.
