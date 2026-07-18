@@ -43,7 +43,10 @@
                class="admin-nav-item {% if request.endpoint == 'admin.moderation_page' %}is-active{% endif %}">
                 Modération
             </a>
-            <span class="admin-nav-item is-disabled">Quotas <em>à venir</em></span>
+            <a href="{{ url_for('admin.quotas_page') }}"
+               class="admin-nav-item {% if request.endpoint == 'admin.quotas_page' %}is-active{% endif %}">
+                Quotas
+            </a>
         </nav>
 
         <div class="admin-sidebar-footer">

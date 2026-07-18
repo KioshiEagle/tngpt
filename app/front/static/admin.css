@@ -473,6 +473,58 @@
     font-family: inherit;
 }
 
+/* --- Quotas : mètre d'usage et formulaire --- */
+
+.admin-quota-usage {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 180px;
+}
+
+.admin-meter {
+    flex: 1;
+    max-width: 140px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--bg-input);
+    overflow: hidden;
+}
+
+.admin-meter-fill {
+    display: block;
+    height: 100%;
+    min-width: 2px;
+    border-radius: 999px;
+    background: var(--chart-bar);
+}
+
+.admin-meter-fill--full { background: #dc2626; }
+
+.admin-meter-label {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.admin-quota-form {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.admin-quota-form input[type="number"] {
+    width: 130px;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-input);
+    color: var(--text-main);
+    font-size: 0.8rem;
+    font-family: inherit;
+}
+
 .admin-empty {
     padding: 28px 10px;
     color: var(--text-muted);
