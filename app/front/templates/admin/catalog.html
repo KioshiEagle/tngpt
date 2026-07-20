@@ -1,0 +1,237 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Catalogue{% endblock %}
+{% block heading %}Catalogue de données{% endblock %}
+{% block subtitle %}Ce que contient la base vectorielle Qdrant à l'instant t. Déposez un fichier pour l'ajouter.{% endblock %}
+
+{% block content %}
+
+    <div class="admin-drop" id="drop-zone" tabindex="0" role="button"
+         aria-label="Déposer des documents à ingérer">
+        <input type="file" id="file-input" multiple accept=".pdf,.md" hidden>
+        <p class="admin-drop-title">Glissez vos documents ici</p>
+        <p class="admin-note">PDF ou Markdown — ou <button type="button" class="admin-link" id="browse">parcourir</button></p>
+        <ul class="admin-drop-list" id="drop-list"></ul>
+    </div>
+
+    <div class="admin-toolbar">
+        <form method="get" action="{{ url_for('admin.catalog_page') }}" class="admin-search">
+            <input type="search"
+                   name="q"
+                   value="{{ search }}"
+                   placeholder="Rechercher un titre, un auteur, un identifiant…"
+                   aria-label="Rechercher un document">
+            <button type="submit" class="admin-btn">Rechercher</button>
+            {% if search %}
+                <a href="{{ url_for('admin.catalog_page') }}" class="admin-btn">Effacer</a>
+            {% endif %}
+        </form>
+
+        <form method="post" action="{{ url_for('admin.catalog_sync') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="admin-btn admin-btn--primary">Synchroniser depuis Qdrant</button>
+        </form>
+    </div>
+
+    <div class="admin-card">
+        <div class="admin-table-scroll">
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th>Document</th>
+                        <th>Auteur</th>
+                        <th>Date</th>
+                        <th class="admin-td-num">Chunks</th>
+                        <th>Origine</th>
+                        <th>État</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for doc in documents.items %}
+                        <tr data-source="{{ doc.source_id }}">
+                            <td>
+                                <span class="admin-user-text">
+                                    <span class="admin-user-name">{{ doc.title or "(sans titre)" }}</span>
+                                    <span class="admin-user-mail" title="{{ doc.source_id }}">{{ doc.source_id }}</span>
+                                </span>
+                            </td>
+                            <td>{{ doc.author or "—" }}</td>
+                            <td>{{ doc.doc_date or "—" }}</td>
+                            <td class="admin-td-num js-chunks">{{ doc.chunk_count }}</td>
+                            <td><span class="admin-tag">{{ doc.origin }}</span></td>
+                            <td>
+                                <span class="admin-status admin-status--{{ doc.status }} js-status">{{ doc.status }}</span>
+                                {% if doc.error %}
+                                    <span class="admin-error" title="{{ doc.error }}">⚠</span>
+                                {% endif %}
+                            </td>
+                            <td class="admin-td-action">
+                                <form method="post"
+                                      action="{{ url_for('admin.catalog_delete', source_id=doc.source_id) }}"
+                                      onsubmit="return confirm('Supprimer « {{ (doc.title or doc.source_id) | e }} » de Qdrant ? Cette action est irréversible.');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="admin-btn admin-btn--danger">Supprimer</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="7" class="admin-empty">
+                                {% if search %}
+                                    Aucun document ne correspond à « {{ search }} ».
+                                {% else %}
+                                    Catalogue vide. Lancez une synchronisation depuis Qdrant.
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% if documents.pages > 1 %}
+        <nav class="admin-pagination">
+            {% if documents.has_prev %}
+                <a class="admin-btn" href="{{ url_for('admin.catalog_page', page=documents.prev_num, q=search) }}">← Précédent</a>
+            {% endif %}
+            <span class="admin-note">
+                Page {{ documents.page }} sur {{ documents.pages }} — {{ documents.total }} documents
+            </span>
+            {% if documents.has_next %}
+                <a class="admin-btn" href="{{ url_for('admin.catalog_page', page=documents.next_num, q=search) }}">Suivant →</a>
+            {% endif %}
+        </nav>
+    {% endif %}
+
+    <p class="admin-note">
+        Le catalogue est un reflet de Qdrant, pas sa source de vérité. Un document
+        marqué <span class="admin-status admin-status--missing">missing</span> est connu
+        du catalogue mais introuvable dans Qdrant : il est signalé plutôt que supprimé,
+        pour que la désynchronisation reste visible.
+    </p>
+
+    <script>
+    (function () {
+        const CSRF = "{{ csrf_token() }}";
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const dropList = document.getElementById('drop-list');
+        let pollTimer = null;
+
+        function note(text, kind) {
+            const li = document.createElement('li');
+            li.className = 'admin-drop-item admin-drop-item--' + kind;
+            li.textContent = text;
+            dropList.appendChild(li);
+            return li;
+        }
+
+        async function upload(files) {
+            const form = new FormData();
+            let count = 0;
+            for (const file of files) {
+                form.append('files', file);
+                count++;
+            }
+            if (!count) return;
+
+            const pending = note(count + ' fichier(s) en cours d’envoi…', 'pending');
+
+            let payload;
+            try {
+                const response = await fetch("{{ url_for('admin.catalog_upload') }}", {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': CSRF },
+                    body: form,
+                });
+                if (response.status === 413) {
+                    pending.remove();
+                    note('Fichier trop volumineux (32 Mo maximum).', 'error');
+                    return;
+                }
+                payload = await response.json();
+            } catch (err) {
+                pending.remove();
+                note('Envoi impossible : ' + err.message, 'error');
+                return;
+            }
+
+            pending.remove();
+            (payload.rejected || []).forEach(function (item) {
+                note(item.filename + ' — ' + item.reason, 'error');
+            });
+            if ((payload.accepted || []).length) {
+                note(payload.accepted.length + ' document(s) en cours d’ingestion…', 'pending');
+                startPolling();
+            }
+        }
+
+        // L'ingestion tourne en tâche de fond côté serveur : on interroge son état
+        // jusqu'à ce que plus rien ne soit « indexing », puis on recharge la liste.
+        function startPolling() {
+            if (pollTimer) return;
+            pollTimer = setInterval(async function () {
+                let states;
+                try {
+                    const response = await fetch("{{ url_for('admin.catalog_status') }}");
+                    states = await response.json();
+                } catch (err) {
+                    return;  // erreur transitoire : on retentera au prochain tick
+                }
+
+                const stillIndexing = Object.values(states).some(function (s) {
+                    return s.status === 'indexing';
+                });
+
+                document.querySelectorAll('tr[data-source]').forEach(function (row) {
+                    const state = states[row.dataset.source];
+                    if (!state) return;
+                    const badge = row.querySelector('.js-status');
+                    badge.textContent = state.status;
+                    badge.className = 'admin-status admin-status--' + state.status + ' js-status';
+                    row.querySelector('.js-chunks').textContent = state.chunk_count;
+                });
+
+                if (!stillIndexing) {
+                    clearInterval(pollTimer);
+                    pollTimer = null;
+                    window.location.reload();
+                }
+            }, 3000);
+        }
+
+        ['dragenter', 'dragover'].forEach(function (type) {
+            dropZone.addEventListener(type, function (e) {
+                e.preventDefault();
+                dropZone.classList.add('is-hover');
+            });
+        });
+
+        ['dragleave', 'drop'].forEach(function (type) {
+            dropZone.addEventListener(type, function (e) {
+                e.preventDefault();
+                dropZone.classList.remove('is-hover');
+            });
+        });
+
+        dropZone.addEventListener('drop', function (e) {
+            upload(e.dataTransfer.files);
+        });
+
+        document.getElementById('browse').addEventListener('click', function () {
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', function () {
+            upload(fileInput.files);
+            fileInput.value = '';
+        });
+
+        // Une ingestion peut déjà tourner au chargement de la page.
+        if (document.querySelector('.admin-status--indexing')) startPolling();
+    })();
+    </script>
+
+{% endblock %}

@@ -10,12 +10,17 @@ from dotenv import load_dotenv
 from groq import APIConnectionError, APIStatusError, APITimeoutError, Groq, Stream
 from groq.types.chat import ChatCompletionChunk
 
+from .groqpool import acquire
 from .retrieval import search
 from .types import HistoryMessage, SearchResult
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 logger = logging.getLogger(__name__)
+
+# Modèle Groq de génération. Configurable : Groq retire régulièrement des modèles
+# (qwen/qwen3-32b a ainsi disparu au profit de qwen/qwen3.6-27b).
+_CHAT_MODEL = os.getenv("GROQ_CHAT_MODEL", "qwen/qwen3.6-27b")
 
 _PROMPT_TEMPLATE = (
     "Tu es TN-GPT, l'expert absolu de la vie associative de TELECOM Nancy.\n"
@@ -63,15 +68,6 @@ _HTTP_413 = 413
 _THINK_OPEN = "<think>"
 _THINK_CLOSE = "</think>"
 _SYSTEM_MSG = "Tu es un étudiant de Telecom Nancy."
-
-_groq_client: Groq | None = None
-
-
-def _get_groq_client() -> Groq:
-    global _groq_client  # noqa: PLW0603
-    if _groq_client is None:
-        _groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-    return _groq_client
 
 
 @dataclass
@@ -178,13 +174,40 @@ def _enrich_query(question: str, history: list[HistoryMessage], n: int = 2) -> s
     return " | ".join(pairs) + f" | {question}"
 
 
-def generate_answer(req: GenerateRequest) -> Iterator[str]:
-    """Génère une réponse en streaming : enrichissement → Qdrant → prompt → Groq."""
+def retrieve(req: GenerateRequest) -> list[SearchResult]:
+    """Enrichit la question avec l'historique puis interroge Qdrant.
+
+    Exposé séparément de la génération pour que l'appelant puisse journaliser
+    les chunks retrouvés avant que le streaming ne commence.
+    """
     enriched = _enrich_query(req.question, req.history)
     results = search(enriched, top_k=req.top_k)
     _log_results(results)
+    return results
 
-    client = _get_groq_client()
+
+def generate_answer(
+    req: GenerateRequest,
+    results: list[SearchResult] | None = None,
+    client: Groq | None = None,
+) -> Iterator[str]:
+    """Génère une réponse en streaming : enrichissement → Qdrant → prompt → Groq.
+
+    `results` évite de refaire la recherche quand l'appelant l'a déjà effectuée.
+    `client` est le client Groq choisi dans le pool par l'appelant ; à défaut,
+    une clé est prélevée du pool ici.
+    """
+    if results is None:
+        results = retrieve(req)
+    if client is None:
+        client, _ = acquire()
+    yield from _stream_with_retries(req, results, client)
+
+
+def _stream_with_retries(
+    req: GenerateRequest, results: list[SearchResult], client: Groq
+) -> Iterator[str]:
+    """Appelle Groq avec repli (429 : backoff, 413 : moins de contexte)."""
     current_results = results
     max_retries = 3
 
@@ -193,7 +216,7 @@ def generate_answer(req: GenerateRequest) -> Iterator[str]:
         prompt = build_prompt(context, req.question, user_name=req.user_name)
         try:
             completion = client.chat.completions.create(
-                model="qwen/qwen3-32b",
+                model=_CHAT_MODEL,
                 messages=[
                     {"role": "system", "content": _SYSTEM_MSG},
                     {"role": "user", "content": prompt},
