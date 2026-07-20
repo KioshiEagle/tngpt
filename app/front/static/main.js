@@ -81,6 +81,17 @@ document.addEventListener('DOMContentLoaded', () => {
         updateThemeLabel();
     });
 
+    // --- User menu ---
+    const userTab = document.getElementById('user-tab');
+    const userMenu = document.getElementById('user-menu');
+    userTab.addEventListener('click', (e) => {
+        e.stopPropagation();
+        userMenu.classList.toggle('open');
+    });
+    document.addEventListener('click', (e) => {
+        if (!userMenu.contains(e.target)) userMenu.classList.remove('open');
+    });
+
     // --- Mobile sidebar ---
     hamburger.addEventListener('click', () => {
         sidebar.classList.add('open');
@@ -222,6 +233,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify({ message: text, history: conversationHistory.slice(-4) }),
                 signal: abortController.signal,
             });
+
+            if (response.status === 401) {
+                const { login_url } = await response.json();
+                window.location.assign(login_url || '/auth/login');
+                return;
+            }
+
+            // 429 : quota journalier atteint ou rafale trop rapide. On affiche le
+            // message du serveur ; le nettoyage (indicateur, focus) se fait dans finally.
+            if (response.status === 429) {
+                const data = await response.json().catch(() => ({}));
+                appendMessage('assistant', data.error || "Tu as atteint ta limite pour le moment. Réessaie plus tard.");
+                return;
+            }
 
             if (!response.ok) throw new Error();
 
