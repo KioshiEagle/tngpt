@@ -4,16 +4,17 @@ from collections.abc import Iterator
 from flask import (
     Blueprint,
     Response,
+    abort,
     jsonify,
     render_template,
     request,
-    session,
     stream_with_context,
 )
 from flask_login import current_user, login_required
 
 from .back.generate import GenerateRequest, generate_answer, retrieve
 from .back.groqpool import acquire
+from .back.models import Conversation, db
 from .back.usage import log_retrieval, quota_status, seconds_until_reset
 from .extensions import chat_rate_limit, limiter
 
@@ -21,7 +22,31 @@ bp = Blueprint("chat", __name__)
 
 MAX_MESSAGE_LENGTH = 500
 TOP_K = 5
+# Nombre de tours passés inclus dans le prompt, pour enrichir la recherche
+# Qdrant sans faire exploser la taille du contexte envoyé à Groq.
+HISTORY_CONTEXT_SIZE = 4
+# Longueur du titre auto-généré à partir du premier message, alignée sur la
+# troncature déjà faite côté front (voir shortTitle dans main.js).
+TITLE_MAX_LENGTH = 40
 _HTTP_TOO_MANY_REQUESTS = 429
+
+
+def _make_title(message: str) -> str:
+    """Dérive un titre de conversation à partir du premier message."""
+    if len(message) <= TITLE_MAX_LENGTH:
+        return message
+    return message[:TITLE_MAX_LENGTH].rstrip() + "…"
+
+
+def _get_owned_conversation(conversation_id: int) -> Conversation:
+    """Charge une conversation appartenant à l'utilisateur courant, ou 404.
+
+    404 plutôt que 403 : ne révèle pas l'existence d'une conversation d'autrui.
+    """
+    conversation = db.session.get(Conversation, conversation_id)
+    if conversation is None or conversation.user_id != current_user.user_id:
+        abort(404)
+    return conversation
 
 
 @bp.route("/chat", methods=["POST"])
@@ -61,9 +86,22 @@ def chat() -> Response | tuple[Response, int]:
     user_name = current_user.user_firstname
     user_id = current_user.user_id
 
+    conversation_id = data.get("conversation_id")
+    if conversation_id is not None:
+        conversation = _get_owned_conversation(conversation_id)
+    else:
+        conversation = Conversation(
+            user_id=user_id, title=_make_title(user_message), messages=[]
+        )
+        db.session.add(conversation)
+
+    # L'historique d'enrichissement vient de la base, pas du client : une
+    # conversation a désormais une source de vérité côté serveur.
+    history = conversation.messages[-HISTORY_CONTEXT_SIZE:]
+
     req = GenerateRequest(
         question=user_message,
-        history=data.get("history", []),
+        history=history,
         top_k=TOP_K,
         user_name=user_name,
     )
@@ -84,28 +122,84 @@ def chat() -> Response | tuple[Response, int]:
         groq_key_id=groq_key_id,
     )
 
+    # Sauvegardé tout de suite, avant le streaming, pour la même raison que le
+    # log de retrieval ci-dessus.
+    conversation.messages = [
+        *conversation.messages,
+        {"role": "user", "content": user_message},
+    ]
+    db.session.commit()
+    conversation_id = conversation.conversation_id
+
     def _stream() -> Iterator[str]:
+        raw_text = ""
         try:
-            yield from generate_answer(req, results, client=client)
+            for chunk in generate_answer(req, results, client=client):
+                raw_text += chunk
+                yield chunk
         except Exception as e:  # noqa: BLE001
             yield f"Erreur : {e!s}"
+        finally:
+            # Sauvegarde même une réponse partielle (arrêt manuel, erreur) :
+            # stream_with_context maintient le contexte de requête jusqu'ici,
+            # y compris quand le client se déconnecte (GeneratorExit).
+            if raw_text:
+                conv = db.session.get(Conversation, conversation_id)
+                if conv is not None:
+                    conv.messages = [
+                        *conv.messages,
+                        {"role": "assistant", "content": raw_text},
+                    ]
+                    db.session.commit()
 
-    return Response(stream_with_context(_stream()), mimetype="text/plain")
+    response = Response(stream_with_context(_stream()), mimetype="text/plain")
+    response.headers["X-Conversation-Id"] = str(conversation_id)
+    return response
 
 
-@bp.route("/history", methods=["GET"])
+@bp.route("/conversations", methods=["GET"])
 @login_required
-def history() -> Response:
-    """Renvoie l'historique de la conversation."""
-    return jsonify(session.get("history", []))
+def list_conversations() -> Response:
+    """Liste les conversations de l'utilisateur courant, les plus récentes d'abord."""
+    conversations = db.session.scalars(
+        db.select(Conversation)
+        .filter_by(user_id=current_user.user_id)
+        .order_by(Conversation.updated_at.desc())
+    ).all()
+    return jsonify(
+        [
+            {
+                "id": c.conversation_id,
+                "title": c.title,
+                "updated_at": c.updated_at.isoformat(),
+            }
+            for c in conversations
+        ]
+    )
 
 
-@bp.route("/history", methods=["DELETE"])
+@bp.route("/conversations/<int:conversation_id>", methods=["GET"])
 @login_required
-def clear_history() -> Response:
-    """Efface l'historique de la conversation."""
-    session.pop("history", None)
-    return jsonify({"message": "Historique effacé"})
+def get_conversation(conversation_id: int) -> Response:
+    """Renvoie le détail d'une conversation, messages inclus."""
+    conversation = _get_owned_conversation(conversation_id)
+    return jsonify(
+        {
+            "id": conversation.conversation_id,
+            "title": conversation.title,
+            "messages": conversation.messages,
+        }
+    )
+
+
+@bp.route("/conversations/<int:conversation_id>", methods=["DELETE"])
+@login_required
+def delete_conversation(conversation_id: int) -> Response:
+    """Supprime une conversation."""
+    conversation = _get_owned_conversation(conversation_id)
+    db.session.delete(conversation)
+    db.session.commit()
+    return jsonify({"message": "Conversation supprimée"})
 
 
 Citation = tuple[str, int]
