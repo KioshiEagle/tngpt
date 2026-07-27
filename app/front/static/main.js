@@ -65,6 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const hamburger = document.getElementById('hamburger');
     const sidebar = document.getElementById('sidebar');
     const backdrop = document.getElementById('sidebar-backdrop');
+    const convList = document.getElementById('conv-list');
 
     // --- Theme toggle ---
     function updateThemeLabel() {
@@ -166,7 +167,78 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    const conversationHistory = [];
+    let currentConversationId = null;
+
+    // --- Liste des conversations (sidebar) ---
+    function setActiveConvItem(id) {
+        convList.querySelectorAll('.conv-item').forEach((item) => {
+            item.classList.toggle('active', item.dataset.id === String(id));
+        });
+    }
+
+    function addConvItem(conv, { prepend = false } = {}) {
+        const row = document.createElement('div');
+        row.className = 'conv-row';
+
+        const item = document.createElement('a');
+        item.href = '#';
+        item.className = 'conv-item';
+        item.dataset.id = String(conv.id);
+        item.textContent = conv.title || 'Sans titre';
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (item.dataset.id !== String(currentConversationId)) openConversation(conv.id);
+        });
+
+        const delBtn = document.createElement('button');
+        delBtn.className = 'conv-del-btn';
+        delBtn.title = 'Supprimer';
+        delBtn.textContent = '×';
+        delBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!confirm('Supprimer cette conversation ?')) return;
+            const res = await fetch(`/conversations/${conv.id}`, { method: 'DELETE' });
+            if (!res.ok) return;
+            row.remove();
+            if (String(conv.id) === String(currentConversationId)) {
+                window.location.assign('/');
+            }
+        });
+
+        row.appendChild(item);
+        row.appendChild(delBtn);
+        convList[prepend ? 'prepend' : 'appendChild'](row);
+        return row;
+    }
+
+    async function loadConversations() {
+        try {
+            const res = await fetch('/conversations');
+            if (!res.ok) return;
+            const conversations = await res.json();
+            conversations.forEach((c) => addConvItem(c));
+        } catch {
+            // Liste indisponible : la sidebar reste vide, le chat fonctionne quand même.
+        }
+    }
+
+    async function openConversation(id) {
+        const res = await fetch(`/conversations/${id}`);
+        if (!res.ok) return;
+        const conv = await res.json();
+
+        currentConversationId = conv.id;
+        messagesContainer.innerHTML = '';
+        document.getElementById('empty-state')?.remove();
+        document.getElementById('chips-container')?.remove();
+        document.body.classList.remove('landing');
+        conv.messages.forEach((m) => appendMessage(m.role, m.content));
+        document.title = (conv.title || 'TN-GPT') + ' – TN-GPT';
+        setActiveConvItem(id);
+    }
+
+    loadConversations();
 
     // --- Form submit ---
     form.addEventListener('submit', async (e) => {
@@ -175,21 +247,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!text || sendBtn.classList.contains('stop-mode')) return;
 
         const emptyState = document.getElementById('empty-state');
-        const isFirstMessage = !!emptyState;
         if (emptyState) {
             emptyState.remove();
             document.getElementById('chips-container')?.remove();
             document.body.classList.remove('landing');
         }
 
-        if (isFirstMessage) {
-            const shortTitle = text.length > 40 ? text.slice(0, 40).trimEnd() + '…' : text;
-            const convItem = document.querySelector('.conv-item.active');
-            if (convItem) convItem.textContent = shortTitle;
-            document.title = shortTitle + ' – TN-GPT';
-        }
-
-        conversationHistory.push({ role: 'user', content: text });
         appendMessage('user', text);
         inp.value = '';
         inp.style.height = 'auto';
@@ -230,7 +293,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch('/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: text, history: conversationHistory.slice(-4) }),
+                body: JSON.stringify({ message: text, conversation_id: currentConversationId }),
                 signal: abortController.signal,
             });
 
@@ -249,6 +312,18 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (!response.ok) throw new Error();
+
+            // La conversation est créée côté serveur dès le premier message : on
+            // l'ajoute à la sidebar dès que son id est connu, sans attendre la
+            // fin du streaming.
+            const newId = response.headers.get('X-Conversation-Id');
+            if (newId && currentConversationId === null) {
+                currentConversationId = newId;
+                const shortTitle = text.length > 40 ? text.slice(0, 40).trimEnd() + '…' : text;
+                addConvItem({ id: newId, title: shortTitle }, { prepend: true });
+                setActiveConvItem(newId);
+                document.title = shortTitle + ' – TN-GPT';
+            }
 
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
@@ -295,7 +370,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 // rendu final propre
                 textContainer.innerHTML = marked.parse(rawText);
             }
-            if (rawText) conversationHistory.push({ role: 'assistant', content: rawText });
             setStreaming(false);
             inp.focus();
         }

@@ -32,7 +32,9 @@ class User(UserMixin, db.Model):
     user_firstname = db.Column(db.String(100), nullable=False)
     user_surname = db.Column(db.String(100), nullable=False)
     user_mail = db.Column(db.String(150), nullable=False, unique=True)
-    user_pwd = db.Column(db.String(255), nullable=False)
+    # NULL pour les comptes créés via Google OAuth, qui n'ont jamais de mot de
+    # passe local (voir auth.py:callback).
+    user_pwd = db.Column(db.String(255), nullable=True)
     user_permissions = db.Column(db.Integer, nullable=False, default=0)
     first_login_at = db.Column(db.DateTime(timezone=True), nullable=True)
     theme = db.Column(db.String(5), nullable=False, default="light")

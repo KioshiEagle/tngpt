@@ -35,6 +35,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "bandit>=1.9.4",
+    "complexipy>=6.2.0",
     "mkdocstrings-python>=2.0.4",
     "pip-audit>=2.10.0",
     "pytest>=9.0.3",
@@ -70,7 +71,7 @@ extend-exclude = ["migrations"]
 
 [tool.ruff.lint]
 select = ["ALL","RUF100"]
-ignore = ["T201","S","D100","D104","D401","D203","D213","COM812"]
+ignore = ["T201","S","D100","D104","D401","D203","D213","COM812","CPY001"]
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["S101"]
 [tool.ruff.lint.mccabe]
@@ -92,3 +93,19 @@ unsupported-base = "ignore"
 [tool.bandit]
 exclude_dirs = [".venv","tests","models_cache","__pycache__",".ruf_cache",".uv-cache"]
 skips = ["B101"]
+
+[tool.complexipy]
+max-complexity-allowed = 15
+failed = true
+
+[tool.pydoclint]
+exclude = [
+    ".git",
+    ".venv",
+    ".env",
+    "env",
+    "venv",
+    "build",
+    "dist",
+    "__pycache__",
+]

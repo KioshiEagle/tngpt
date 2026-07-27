@@ -126,35 +126,67 @@ def build_prompt(context: str, question: str, user_name: str | None = None) -> s
     )
 
 
+class _ThinkFilter:
+    """Filtre les blocs <think>...</think> d'un flux de texte, même coupés entre chunks.
+
+    Le tag peut arriver fragmenté entre plusieurs chunks du stream Groq : le
+    buffer retient donc la fin de chunk tant qu'elle ne peut pas encore être
+    reconnue comme faisant partie (ou non) d'un tag.
+    """
+
+    def __init__(self) -> None:
+        self._buf = ""
+        self._in_thought = False
+
+    def feed(self, text: str) -> Iterator[str]:
+        """Ajoute du texte au buffer et cède les segments hors <think> prêts."""
+        self._buf += text
+        piece = self._pop_before_tag()
+        while piece is not None:
+            if piece:
+                yield piece
+            piece = self._pop_before_tag()
+        trimmed = self._pop_safe_tail()
+        if trimmed:
+            yield trimmed
+
+    def flush(self) -> Iterator[str]:
+        """Cède ce qu'il reste du buffer en fin de stream."""
+        if self._buf and not self._in_thought:
+            yield self._buf
+        self._buf = ""
+
+    def _pop_before_tag(self) -> str | None:
+        """Si le tag courant est trouvé, bascule l'état et retourne le texte avant.
+
+        None si le tag n'est pas (encore) présent dans le buffer.
+        """
+        tag = _THINK_CLOSE if self._in_thought else _THINK_OPEN
+        idx = self._buf.find(tag)
+        if idx == -1:
+            return None
+        before = self._buf[:idx] if not self._in_thought else ""
+        self._buf = self._buf[idx + len(tag) :]
+        self._in_thought = not self._in_thought
+        return before
+
+    def _pop_safe_tail(self) -> str:
+        """Hors <think>, cède le buffer sauf la fin pouvant amorcer un tag."""
+        keep = len(_THINK_OPEN) - 1
+        if self._in_thought or len(self._buf) <= keep:
+            return ""
+        piece, self._buf = self._buf[:-keep], self._buf[-keep:]
+        return piece
+
+
 def _stream_chunks(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
     """Streame les chunks en filtrant les blocs <think>...</think>, même multi-chunk."""
-    in_thought = False
-    buf = ""
-
+    think_filter = _ThinkFilter()
     for chunk in completion:
         raw = chunk.choices[0].delta.content
-        if not raw:
-            continue
-        buf += raw
-
-        while True:
-            tag = _THINK_CLOSE if in_thought else _THINK_OPEN
-            idx = buf.find(tag)
-            if idx != -1:
-                if not in_thought and idx > 0:
-                    yield buf[:idx]
-                buf = buf[idx + len(tag) :]
-                in_thought = not in_thought
-            else:
-                if not in_thought:
-                    keep = len(_THINK_OPEN) - 1
-                    if len(buf) > keep:
-                        yield buf[:-keep]
-                        buf = buf[-keep:]
-                break
-
-    if buf and not in_thought:
-        yield buf
+        if raw:
+            yield from think_filter.feed(raw)
+    yield from think_filter.flush()
 
 
 def _enrich_query(question: str, history: list[HistoryMessage], n: int = 2) -> str:
@@ -204,6 +236,41 @@ def generate_answer(
     yield from _stream_with_retries(req, results, client)
 
 
+@dataclass
+class _RetryOutcome:
+    """Ce qu'il faut faire après une tentative d'appel Groq ratée."""
+
+    retry: bool = False
+    backoff: bool = False
+    smaller_context: bool = False
+    error_message: str | None = None
+
+
+def _classify_error(e: Exception, attempt: int, max_retries: int) -> _RetryOutcome:
+    """Décide, pour une erreur Groq donnée, s'il faut réessayer et comment."""
+    can_retry = attempt < max_retries - 1
+    if isinstance(e, APIStatusError) and e.status_code == _HTTP_429 and can_retry:
+        return _RetryOutcome(retry=True, backoff=True)
+    if isinstance(e, APIStatusError) and e.status_code == _HTTP_413 and can_retry:
+        return _RetryOutcome(retry=True, smaller_context=True)
+    if isinstance(e, APIStatusError):
+        logger.error("Erreur Groq : statut %d", e.status_code, exc_info=e)
+        msg = f"Erreur avec Groq : statut {e.status_code}."
+        return _RetryOutcome(error_message=msg)
+    if isinstance(e, APITimeoutError):
+        logger.error("Erreur Groq : timeout", exc_info=e)
+        return _RetryOutcome(
+            error_message="Erreur avec Groq : délai d'attente dépassé."
+        )
+    if isinstance(e, APIConnectionError):
+        logger.error("Erreur Groq : connexion impossible", exc_info=e)
+        return _RetryOutcome(
+            error_message="Erreur avec Groq : impossible de se connecter à l'API."
+        )
+    logger.error("Erreur inattendue dans generate_answer", exc_info=e)
+    return _RetryOutcome(error_message=f"Erreur inattendue : {e!s}")
+
+
 def _stream_with_retries(
     req: GenerateRequest, results: list[SearchResult], client: Groq
 ) -> Iterator[str]:
@@ -225,27 +292,17 @@ def _stream_with_retries(
                 stream=True,
             )
             yield from _stream_chunks(completion)
-        except APIStatusError as e:
-            if e.status_code == _HTTP_429 and attempt < max_retries - 1:
-                time.sleep(2**attempt)
-                continue
-            if e.status_code == _HTTP_413 and attempt < max_retries - 1:
+        except Exception as e:  # noqa: BLE001
+            outcome = _classify_error(e, attempt, max_retries)
+            if outcome.smaller_context:
                 current_results = current_results[: max(1, len(current_results) // 2)]
+            if outcome.retry:
+                if outcome.backoff:
+                    time.sleep(2**attempt)
                 continue
-            logger.exception("Erreur Groq : statut %d", e.status_code)
-            yield f"Erreur avec Groq : statut {e.status_code}."
-            return
-        except APITimeoutError:
-            logger.exception("Erreur Groq : timeout")
-            yield "Erreur avec Groq : délai d'attente dépassé."
-            return
-        except APIConnectionError:
-            logger.exception("Erreur Groq : connexion impossible")
-            yield "Erreur avec Groq : impossible de se connecter à l'API."
-            return
-        except Exception as e:
-            logger.exception("Erreur inattendue dans generate_answer")
-            yield f"Erreur inattendue : {e!s}"
+            # _classify_error garantit un message quand retry est False.
+            assert outcome.error_message is not None
+            yield outcome.error_message
             return
         else:
             return
