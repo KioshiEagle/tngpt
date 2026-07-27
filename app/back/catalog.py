@@ -37,8 +37,8 @@ _vector_store_lock = threading.Lock()
 def get_vector_store() -> VectorStore:
     """VectorStore partagé, créé à la première ingestion.
 
-    Instancié paresseusement : il charge un modèle d'embeddings, coûteux à la
-    fois en mémoire et en temps de démarrage, inutile tant qu'on n'ingère rien.
+    Instancié paresseusement : sa création ouvre une connexion Qdrant et crée
+    les index de payload, inutile tant qu'on n'ingère rien.
     """
     global _vector_store  # noqa: PLW0603
     with _vector_store_lock:
