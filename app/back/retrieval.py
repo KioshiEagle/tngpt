@@ -6,21 +6,20 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient
-from sentence_transformers import SentenceTransformer
 
+from .embedding import embed_query
 from .types import SearchResult
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 logger = logging.getLogger(__name__)
 
-model = SentenceTransformer("intfloat/multilingual-e5-small")
-
 # Poids du score sémantique dans le score hybride (1 - ALPHA = poids fraîcheur)
 FRESHNESS_ALPHA = 0.7
 # Taux de décroissance : demi-vie ≈ 350 jours (un document d'un an vaut ~0.5)
 DECAY_RATE = 0.002
-SCORE_THRESHOLD = 0.72
+# Seuil de similarité cosinus Gemini : à remesurer sur des requêtes réelles.
+SCORE_THRESHOLD = 0.5
 CANDIDATE_MULTIPLIER = 20
 
 _client: QdrantClient | None = None
@@ -59,7 +58,7 @@ def search(
     query: str, top_k: int = 5, collection_name: str = "documents"
 ) -> list[SearchResult]:
     """Recherche hybride (sémantique + fraîcheur) dans Qdrant."""
-    query_vector = model.encode(f"query: {query}").tolist()
+    query_vector = embed_query(query)
     response = get_client().query_points(
         collection_name=collection_name,
         query=query_vector,

@@ -7,9 +7,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from qdrant_client import QdrantClient, models
-from sentence_transformers import SentenceTransformer
 
 from .chunking import get_hybrid_chunks
+from .embedding import embed_documents
 
 # Bumper cette version force la re-ingestion de tous les documents
 _CHUNK_VERSION = "v5-clean"
@@ -51,7 +51,6 @@ class VectorStore:
     def __init__(self, url: str, api_key: str) -> None:
         """Initialise la connexion à Qdrant et les index de payload."""
         self.client = QdrantClient(url=url, api_key=api_key, timeout=60)
-        self.model = SentenceTransformer("intfloat/multilingual-e5-small")
         self.collection = "documents"
         self.client.create_payload_index(
             collection_name=self.collection,
@@ -83,7 +82,7 @@ class VectorStore:
     def upload_file(self, md_path: Path) -> IngestResult | None:
         """Ingère un fichier Markdown dans Qdrant et retourne ses métadonnées.
 
-        Chaque chunk est préfixé avec date et titre avant l'encodage E5 pour
+        Chaque chunk est préfixé avec date et titre avant l'encodage pour
         améliorer la qualité du matching sémantique ; le texte brut (sans préfixe)
         est stocké dans le payload pour l'affichage. Les chunks existants du même
         document sont supprimés d'abord : ré-ingérer remplace, ne duplique pas.
@@ -99,7 +98,7 @@ class VectorStore:
         date = meta.get("date", "")
         author = meta.get("author", "Inconnu")
 
-        print(f"📤 Ingestion sémantique (E5) : {title or source_id}")
+        print(f"📤 Ingestion sémantique : {title or source_id}")
         chunks = get_hybrid_chunks(body, chunk_size=800, chunk_overlap=240)
         if not chunks:
             return None
@@ -108,8 +107,8 @@ class VectorStore:
 
         date_prefix = f"[Date: {date}] " if date else ""
         title_prefix = f"[Source: {title}] " if title else ""
-        prefixed_chunks = [f"passage: {date_prefix}{title_prefix}{c}" for c in chunks]
-        embeddings = self.model.encode(prefixed_chunks).tolist()
+        prefixed_chunks = [f"{date_prefix}{title_prefix}{c}" for c in chunks]
+        embeddings = embed_documents(prefixed_chunks)
 
         points = [
             models.PointStruct(
