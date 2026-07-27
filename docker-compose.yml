@@ -4,11 +4,8 @@ services:
     container_name: tn-gpt-python
     ports:
       - "8501:8501"
-    volumes:
-      - hf_cache:/root/.cache/huggingface
     environment:
       - PYTHONUNBUFFERED=1
-      - TRANSFORMERS_OFFLINE=1
       - DATABASE_URL=postgresql://tngpt:${POSTGRES_PASSWORD}@db:5432/tngpt
     depends_on:
       db:
@@ -34,5 +31,4 @@ services:
     restart: always
 
 volumes:
-  hf_cache:
   postgres_data:
