@@ -39,7 +39,7 @@ flowchart TB
     subgraph pipeline["Pipeline d'ingestion"]
         Drive["drivetolocal.py"]
         Pdf["pdftomd.py<br/>PDF → Markdown"]
-        Vector["mdtoqdrant.py<br/>chunking + embeddings Gemini"]
+        Vector["mdtoqdrant.py<br/>chunking + embeddings Workers AI"]
     end
 
     subgraph stores["Stockage"]
@@ -51,7 +51,7 @@ flowchart TB
         Groq["Groq · LLM<br/>qwen3 / llama"]
         OAuth["Google OAuth"]
         GDrive["Google Drive<br/>PDF sources"]
-        Gemini["Google Gemini<br/>gemini-embedding-001"]
+        CF["Cloudflare Workers AI<br/>@cf/baai/bge-m3"]
     end
 
     Browser --> AuthBP & ChatBP & AdminBP
@@ -60,7 +60,7 @@ flowchart TB
 
     ChatBP --> Retrieval --> Generate
     Retrieval --> QD
-    Retrieval --> Gemini
+    Retrieval --> CF
     ChatBP --> Usage --> PG
     Generate --> GroqPool --> Groq
     GroqPool --> PG
@@ -73,7 +73,7 @@ flowchart TB
     Drive --> GDrive
     Drive --> Pdf --> Vector
     Pdf --> GroqPool
-    Vector --> Gemini
+    Vector --> CF
     Vector --> QD
 
     Ext -.-> PG
@@ -98,7 +98,7 @@ sequenceDiagram
 
     U->>F: message
     F->>R: retrieve(question)
-    R->>Q: query_points (vecteur Gemini)
+    R->>Q: query_points (vecteur bge-m3)
     Q-->>R: chunks pertinents
     F->>P: log_retrieval (queries + retrieval_events)
     F->>G: demande de génération
@@ -118,7 +118,7 @@ flowchart LR
     G["Dépôt admin<br/>(glisser-déposer)"] --> C
     A["Google Drive<br/>PDF sources"] --> B["drivetolocal.py<br/>téléchargement"]
     B --> C["pdftomd.py<br/>PDF → Markdown<br/>métadonnées via Groq"]
-    C --> D["mdtoqdrant.py<br/>chunking + embeddings Gemini"]
+    C --> D["mdtoqdrant.py<br/>chunking + embeddings Workers AI"]
     D --> E[("Qdrant<br/>chunks + vecteurs")]
     D --> F[("PostgreSQL<br/>catalogue documents")]
 ```
