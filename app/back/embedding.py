@@ -22,6 +22,13 @@ _RETRY_STATUS = frozenset({408, 429, 500, 502, 503, 504})
 _client: httpx.Client | None = None
 
 
+class WorkersAIError(RuntimeError):
+    """Échec d'un appel à l'API Cloudflare Workers AI."""
+
+
+_ERR_UNREACHABLE = f"Workers AI injoignable après {RETRY_ATTEMPTS} tentatives"
+
+
 def get_client() -> httpx.Client:
     """Client HTTP Workers AI partagé (créé à la première utilisation).
 
@@ -61,13 +68,14 @@ def _post(batch: list[str]) -> dict[str, Any]:
             continue
         response.raise_for_status()
         return response.json()
-    raise httpx.HTTPError(f"Workers AI injoignable après {RETRY_ATTEMPTS} tentatives")
+    raise WorkersAIError(_ERR_UNREACHABLE)
 
 
 def _vectors(payload: dict[str, Any]) -> list[list[float]]:
     """Extrait les vecteurs de la réponse Workers AI."""
     if not payload.get("success", False):
-        raise httpx.HTTPError(f"Workers AI : {payload.get('errors')}")
+        msg = f"Workers AI a renvoyé une erreur : {payload.get('errors')}"
+        raise WorkersAIError(msg)
     result = payload["result"]
     return result["data"] if "data" in result else result["response"]
 
