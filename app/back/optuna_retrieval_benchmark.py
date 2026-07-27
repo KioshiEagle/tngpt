@@ -13,10 +13,18 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from collections import OrderedDict
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import CrossEncoder, SentenceTransformer
 
 from app.back.chunking import get_hybrid_chunks
 from app.back.mdtoqdrant import _parse_frontmatter
+# Réutilisation directe des constantes/fonction de fraîcheur de la prod
+# (plutôt que de les dupliquer) : garantit que le benchmark ne peut jamais
+# diverger silencieusement de ce qui tourne réellement en prod. Note : cet
+# import charge e5-small en mémoire dès l'import de ce module (retrieval.py
+# instancie son SentenceTransformer au niveau module) — coût one-shot
+# négligeable (modèle "small", quelques secondes), mais explicite ici pour
+# ne pas surprendre.
+from app.back.retrieval import CANDIDATE_MULTIPLIER, FRESHNESS_ALPHA, _freshness_score
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -62,7 +70,13 @@ def _atomic_write(path: Path, write_fn) -> None:
 # modèles équitablement : sans elle, e5-small/e5-base sont évalués "mal
 # utilisés" par rapport à la façon dont ils tournent réellement en prod
 # (voir retrieval.py:62 et mdtoqdrant.py:109-111).
-_E5_MODELS = {"e5-small", "e5-base"}
+_E5_MODELS = {"e5-small", "e5-base", "e5-large"}
+# arctic-l (Snowflake/snowflake-arctic-embed-l-v2.0) préfixe UNIQUEMENT la
+# requête ("query: "), jamais le passage — convention différente d'e5
+# (vérifié dans la doc du modèle, recherche du 22/07/2026). Le confondre avec
+# _E5_MODELS ajouterait un préfixe "passage: " que le modèle n'attend pas :
+# pas un crash, juste une comparaison faussée en silence — d'où un set séparé.
+_QUERY_ONLY_PREFIX_MODELS = {"arctic-l"}
 
 
 def _passage_text(chunk_text: str, model_name: str, date: str, title: str) -> str:
@@ -77,7 +91,7 @@ def _passage_text(chunk_text: str, model_name: str, date: str, title: str) -> st
 
 def _query_text(query: str, model_name: str) -> str:
     """Réplique retrieval.py:62 (convention e5 : préfixe 'query: ')."""
-    if model_name in _E5_MODELS:
+    if model_name in _E5_MODELS or model_name in _QUERY_ONLY_PREFIX_MODELS:
         return f"query: {query}"
     return query
 
@@ -170,17 +184,55 @@ def _get_embedding_model(model_name: str):
         "miniLM": "all-MiniLM-L6-v2",
         "e5-small": "intfloat/multilingual-e5-small",
         "e5-base": "intfloat/multilingual-e5-base",
-        "bge-m3": "BAAI/bge-m3"
+        "e5-large": "intfloat/multilingual-e5-large",
+        "bge-m3": "BAAI/bge-m3",
+        # Architecture XLM-RoBERTa STOCK (pas de trust_remote_code), Apache
+        # 2.0, lignée d'entraînement différente d'e5/bge — ajouté après
+        # l'incident gte-multi en vérifiant explicitement (recherche menée
+        # le 22/07/2026) qu'il n'utilise pas de code de modélisation custom.
+        "arctic-l": "Snowflake/snowflake-arctic-embed-l-v2.0",
+        # "gte-multi": "Alibaba-NLP/gte-multilingual-base" — DÉSACTIVÉ.
+        # Son code custom (trust_remote_code) a déclenché une assertion CUDA
+        # "index out of bounds" (IndexKernel.cu) dès le premier batch
+        # d'encodage sur le serveur GPU (run_benchmark2.log, 22/07/2026) ;
+        # cette assertion corrompt le contexte CUDA pour tout le reste du
+        # PROCESSUS (30 trials suivants tous échoués, quel que soit le
+        # modèle demandé). Retiré du grid dans objective() — l'entrée reste
+        # ici en commentaire pour référence si quelqu'un veut creuser
+        # (version transformers/torch, revision du modèle sur le Hub) avant
+        # de le réactiver.
     }
     real_name = model_map.get(model_name, model_name)
     if real_name not in _embedding_models_cache:
         logger.info(f"Chargement du modèle d'embedding: {real_name}")
-        _embedding_models_cache[real_name] = SentenceTransformer(real_name)
+        # trust_remote_code=True : sans effet sur les modèles actuels
+        # (architectures stock) ; laissé en place pour le jour où gte-multi
+        # (ou un autre modèle à code custom) serait réactivé ci-dessus.
+        _embedding_models_cache[real_name] = SentenceTransformer(real_name, trust_remote_code=True)
         # SentenceTransformer choisit cuda automatiquement si torch.cuda est
         # disponible — ce log rend explicite si l'encodage tourne sur CPU
         # (lent) ou GPU (rapide), sans avoir à deviner depuis les logs génériques.
         logger.info(f"  -> device utilisé : {_embedding_models_cache[real_name].device}")
     return _embedding_models_cache[real_name]
+
+
+# Reranker cross-encoder : capacité CANDIDATE (absente de la prod actuelle),
+# pas une réplique — voir use_reranker dans objective(). Un seul modèle fixe
+# (pas de choix multiple) pour contenir la taille de la grille : la question
+# qu'Optuna tranche est "un reranker vaut-il le coût ?", pas "lequel choisir".
+RERANK_MODEL_NAME = "BAAI/bge-reranker-v2-m3"
+# Borne indépendante de top_k (max 10) : reranker le pool complet
+# top_k*CANDIDATE_MULTIPLIER (jusqu'à 200) à chaque question et chaque trial
+# serait hors de prix ; 20 est déjà large marge pour réordonner utilement.
+RERANK_POOL_SIZE = 20
+
+_reranker_models_cache = {}
+def _get_reranker_model():
+    if RERANK_MODEL_NAME not in _reranker_models_cache:
+        logger.info(f"Chargement du reranker: {RERANK_MODEL_NAME}")
+        _reranker_models_cache[RERANK_MODEL_NAME] = CrossEncoder(RERANK_MODEL_NAME, trust_remote_code=True)
+        logger.info(f"  -> device utilisé : {_reranker_models_cache[RERANK_MODEL_NAME].model.device}")
+    return _reranker_models_cache[RERANK_MODEL_NAME]
 
 # ==========================================
 # 1. DATASET DE RETRIEVAL (100% SANS LLM)
@@ -317,13 +369,17 @@ RETRIEVAL_DATASET = [
     {"question": "Quelle association a bénéficié des dons du TN'Event 2025 et quel montant a été récolté ?", "expected_documents": ["1FzdeZaGZYIXe0AbeOES0PlbbHKxAU7uk", "1s16O-CvOLd-P1PsTiqPGsWjgRMZ68e3F"], "answer_snippets": [["AEIM"], ["7766,79"]]},
 
     # --- Réunion Ouverte BDE n°14 du 26/05/2026 (12grcvbrk2mzOpOSVNEr0VdzA2x6p3v3h) ---
-    # C'est le document le PLUS RÉCENT de tout le corpus (404 docs). Question
-    # volontairement difficile : ce benchmark ne modélise aucune fraîcheur
-    # (contrairement à FRESHNESS_ALPHA en prod), donc une recherche purement
-    # sémantique n'a aucune raison de privilégier ce document parmi la
-    # quinzaine d'autres CR qui mentionnent aussi "le président du BDE". On
-    # s'attend à ce que cette question score mal quelle que soit la config —
-    # c'est le point : elle rend visible un angle mort du benchmark actuel.
+    # C'est le document le PLUS RÉCENT de tout le corpus (404 docs). Jusqu'à
+    # v3, ce benchmark ne modélisait aucune fraîcheur (contrairement à
+    # FRESHNESS_ALPHA en prod), donc une recherche purement sémantique
+    # n'avait aucune raison de privilégier ce document parmi la quinzaine
+    # d'autres CR qui mentionnent aussi "le président du BDE" — la question
+    # était volontairement gardée pour rendre visible cet angle mort. Depuis
+    # v4, LocalBenchmarkRetriever.search() réplique le re-classement par
+    # fraîcheur de retrieval.py (voir FRESHNESS_ALPHA/_freshness_score
+    # importés en tête de fichier), donc cette question redevient un test
+    # légitime de la capacité réelle du système à privilégier le document
+    # récent — plus un angle mort connu et accepté.
     {"question": "Qui est le président du BDE d'après le compte-rendu le plus récent disponible dans les archives ?", "expected_documents": ["12grcvbrk2mzOpOSVNEr0VdzA2x6p3v3h"], "answer_snippets": [["NOBILE Tobias"]]},
     {"question": "Quel club a été dissous lors de la réunion ouverte BDE n°14 du 26 mai 2026 ?", "expected_documents": ["12grcvbrk2mzOpOSVNEr0VdzA2x6p3v3h"], "answer_snippets": [["les bonnes miches"]]},
     {"question": "Qui est présidente du club Equi'TN créé lors de la réunion ouverte BDE n°14 du 26 mai 2026 ?", "expected_documents": ["12grcvbrk2mzOpOSVNEr0VdzA2x6p3v3h"], "answer_snippets": [["PEYNON Eléa"]]},
@@ -340,6 +396,52 @@ RETRIEVAL_DATASET = [
     {"question": "Quand a eu lieu la dernière réunion du club de robotique de Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
     {"question": "Quel est le montant de la bourse au mérite versée par le BDE aux meilleurs étudiants ?", "expected_documents": [], "answer_snippets": []},
     {"question": "Quelle association étudiante gère les stages en entreprise à Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
+
+    # --- Hors périmètre, extension v4 : le v3 n'avait que 16 questions
+    # hors-périmètre (16% du dataset), ce qui rend avg_score_hors_perimetre
+    # extrêmement bruité (chaque question pèse 6,25 points sur cette
+    # sous-métrique). Chaque entrée ci-dessous a été vérifiée par grep exact
+    # sur le corpus réel (app/back/temp/markdowns/*.md, 404 fichiers) pour
+    # écarter toute question qui aurait accidentellement une vraie réponse
+    # (le corpus BDE est riche en clubs éclectiques réels : oenologie,
+    # échecs, babyfoot, voile, couture, escalade... tous vérifiés présents
+    # et donc explicitement évités ici).
+    # -- Faciles : infrastructure/administratif, aucun recouvrement lexical avec le corpus (comptes-rendus BDE) --
+    {"question": "Quel est le tarif de la carte multi-services de Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Où se trouve le parking vélo de l'école ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Quel logiciel de messagerie interne utilise l'administration de Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Quel est le montant de la caution pour un badge d'accès perdu ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Quel bus dessert le campus de Telecom Nancy depuis la gare ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Quel est le prix d'une place de parking étudiant à l'année ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Quel est le montant de la bourse CROUS moyenne versée aux élèves de Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Quels sont les horaires d'ouverture du secrétariat pédagogique ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Quel est le débit du réseau wifi du campus de Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Quel est le nom du fournisseur de restauration de la cafétéria ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Combien de jours de congés maladie un stagiaire peut-il poser ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Quelle est la surface totale du campus de Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Quel est le nom du logiciel de gestion des notes utilisé par l'administration ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Où se trouve la laverie du campus ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Où se trouve la salle de méditation du campus ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Combien de places compte la salle de coworking de l'école ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Quelle assurance responsabilité civile est recommandée aux stagiaires de Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Quel est le tarif étudiant de l'abonnement PASS Nancy ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Quel est le numéro d'urgence à contacter en cas d'incident sur le campus ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Quelle mutuelle étudiante l'école recommande-t-elle ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Combien de places compte le local à vélos couvert du campus ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Combien de distributeurs de boissons sont installés dans le bâtiment principal ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Quelles salles de Telecom Nancy sont climatisées ?", "expected_documents": [], "answer_snippets": []},
+    # -- Difficiles : vocabulaire plausible (clubs/vie associative) mais entités vérifiées absentes du corpus --
+    {"question": "Qui dirige le club d'apiculture de Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Qui a été élu président du club randonnée lors d'une réunion ouverte du BDE ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Quelle liste a remporté l'élection du bureau du club international ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Combien de bénévoles le club environnement a-t-il mobilisés pour un nettoyage de campus ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Combien de membres compte le club de musique électronique de Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Quel montant a été récolté lors d'une vente de gâteaux organisée par un club ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Quel club a réalisé une fresque de street art dans les locaux de Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Qui préside le club de poterie de Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Quel budget a été voté pour le club de philatélie lors d'une réunion du BDE ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Quand a eu lieu la dernière réunion du club de généalogie de Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
+    {"question": "Qui est trésorier du club d'aquariophilie du CETEN ?", "expected_documents": [], "answer_snippets": []},
 ]
 
 # Ordre des questions mélangé UNE SEULE FOIS pour toute l'étude (seed fixe),
@@ -361,9 +463,10 @@ class LocalBenchmarkRetriever:
     # Cache mémoire volontairement PETIT : le cache disque rend une éviction
     # quasi gratuite à recharger (~0.3s mesuré), donc il ne sert qu'à éviter un
     # aller-retour disque pour des trials consécutifs qui répètent exactement
-    # la même config. Une matrice d'embeddings bge-m3 à chunk_size=128 pèse
-    # ~300 Mo : avec 64 combinaisons possibles, un cache large pourrait monter
-    # à plusieurs Go de RAM pour rien. On borde donc large à quelques entrées.
+    # la même config. Une matrice d'embeddings bge-m3 pèse ~300 Mo : avec 4
+    # chunk_size × 5 overlap_ratio × 6 modèles = 120 combinaisons possibles
+    # (v4, contre 64 en v3), un cache large pourrait monter à plusieurs Go de
+    # RAM pour rien. On borde donc large à quelques entrées.
     _MAX_CHUNKS_IN_MEMORY = 8
     _MAX_EMBEDDINGS_IN_MEMORY = 6
     _chunks_cache = OrderedDict()
@@ -463,7 +566,7 @@ class LocalBenchmarkRetriever:
             
     _query_cache = OrderedDict()
     
-    def search(self, query: str, top_k: int, similarity_threshold: float = 0.0):
+    def search(self, query: str, top_k: int, similarity_threshold: float = 0.0, use_reranker: bool = False):
         if len(self.chunks) == 0:
             return []
 
@@ -476,17 +579,49 @@ class LocalBenchmarkRetriever:
             self._query_cache[q_key] = self.model.encode([query_text], normalize_embeddings=True)[0]
         else:
             self._query_cache.move_to_end(q_key)
-            
+
         q_emb = self._query_cache[q_key]
         scores = np.dot(self.embeddings, q_emb)
-        
+
         valid_indices = [i for i, score in enumerate(scores) if score >= similarity_threshold]
         if not valid_indices:
             return []
-            
+
+        # Étage 1 — réplique retrieval.py:63-70 : pool de candidats classé par
+        # score SÉMANTIQUE pur, borné à top_k*CANDIDATE_MULTIPLIER comme en
+        # prod (Qdrant `limit=top_k*20`). Évite de calculer la fraîcheur sur
+        # toute la base à chaque requête, et garde `similarity_threshold`
+        # comme filtre pré-fraîcheur — exactement l'ordre de `SCORE_THRESHOLD`
+        # en prod (filtre sur le sémantique, jamais sur l'hybride).
         valid_scores = scores[valid_indices]
-        local_top = np.argsort(valid_scores)[::-1][:top_k]
-        top_indices = [valid_indices[i] for i in local_top]
+        pool_size = min(len(valid_indices), top_k * CANDIDATE_MULTIPLIER)
+        pool_local = np.argsort(valid_scores)[::-1][:pool_size]
+        pool_indices = [valid_indices[i] for i in pool_local]
+
+        # Étage 2 — réplique retrieval.py:74-90 : re-classement par score
+        # hybride sémantique+fraîcheur, mêmes constantes que la prod
+        # (FRESHNESS_ALPHA, _freshness_score importés directement de
+        # retrieval.py pour ne jamais diverger silencieusement). Sans cet
+        # étage, le benchmark évaluait un système qui ne se comporte pas
+        # comme celui réellement déployé.
+        hybrid_ranked = sorted(
+            pool_indices,
+            key=lambda idx: FRESHNESS_ALPHA * scores[idx] + (1 - FRESHNESS_ALPHA) * _freshness_score(self.chunks[idx]["date"]),
+            reverse=True,
+        )
+
+        if use_reranker:
+            # Étage 3 (optionnel, absent de la prod actuelle — voir
+            # RERANK_POOL_SIZE) : cross-encoder sur un short-list bornée,
+            # indépendamment de top_k, pour contenir le coût.
+            shortlist = hybrid_ranked[:RERANK_POOL_SIZE]
+            if shortlist:
+                pairs = [(query, self.chunks[idx]["text"]) for idx in shortlist]
+                rerank_scores = _get_reranker_model().predict(pairs)
+                shortlist = [idx for _, idx in sorted(zip(rerank_scores, shortlist), key=lambda x: x[0], reverse=True)]
+            final_indices = shortlist[:top_k]
+        else:
+            final_indices = hybrid_ranked[:top_k]
 
         # Pas de déduplication par document : la vraie prod (retrieval.py:58-91)
         # ne déduplique jamais non plus — les top_k résultats renvoyés au LLM
@@ -497,30 +632,154 @@ class LocalBenchmarkRetriever:
         # dedans").
         return [
             {"source": self.chunks[idx]["source"], "text": self.chunks[idx]["text"]}
-            for idx in top_indices
+            for idx in final_indices
         ]
 
 # ==========================================
 # 3. FONCTION OBJECTIF
 # ==========================================
+# v3 optimisait un score composite unique = 0.40*MRR + 0.30*Recall +
+# 0.30*Precision moyenné sur TOUTES les questions (in-scope ET
+# hors-périmètre confondues, 82/16 questions). Analyse post-mortem de la
+# study v3 (257 trials complétés) : corrélation entre ce score et
+# avg_score_in_scope = 0.97, mais corrélation avec avg_score_hors_perimetre
+# = -0.22 (négative). Preuve concrète : le trial qui filtrait 100% du
+# hors-périmètre tombait au rang 250/257 du classement composite. Le score
+# unique décourageait donc structurellement le refus de répondre, car les 82
+# questions in-scope écrasent mécaniquement les 16 (v3) puis 50 (v4)
+# questions hors-périmètre dans une moyenne unique.
+# v4 sépare les deux : l'objectif optimisé devient PURE in-scope quality
+# (avg_score_in_scope_macro, voir plus bas), et le hors-périmètre devient une
+# CONTRAINTE de faisabilité (Optuna constrained TPE, voir sampler dans
+# main()) — un trial qui ne filtre pas au moins HORS_PERIMETRE_MIN_SCORE des
+# questions hors-périmètre est traité comme non-faisable, quel que soit son
+# score in-scope, au lieu d'être autorisé à "acheter" du rappel avec de
+# l'hallucination.
+HORS_PERIMETRE_MIN_SCORE = 0.5
+
+
+def _constraints_func(trial):
+    """Callback pour optuna.samplers.TPESampler(constraints_func=...).
+
+    Convention Optuna : contrainte satisfaite quand la valeur retournée est
+    <= 0. On la définit dans objective() via trial.set_user_attr("constraint",
+    (valeur,)) car c'est le seul endroit où avg_score_hors_perimetre est
+    calculé ; ce callback ne fait que relire cet attribut.
+
+    TPESampler.after_trial() appelle CE callback après CHAQUE trial, y
+    compris les pruné/échoués — un KeyError ici plante l'étude ENTIÈRE, pas
+    juste le trial en cours (vécu : un échec d'initialisation GPU sur un
+    trial a fait planter tout le run car "constraint" n'était pas encore
+    posé à ce stade). .get() avec un défaut "non-faisable" est donc une
+    protection nécessaire, en plus de celle posée explicitement dans
+    objective() pour le cas d'échec d'initialisation connu.
+    """
+    return trial.user_attrs.get("constraint", (HORS_PERIMETRE_MIN_SCORE,))
+
+
+# Poids (w_mrr, w_recall, w_precision) du score composite par question,
+# recalibrés à partir d'une mesure empirique sur les 257 trials complétés de
+# l'étude v3 (21074 observations de questions in-scope) :
+#   - corr(MRR, Recall) = 0.875, et pour les 79/82 questions in-scope
+#     mono-fait : recall>0 <=> mrr>0 EXACTEMENT (0 désaccord sur 20303
+#     observations). Recall est donc une version binarisée du même événement
+#     que MRR pour l'écrasante majorité du dataset — même redondance que
+#     celle qui avait justifié de retirer nDCG du score en v3. Recall garde
+#     un rôle réel mais mineur : les 3 questions multi-faits + 4
+#     multi-documents où corr(MRR,Recall) tombe à 0.59 (une partie des faits
+#     peut être trouvée sans que tous le soient).
+#   - corr(MRR, Precision) = 0.75 et corr(Recall, Precision) = 0.75 : plus
+#     corrélées entre elles qu'on ne le supposait (mécaniquement, un top_k
+#     petit avec un bon rang tend à avoir peu de bruit), mais SANS
+#     l'équivalence logique stricte de MRR/Recall — Precision capture un
+#     échec que MRR ne voit jamais (bon chunk trouvé mais noyé dans du bruit
+#     avec un top_k large), donc reste le seul second axe justifié.
+# v4 réduit donc le poids de Recall (redondant) au profit de MRR (le signal
+# le plus informatif : sensible au rang, pas juste binaire), Precision
+# inchangée. Ce choix reste un jugement motivé par la structure du dataset,
+# PAS calibré contre une vraie qualité de génération (LLM-as-judge) — d'où
+# les variantes de poids loguées en diagnostic ci-dessous, pour permettre une
+# ré-analyse a posteriori sans tout relancer si ce choix se révèle discutable.
+SCORE_WEIGHTS = {
+    "v4": (0.55, 0.15, 0.30),          # optimisé par Optuna à partir de v4
+    "v3_legacy": (0.40, 0.30, 0.30),   # ancien poids v3, diagnostic (comparaison historique)
+    "equal": (1 / 3, 1 / 3, 1 / 3),    # diagnostic : poids naïf égal
+    "mrr_only": (1.0, 0.0, 0.0),       # diagnostic : et si on ignorait recall/precision ?
+}
+
+
+def _weighted_score(mrr, recall, precision, weights):
+    w_mrr, w_recall, w_precision = weights
+    return w_mrr * mrr + w_recall * recall + w_precision * precision
+
+
+def _micro_macro_mean(values_by_doc):
+    """values_by_doc : dict clé-document -> liste de floats (une entrée par
+    question évaluée pour ce document). Retourne (micro, macro) :
+      - micro : moyenne brute sur TOUTES les observations (une question =
+        un poids égal, sur-pondère les documents les plus questionnés).
+      - macro : moyenne des moyennes par document (chaque document pèse
+        1/n_docs, indépendamment du nombre de questions écrites pour lui).
+    Voir le commentaire sur avg_score_in_scope_macro plus bas pour le
+    pourquoi de cette distinction (16 documents, 3 à 8 questions chacun).
+    """
+    all_values = [v for vs in values_by_doc.values() for v in vs]
+    micro = sum(all_values) / len(all_values) if all_values else 0.0
+    doc_means = [sum(vs) / len(vs) for vs in values_by_doc.values()]
+    macro = sum(doc_means) / len(doc_means) if doc_means else 0.0
+    return micro, macro
+
+
 def objective(trial, retriever):
-    chunk_size = trial.suggest_categorical("chunk_size", [128, 256, 512, 1024])
+    # 128 retiré (v3 : mean systématiquement la pire config pour TOUS les
+    # modèles testés, 257 trials) ; 800 ajouté car c'est la valeur RÉELLE de
+    # prod (mdtoqdrant.py) — jamais testée par le grid v3 alors que c'est la
+    # config effectivement déployée.
+    chunk_size = trial.suggest_categorical("chunk_size", [256, 512, 800, 1024])
     # Overlap exprimé en fraction du chunk_size (pas en tokens bruts) : évite les
     # combinaisons dégénérées comme chunk_size=128 + overlap=128 (100% de
     # recouvrement, chunks quasi dupliqués — calcul gaspillé, nDCG/MRR biaisés
-    # par des quasi-doublons).
-    overlap_ratio = trial.suggest_categorical("overlap_ratio", [0.0, 0.15, 0.25, 0.4])
+    # par des quasi-doublons). 0.3 ajouté : avec chunk_size=800, ça donne
+    # overlap_tokens=240, exactement la config de prod (mdtoqdrant.py).
+    overlap_ratio = trial.suggest_categorical("overlap_ratio", [0.0, 0.15, 0.25, 0.3, 0.4])
     overlap_tokens = int(chunk_size * overlap_ratio)
-    embedding_model = trial.suggest_categorical("embedding_model", ["miniLM", "e5-small", "e5-base", "bge-m3"])
-    top_k = trial.suggest_categorical("top_k", [1, 3, 5, 10])
+    # e5-large et arctic-l ajoutés (v5) pour élargir la comparaison au-delà de
+    # miniLM/e5-small/e5-base/bge-m3 (v3 a montré que le modèle explique 90%
+    # de la variance de score — c'est de loin le levier le plus rentable).
+    # arctic-l (Snowflake/snowflake-arctic-embed-l-v2.0) choisi après
+    # l'incident gte-multi en vérifiant explicitement : architecture
+    # XLM-RoBERTa stock (pas de trust_remote_code), Apache 2.0.
+    # gte-multi RETIRÉ (voir _get_embedding_model, model_map) : son code
+    # custom (trust_remote_code) déclenche une assertion CUDA "index out of
+    # bounds" (IndexKernel.cu) dès le premier batch d'encodage sur ce
+    # serveur — une fois déclenchée, l'assertion corrompt le contexte CUDA
+    # pour TOUT LE RESTE DU PROCESSUS : 30 trials consécutifs ont échoué
+    # après ce seul incident (run_benchmark2.log, 22/07/2026), quel que soit
+    # le modèle réellement demandé par chaque trial. Pas un problème
+    # d'hyperparamètre — un problème d'environnement (version
+    # torch/transformers/driver) spécifique au code custom de ce modèle.
+    # jina-embeddings-v3 envisagé puis écarté : licence CC-BY-NC-4.0 (usage
+    # commercial restreint) ET même besoin de trust_remote_code que gte-multi.
+    embedding_model = trial.suggest_categorical(
+        "embedding_model", ["miniLM", "e5-small", "e5-base", "e5-large", "bge-m3", "arctic-l"]
+    )
+    # 2 et 4 ajoutés pour affiner autour de l'optimum trouvé en v3 (top_k=3
+    # gagnant, top_k=1 et top_k=10 nettement pires) sans élargir la grille au-delà.
+    top_k = trial.suggest_categorical("top_k", [1, 2, 3, 4, 5, 10])
     similarity_threshold = trial.suggest_float("similarity_threshold", 0.0, 0.8)
+    # Nouveau (v4) : reranker cross-encoder optionnel après le retrieval
+    # dense+fraîcheur (voir RERANK_POOL_SIZE et LocalBenchmarkRetriever.search).
+    # Absent de la prod actuelle — c'est une capacité candidate, pas une
+    # réplication ; Optuna décide si le coût en vaut la peine.
+    use_reranker = trial.suggest_categorical("use_reranker", [False, True])
 
     config = {
         "chunk_size": chunk_size,
         "overlap_tokens": overlap_tokens,
         "embedding_model": embedding_model,
         "top_k": top_k,
-        "similarity_threshold": similarity_threshold
+        "similarity_threshold": similarity_threshold,
+        "use_reranker": use_reranker,
     }
 
     start_time = time.time()
@@ -528,6 +787,14 @@ def objective(trial, retriever):
         retriever.setup_for_trial(config)
     except Exception as e:
         logger.error(f"Échec initialisation: {e}")
+        # Le TPESampler contraint (constraints_func, voir plus haut) appelle
+        # _constraints_func APRÈS chaque trial, y compris les prunés — sans
+        # cet attribut, KeyError non rattrapée dans le sampler et ÉTUDE
+        # ENTIÈRE plantée (pas juste ce trial). Constraint > 0 = non-faisable
+        # par défaut : un trial qui n'a même pas pu s'initialiser (OOM GPU,
+        # échec de chargement modèle, etc.) ne doit jamais être considéré
+        # comme respectant la contrainte hors-périmètre.
+        trial.set_user_attr("constraint", (HORS_PERIMETRE_MIN_SCORE,))
         raise optuna.exceptions.TrialPruned()
 
     # Métriques CHUNK (primaires, pilotent le score optimisé par Optuna) et
@@ -537,6 +804,7 @@ def objective(trial, retriever):
     # dedans ne sert à rien pour la génération).
     trial_scores, mrr_scores, ndcg_scores, recall_scores, precision_scores = [], [], [], [], []
     doc_mrr_scores, doc_recall_scores = [], []
+    in_scope_running = []  # signal de pruning : reflète l'objectif réellement optimisé (in-scope), pas le blend v3
     per_question_log = []
     pruned = False
 
@@ -546,50 +814,50 @@ def objective(trial, retriever):
         expected_docs = set(item.get("expected_documents", []))
         answer_snippets = item.get("answer_snippets", [])
 
-        retrieved = retriever.search(question, top_k=top_k, similarity_threshold=similarity_threshold)
+        retrieved = retriever.search(
+            question, top_k=top_k, similarity_threshold=similarity_threshold, use_reranker=use_reranker
+        )
 
         mrr, ndcg, recall, precision = _chunk_metrics(retrieved, answer_snippets, expected_docs)
 
         # Diagnostic document-level (non optimisé) : dédup en préservant l'ordre.
+        # Uniquement pour les questions in-scope — pour le hors-périmètre,
+        # "a-t-on trouvé le bon document" n'a pas de sens (il n'y en a pas) et
+        # ce signal est déjà capturé par avg_score_hors_perimetre ; le
+        # mélanger ici comme le faisait v3 aurait contaminé la moyenne
+        # doc-level de la même façon que les métriques chunk-level l'étaient.
         seen = set()
         retrieved_sources_unique = []
         for r in retrieved:
             if r["source"] not in seen:
                 retrieved_sources_unique.append(r["source"])
                 seen.add(r["source"])
-        doc_mrr = 0.0
+        doc_mrr = doc_recall = None
         if expected_docs:
+            doc_mrr = 0.0
             for rank, src in enumerate(retrieved_sources_unique, 1):
                 if src in expected_docs:
                     doc_mrr = 1.0 / rank
                     break
             doc_recall = len(expected_docs.intersection(retrieved_sources_unique)) / len(expected_docs)
-        else:
-            doc_recall = 1.0 if not retrieved_sources_unique else 0.0
-            doc_mrr = doc_recall
-        doc_mrr_scores.append(doc_mrr)
-        doc_recall_scores.append(doc_recall)
+            doc_mrr_scores.append(doc_mrr)
+            doc_recall_scores.append(doc_recall)
 
-        # Poids du score composite : seulement 3 métriques, chacune apportant
-        # un signal distinct (nDCG a été retiré, voir _chunk_metrics — il
-        # double-comptait le même signal que MRR pour les questions à un seul
-        # fait requis, qui sont 78 des 98 du dataset).
-        #   - MRR (0.40, dominant) : a-t-on trouvé un chunk utile rapidement ?
-        #   - Recall (0.30) : a-t-on couvert TOUS les faits requis (important
-        #     pour les questions multi-documents où plusieurs faits distincts
-        #     sont nécessaires) ?
-        #   - Precision (0.30) : la réponse est-elle noyée dans du bruit ? Sans
-        #     elle, un top_k plus large ne peut qu'améliorer Recall/MRR, même
-        #     en gonflant le contexte envoyé au LLM de génération en aval.
-        # Ces poids restent un choix motivé mais non calibré empiriquement
-        # contre la qualité de génération réelle — à garder en tête en lisant
-        # les résultats.
-        score = 0.40 * mrr + 0.30 * recall + 0.30 * precision
+        # Score PAR QUESTION (poids SCORE_WEIGHTS["v4"], voir le commentaire
+        # détaillé au-dessus de SCORE_WEIGHTS pour la justification empirique
+        # du passage de 0.40/0.30/0.30 à 0.55/0.15/0.30 — nDCG reste retiré,
+        # toujours pour la même raison de redondance avec MRR). Ce champ
+        # "score" reste utilisé comme diagnostic par-question (per_question_log)
+        # et pour le signal de pruning ; l'agrégation finale (macro par
+        # document, in-scope séparé du hors-périmètre) est calculée plus bas.
+        score = _weighted_score(mrr, recall, precision, SCORE_WEIGHTS["v4"])
         trial_scores.append(score)
         mrr_scores.append(mrr)
         ndcg_scores.append(ndcg)
         recall_scores.append(recall)
         precision_scores.append(precision)
+        if expected_docs:
+            in_scope_running.append(score)
         per_question_log.append({
             "dataset_index": dataset_idx,
             "question": question,
@@ -604,82 +872,168 @@ def objective(trial, retriever):
             "doc_recall": doc_recall,
         })
 
-        # Pruning précoce
-        partial_score = sum(trial_scores) / len(trial_scores)
+        # Pruning précoce : piloté par l'in-scope UNIQUEMENT (l'objectif
+        # réellement optimisé en v4, voir HORS_PERIMETRE_MIN_SCORE plus haut).
+        # v3 mélangeait hors-périmètre et in-scope dans le signal de pruning
+        # alors que le hors-périmètre n'est même plus dans le score final ici
+        # — le garder aurait pu faire élaguer trop tôt un trial qui démarre
+        # sur une série de questions hors-périmètre ratées dans l'ordre fixe.
+        partial_score = sum(in_scope_running) / len(in_scope_running) if in_scope_running else 0.0
         trial.report(partial_score, i)
         if trial.should_prune():
             pruned = True
             break
 
     n = len(trial_scores)
-    avg_score = sum(trial_scores) / n if n else 0.0
-    avg_mrr = sum(mrr_scores) / n if n else 0.0
-    avg_ndcg = sum(ndcg_scores) / n if n else 0.0
-    avg_recall = sum(recall_scores) / n if n else 0.0
-    avg_precision = sum(precision_scores) / n if n else 0.0
-    avg_doc_mrr = sum(doc_mrr_scores) / n if n else 0.0
-    avg_doc_recall = sum(doc_recall_scores) / n if n else 0.0
-    # Variance : une moyenne unique cache si un trial est régulièrement moyen
-    # ou juste porté par quelques questions faciles/chanceuses.
-    score_std = statistics.pstdev(trial_scores) if n > 1 else 0.0
-    score_min = min(trial_scores) if trial_scores else 0.0
-    score_max = max(trial_scores) if trial_scores else 0.0
+    duration_s = time.time() - start_time
 
     # Répartition par catégorie de question : les hors-périmètre mesurent la
     # capacité à NE RIEN retourner, les autres la capacité à retrouver le bon
     # PASSAGE (pas juste le bon document).
     evaluated_items = [RETRIEVAL_DATASET[idx] for idx in QUESTION_ORDER[:n]]
-    in_scope = [s for s, item in zip(trial_scores, evaluated_items) if item.get("expected_documents")]
-    hors_perimetre = [s for s, item in zip(trial_scores, evaluated_items) if not item.get("expected_documents")]
-    avg_in_scope = sum(in_scope) / len(in_scope) if in_scope else None
-    avg_hors_perimetre = sum(hors_perimetre) / len(hors_perimetre) if hors_perimetre else None
+    hors_perimetre_scores = [s for s, item in zip(trial_scores, evaluated_items) if not item.get("expected_documents")]
+    avg_hors_perimetre = sum(hors_perimetre_scores) / len(hors_perimetre_scores) if hors_perimetre_scores else 0.0
 
-    duration_s = time.time() - start_time
+    # Structure unique regroupant TOUTES les métriques par-question in-scope,
+    # groupées par document (ou combo de documents pour les 4 questions
+    # multi-documents) : sert de base à la fois aux moyennes par métrique
+    # brute (MRR/nDCG/Recall/Precision, doc-level) et aux variantes de score
+    # composite (SCORE_WEIGHTS), en micro (moyenne brute par question) ET
+    # macro (moyenne des moyennes par document — voir _micro_macro_mean).
+    # Recommandation issue de l'analyse post-mortem v3 : les 82 questions
+    # in-scope ne couvrent que 16 documents distincts sur les 404 du corpus,
+    # avec entre 3 et 8 questions par document — une moyenne brute par
+    # question sur-pondère mécaniquement les documents les plus questionnés
+    # (ex: la Réunion Ouverte BDE n°3 du 13/02/2024, 8 questions, pèserait
+    # 2,7x plus que l'AGE du 11/01/2022, 3 questions). C'est la version MACRO
+    # du poids "v4" qui est retournée à Optuna (voir `return` plus bas) ;
+    # toutes les autres variantes ci-dessous sont des diagnostics.
+    in_scope_by_doc = {}
+    for item, mrr_v, ndcg_v, recall_v, precision_v in zip(evaluated_items, mrr_scores, ndcg_scores, recall_scores, precision_scores):
+        docs = item.get("expected_documents")
+        if not docs:
+            continue
+        key = tuple(sorted(docs))
+        in_scope_by_doc.setdefault(key, []).append({
+            "mrr": mrr_v, "ndcg": ndcg_v, "recall": recall_v, "precision": precision_v,
+        })
+    num_docs_in_scope_evaluated = len(in_scope_by_doc)
 
-    trial.set_user_attr("avg_mrr", avg_mrr)
-    trial.set_user_attr("avg_ndcg", avg_ndcg)
-    trial.set_user_attr("avg_recall", avg_recall)
-    trial.set_user_attr("avg_precision", avg_precision)
-    trial.set_user_attr("avg_mrr_doc_level", avg_doc_mrr)
-    trial.set_user_attr("avg_recall_doc_level", avg_doc_recall)
-    trial.set_user_attr("score_std", score_std)
-    trial.set_user_attr("score_min", score_min)
-    trial.set_user_attr("score_max", score_max)
-    trial.set_user_attr("num_chunks", len(retriever.chunks))
-    trial.set_user_attr("num_questions_evaluated", n)
-    trial.set_user_attr("pruned_early", pruned)
-    trial.set_user_attr("duration_seconds", round(duration_s, 2))
-    if avg_in_scope is not None:
-        trial.set_user_attr("avg_score_in_scope", avg_in_scope)
-    if avg_hors_perimetre is not None:
-        trial.set_user_attr("avg_score_hors_perimetre", avg_hors_perimetre)
+    def _by_doc(field):
+        return {k: [r[field] for r in v] for k, v in in_scope_by_doc.items()}
 
-    _append_trial_log({
+    avg_mrr_in_scope_micro, avg_mrr_in_scope_macro = _micro_macro_mean(_by_doc("mrr"))
+    avg_ndcg_in_scope_micro, avg_ndcg_in_scope_macro = _micro_macro_mean(_by_doc("ndcg"))
+    avg_recall_in_scope_micro, avg_recall_in_scope_macro = _micro_macro_mean(_by_doc("recall"))
+    avg_precision_in_scope_micro, avg_precision_in_scope_macro = _micro_macro_mean(_by_doc("precision"))
+
+    # Doc-level (a-t-on retrouvé le bon DOCUMENT, dédupliqué, indépendamment
+    # du chunk précis) : diagnostic non optimisé, scopé in-scope uniquement
+    # (voir la boucle plus haut, doc_mrr_scores/doc_recall_scores ne sont
+    # remplies que pour les questions in-scope désormais).
+    doc_level_by_doc = {}
+    in_scope_items_ordered = [item for item in evaluated_items if item.get("expected_documents")]
+    for item, dm, dr in zip(in_scope_items_ordered, doc_mrr_scores, doc_recall_scores):
+        key = tuple(sorted(item["expected_documents"]))
+        doc_level_by_doc.setdefault(key, []).append({"doc_mrr": dm, "doc_recall": dr})
+    avg_doc_mrr_micro, avg_doc_mrr_macro = _micro_macro_mean({k: [r["doc_mrr"] for r in v] for k, v in doc_level_by_doc.items()})
+    avg_doc_recall_micro, avg_doc_recall_macro = _micro_macro_mean({k: [r["doc_recall"] for r in v] for k, v in doc_level_by_doc.items()})
+
+    # Variantes de score composite : la SEULE optimisée par Optuna est
+    # "v4"/macro (voir `return`) ; les autres (v3_legacy, equal, mrr_only, et
+    # les versions micro) sont des diagnostics purs, recalculés gratuitement à
+    # partir des mêmes MRR/Recall/Precision déjà mesurés — pas d'appel
+    # retrieval supplémentaire. Objectif : pouvoir vérifier après coup si le
+    # "gagnant" de l'étude dépend fortement du choix de poids, sans devoir
+    # tout relancer (voir SCORE_WEIGHTS pour la justification du choix v4).
+    score_variants = {}
+    for variant_name, weights in SCORE_WEIGHTS.items():
+        values_by_doc = {
+            k: [_weighted_score(r["mrr"], r["recall"], r["precision"], weights) for r in v]
+            for k, v in in_scope_by_doc.items()
+        }
+        micro, macro = _micro_macro_mean(values_by_doc)
+        score_variants[variant_name] = {"micro": micro, "macro": macro}
+    avg_score_in_scope_macro = score_variants["v4"]["macro"]
+
+    # Réplique EXACTE du score v3 (moyenne brute sur TOUTES les questions,
+    # in-scope ET hors-périmètre confondues, poids 0.40/0.30/0.30) : gardée
+    # en diagnostic pour comparaison historique directe avec les 257 trials
+    # de l'étude v3 — c'est ce score qui s'est révélé anti-corrélé avec le
+    # filtrage hors-périmètre (corr=-0.22) et n'est plus optimisé depuis v4.
+    v3_replica_scores = [_weighted_score(m, r, p, SCORE_WEIGHTS["v3_legacy"]) for m, r, p in zip(mrr_scores, recall_scores, precision_scores)]
+    avg_score_v3_replica = sum(v3_replica_scores) / n if n else 0.0
+
+    # Variance : une moyenne unique cache si un trial est régulièrement moyen
+    # ou juste porté par quelques questions faciles/chanceuses. Calculée sur
+    # le score "v4" par-question, in-scope uniquement (mélanger le
+    # hors-périmètre binaire 0/1 comme le faisait v3 aurait à nouveau
+    # contaminé cette mesure de dispersion).
+    in_scope_v4_scores = [r["mrr"] * SCORE_WEIGHTS["v4"][0] + r["recall"] * SCORE_WEIGHTS["v4"][1] + r["precision"] * SCORE_WEIGHTS["v4"][2]
+                           for v in in_scope_by_doc.values() for r in v]
+    score_std = statistics.pstdev(in_scope_v4_scores) if len(in_scope_v4_scores) > 1 else 0.0
+    score_min = min(in_scope_v4_scores) if in_scope_v4_scores else 0.0
+    score_max = max(in_scope_v4_scores) if in_scope_v4_scores else 0.0
+
+    # Contrainte hors-périmètre (constrained optimization, voir sampler dans
+    # main()) : convention Optuna, satisfaite quand la valeur est <= 0. Un
+    # trial qui ne filtre pas au moins HORS_PERIMETRE_MIN_SCORE des questions
+    # hors-périmètre est traité comme non-faisable, quel que soit son score
+    # in-scope — voir le commentaire au-dessus de la définition de
+    # HORS_PERIMETRE_MIN_SCORE pour la justification empirique de ce choix.
+    constraint_value = HORS_PERIMETRE_MIN_SCORE - avg_hors_perimetre
+    trial.set_user_attr("constraint", (constraint_value,))
+    constraint_satisfied = constraint_value <= 0.0
+
+    log_record = {
         "trial_number": trial.number,
         "params": config,
-        "avg_score": avg_score,
-        "avg_mrr": avg_mrr,
-        "avg_ndcg": avg_ndcg,
-        "avg_recall": avg_recall,
-        "avg_precision": avg_precision,
-        "avg_mrr_doc_level": avg_doc_mrr,
-        "avg_recall_doc_level": avg_doc_recall,
+        # -- Objectif optimisé --
+        "avg_score_in_scope_macro": avg_score_in_scope_macro,
+        "hors_perimetre_constraint_satisfied": constraint_satisfied,
+        "hors_perimetre_min_required": HORS_PERIMETRE_MIN_SCORE,
+        # -- Métriques brutes in-scope, micro (par question) et macro (par document) --
+        "avg_mrr_in_scope_micro": avg_mrr_in_scope_micro,
+        "avg_mrr_in_scope_macro": avg_mrr_in_scope_macro,
+        "avg_ndcg_in_scope_micro": avg_ndcg_in_scope_micro,
+        "avg_ndcg_in_scope_macro": avg_ndcg_in_scope_macro,
+        "avg_recall_in_scope_micro": avg_recall_in_scope_micro,
+        "avg_recall_in_scope_macro": avg_recall_in_scope_macro,
+        "avg_precision_in_scope_micro": avg_precision_in_scope_micro,
+        "avg_precision_in_scope_macro": avg_precision_in_scope_macro,
+        "avg_doc_mrr_in_scope_micro": avg_doc_mrr_micro,
+        "avg_doc_mrr_in_scope_macro": avg_doc_mrr_macro,
+        "avg_doc_recall_in_scope_micro": avg_doc_recall_micro,
+        "avg_doc_recall_in_scope_macro": avg_doc_recall_macro,
+        # -- Variantes de poids du score composite, diagnostic (voir SCORE_WEIGHTS) --
+        "score_variants": score_variants,
+        "avg_score_v3_replica": avg_score_v3_replica,
+        # -- Hors-périmètre --
+        "avg_score_hors_perimetre": avg_hors_perimetre,
+        # -- Dispersion (sur le score v4 in-scope uniquement) --
         "score_std": score_std,
         "score_min": score_min,
         "score_max": score_max,
-        "avg_score_in_scope": avg_in_scope,
-        "avg_score_hors_perimetre": avg_hors_perimetre,
+        # -- Contexte / coût --
         "num_chunks": len(retriever.chunks),
+        "embedding_dim": int(retriever.embeddings.shape[1]) if len(retriever.embeddings) else 0,
         "num_questions_evaluated": n,
+        "num_docs_in_scope_evaluated": num_docs_in_scope_evaluated,
         "pruned_early": pruned,
         "duration_seconds": round(duration_s, 2),
         "per_question": per_question_log,
-    })
+    }
+
+    for key, value in log_record.items():
+        if key not in ("params", "per_question"):
+            trial.set_user_attr(key, value)
+
+    _append_trial_log(log_record)
 
     if pruned:
         raise optuna.exceptions.TrialPruned()
 
-    return avg_score
+    return avg_score_in_scope_macro
 
 # ==========================================
 # 4. MAIN
@@ -691,7 +1045,12 @@ def main():
             "moment : chaque trial terminé est déjà commité dans la base sqlite, "
             "et le cache disque (temp/optuna_cache/) évite de recalculer les "
             "chunks/embeddings déjà vus. Relancer la commande reprend l'étude là "
-            "où elle s'est arrêtée (même --study-name = même sqlite = mêmes trials)."
+            "où elle s'est arrêtée (même --study-name = même sqlite = mêmes trials). "
+            "v4/v5 ajoutent e5-large, arctic-l et un reranker cross-encoder optionnel "
+            "(use_reranker) (gte-multi retiré : assertion CUDA reproductible, voir "
+            "model_map dans _get_embedding_model) : le premier trial pour "
+            "chaque nouvelle combinaison (chunk_size, overlap, modèle) télécharge/encode "
+            "à froid — durée totale par trial nettement plus variable qu'en v3."
         )
     )
     parser.add_argument(
@@ -700,11 +1059,20 @@ def main():
              "S'ajoute aux trials déjà présents dans la base.",
     )
     parser.add_argument(
-        "--study-name", type=str, default="retrieval_only_v3",
+        "--study-name", type=str, default="retrieval_only_v5",
         help="Nom de l'étude Optuna (change de nom pour repartir d'une base vierge). "
-             "v3 car le sens même du score optimisé a changé (scoring niveau "
-             "chunk, plus document) : les trials de v1/v2 restent dans la même "
-             "base sqlite mais leurs valeurs ne sont pas comparables à celles de v3.",
+             "v4 avait changé le sens du score optimisé (in-scope macro sous "
+             "contrainte hors-périmètre, voir HORS_PERIMETRE_MIN_SCORE) mais sa "
+             "base sqlite contenait des trials avec embedding_model='gte-multi' "
+             "(modèle retiré depuis, voir _get_embedding_model) : Optuna refuse "
+             "de sampler sur une étude dont l'historique référence une valeur "
+             "catégorielle qui n'existe plus dans la distribution actuelle "
+             "(ValueError 'gte-multi' not in (...) — le run plantait à chaque "
+             "relance). v5 repart d'une base vierge pour ce même motif ; le "
+             "cache disque (temp/optuna_cache/) reste valide et partagé entre "
+             "toutes les études, aucun calcul déjà fait n'est perdu. Les trials "
+             "v1/v2/v3/v4 restent dans la même base sqlite mais leurs valeurs "
+             "ne sont pas comparables à celles de v5.",
     )
     args = parser.parse_args()
 
@@ -721,15 +1089,24 @@ def main():
     retriever = LocalBenchmarkRetriever(md_dir)
 
     db_url = "sqlite:///retrieval_benchmark.db"
+    # TPESampler avec constraints_func : sampling constraint-aware (Optuna
+    # priorise les trials faisables et, parmi eux, ceux qui maximisent
+    # l'objectif retourné par objective() — avg_score_in_scope_macro). Voir
+    # HORS_PERIMETRE_MIN_SCORE et _constraints_func plus haut pour le
+    # pourquoi de ce choix face au score composite unique de v3.
+    sampler = optuna.samplers.TPESampler(constraints_func=_constraints_func, n_startup_trials=10)
     study = optuna.create_study(
         storage=db_url,
         direction="maximize",
         study_name=args.study_name,
         load_if_exists=True,
-        # n_warmup_steps=15 (~15% des 98 questions) : avec 98 questions au lieu
-        # des 60 d'origine, un warmup de 5 ne représentait plus que ~5% du
-        # trial — trop tôt pour une comparaison fiable entre trials.
-        pruner=optuna.pruners.MedianPruner(n_startup_trials=10, n_warmup_steps=15)
+        sampler=sampler,
+        # n_warmup_steps=20 (~15% des 132 questions, contre 98 en v3) : le
+        # dataset hors-périmètre est passé de 16 à 50 questions pour rendre
+        # avg_score_hors_perimetre statistiquement moins bruité (chaque
+        # question pesait 6,25 points sur cette sous-métrique avec 16
+        # questions ; 2 points avec 50).
+        pruner=optuna.pruners.MedianPruner(n_startup_trials=10, n_warmup_steps=20)
     )
     n_done_before = len(study.trials)
     logger.info(f"Étude '{args.study_name}' : {n_done_before} trial(s) déjà en base, {args.n_trials} de plus demandés.")
@@ -744,14 +1121,57 @@ def main():
             len([t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]),
         )
 
+    complete_trials = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
+    # study.best_trial ne filtre PAS par faisabilité pour une étude
+    # mono-objectif contrainte (limitation connue d'Optuna) : il faut exclure
+    # nous-mêmes les trials qui violent HORS_PERIMETRE_MIN_SCORE avant de
+    # choisir un "meilleur" trial, sinon on retomberait exactement dans le
+    # travers de v3 (un trial avec un bon in-scope mais un hors-périmètre
+    # non-filtré serait à nouveau élu "meilleur").
+    feasible_trials = [t for t in complete_trials if t.user_attrs.get("hors_perimetre_constraint_satisfied")]
+    logger.info(
+        f"{len(complete_trials)} trial(s) complet(s), dont {len(feasible_trials)} respectant la "
+        f"contrainte hors-périmètre (>= {HORS_PERIMETRE_MIN_SCORE:.0%}) et "
+        f"{len(complete_trials) - len(feasible_trials)} rejeté(s) pour ce motif."
+    )
+
+    if feasible_trials:
+        best_trial = max(feasible_trials, key=lambda t: t.value)
+        logger.info(f"Meilleur score in-scope (macro, sous contrainte hors-périmètre) : {best_trial.value:.4f}")
+        for key, value in best_trial.params.items():
+            logger.info(f"  - {key}: {value}")
+        for key, value in best_trial.user_attrs.items():
+            logger.info(f"  · {key}: {value}")
+
+        # Robustesse : score_std/sqrt(n) donne l'erreur standard du score sur
+        # ~132 questions. Sur la study v3, cette erreur standard (~0.04) était
+        # 15x plus grande que l'écart entre le trial classé 1er et le 20e
+        # (~0.007) — annoncer UN gagnant à la 4e décimale n'avait aucun sens
+        # statistique. On rapporte donc plutôt le "plateau" des trials
+        # indiscernables du meilleur (à moins d'un écart-type), et le nombre
+        # de configs (chunk_size, overlap, modèle, top_k) distinctes qu'il
+        # contient.
+        best_se = best_trial.user_attrs.get("score_std", 0.0) / math.sqrt(max(best_trial.user_attrs.get("num_questions_evaluated", 1), 1))
+        plateau = [t for t in feasible_trials if (best_trial.value - t.value) <= best_se]
+        distinct_configs = {
+            (
+                t.params.get("chunk_size"), t.params.get("overlap_ratio"), t.params.get("embedding_model"),
+                t.params.get("top_k"), t.params.get("use_reranker"),
+            )
+            for t in plateau
+        }
+        logger.info(
+            f"Plateau à ±1 écart-type du meilleur (SE≈{best_se:.4f}) : {len(plateau)} trial(s), "
+            f"{len(distinct_configs)} config(s) (chunk_size/overlap/modèle/top_k/reranker) distincte(s) : {sorted(distinct_configs, key=lambda c: str(c))}"
+        )
+    else:
+        logger.warning(
+            "Aucun trial ne respecte la contrainte hors-périmètre — augmenter --n-trials, "
+            "ou revoir HORS_PERIMETRE_MIN_SCORE si la contrainte est trop stricte pour ce corpus."
+        )
+
     if len(study.trials) > 0:
         try:
-            best_trial = study.best_trial
-            logger.info(f"Meilleur score Retrieval : {best_trial.value:.4f}")
-            for key, value in best_trial.params.items():
-                logger.info(f"  - {key}: {value}")
-            for key, value in best_trial.user_attrs.items():
-                logger.info(f"  · {key}: {value}")
             df = study.trials_dataframe()
             df.to_csv("optuna_retrieval_benchmark.csv", index=False)
             logger.info("Résultats exportés dans : optuna_retrieval_benchmark.csv")
