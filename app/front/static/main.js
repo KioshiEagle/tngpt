@@ -41,26 +41,66 @@ function randomFrom(arr) {
     return arr[Math.floor(Math.random() * arr.length)];
 }
 
-// --- Rendu mermaid (carte des mers) ---
+// --- Rendu de la carte au trésor (mermaid) ---
 // mermaid.min.js pèse ~2,7 Mo : on ne le charge qu'à la première carte
 // rencontrée, jamais au chargement de la page.
 let mermaidPromise = null;
 let mermaidSeq = 0;
 
-function currentMermaidTheme() {
-    return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'neutral';
+// Palettes parchemin. Les tons des branches restent dans la gamme des encres
+// et pigments d'une vieille carte : sépia, sanguine, vert-de-gris, indigo passé.
+// Les teintes de branche restent des lavis très pâles : sur une carte gravée,
+// c'est le trait à l'encre qui distingue les régions, pas des aplats de couleur.
+// Un fond saturé rendrait aussi le libellé sombre illisible.
+const TREASURE_PALETTES = {
+    light: {
+        ink: '#6b4a24',
+        text: '#3f2f1c',
+        parchment: '#f3e2bd',
+        branches: ['#e5d0a4', '#e0c3a8', '#cfd3ad', '#d6cbb0', '#e2cdb2', '#cdc7ab'],
+    },
+    dark: {
+        ink: '#c9a367',
+        text: '#f2e4c6',
+        parchment: '#3a2f21',
+        branches: ['#5a4a33', '#5e4536', '#4b5540', '#514a3a', '#5c4c39', '#4e4a38'],
+    },
+};
+
+function isDarkTheme() {
+    return document.documentElement.getAttribute('data-theme') === 'dark';
 }
 
 function mermaidConfig() {
+    const p = TREASURE_PALETTES[isDarkTheme() ? 'dark' : 'light'];
+    // cScaleN colore les branches d'une carte mentale ; cScaleLabelN leur texte.
+    const branches = {};
+    p.branches.forEach((color, i) => {
+        branches[`cScale${i}`] = color;
+        branches[`cScaleLabel${i}`] = p.text;
+    });
     return {
         startOnLoad: false,
         // La sortie du modèle est injectée via innerHTML sans sanitizer :
         // mermaid ne doit ni exécuter de JS ni rendre de HTML dans les libellés.
         securityLevel: 'strict',
-        theme: currentMermaidTheme(),
+        theme: 'base',
+        themeVariables: {
+            ...branches,
+            background: p.parchment,
+            primaryColor: p.parchment,
+            primaryTextColor: p.text,
+            primaryBorderColor: p.ink,
+            lineColor: p.ink,
+            textColor: p.text,
+            // Une serif système : l'air d'une carte gravée, sans police à charger.
+            fontFamily: 'Georgia, "Iowan Old Style", "Palatino Linotype", serif',
+            fontSize: '15px',
+        },
         // useMaxWidth écraserait la carte à la largeur de la bulle et rendrait
         // les libellés illisibles : on la laisse à sa taille naturelle et le
         // conteneur .mermaid-diagram la fait défiler horizontalement.
+        mindmap: { useMaxWidth: false, padding: 14 },
         flowchart: { useMaxWidth: false, htmlLabels: false },
     };
 }
@@ -96,7 +136,12 @@ async function drawDiagram(host, source) {
     // d'une panne de rendu, et on n'insère jamais de diagramme à moitié dessiné.
     await mermaid.parse(source);
     const { svg } = await mermaid.render(`mermaid-${++mermaidSeq}`, source);
-    host.innerHTML = svg;
+    // Le SVG vit dans un calque intérieur : c'est lui qui défile, pendant que le
+    // cadre de parchemin et sa rose des vents restent en place.
+    const canvas = document.createElement('div');
+    canvas.className = 'mermaid-canvas';
+    canvas.innerHTML = svg;
+    host.replaceChildren(canvas);
 }
 
 // Remplace les blocs ```mermaid d'un message par leur diagramme. À n'appeler
