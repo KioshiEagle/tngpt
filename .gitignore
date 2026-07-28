@@ -12,6 +12,7 @@ core
 *cache
 .python-version
 *.db
+.claude
 
 # fichiers d'output
 processed_files.json

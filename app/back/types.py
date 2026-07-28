@@ -1,4 +1,4 @@
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 
 class SearchResult(TypedDict):
@@ -17,3 +17,13 @@ class HistoryMessage(TypedDict):
 
     role: str
     content: str
+
+
+class GroqParams(TypedDict, total=False):
+    """Paramètres d'appel Groq ajustables selon le prompt utilisé.
+
+    Les types reprennent ceux du SDK Groq pour rester vérifiables au dépaquetage.
+    """
+
+    reasoning_effort: Literal["none", "default", "low", "medium", "high"]
+    max_completion_tokens: int

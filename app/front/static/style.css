@@ -368,6 +368,28 @@ body {
     margin: 0.4em 0;
 }
 
+/* Carte des mers : le diagramme peut être large, il scrolle dans son cadre
+   plutôt que de faire scroller la page. */
+.mermaid-diagram {
+    margin: 0.7em 0;
+    padding: 12px;
+    background: var(--bg-sidebar);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow-x: auto;
+    text-align: center;
+}
+.mermaid-diagram svg {
+    max-width: none;
+    height: auto;
+}
+.mermaid-error {
+    margin-top: 8px;
+    font-size: 13px;
+    font-style: italic;
+    color: var(--text-muted);
+}
+
 /* Copy button */
 .copy-btn {
     opacity: 0;
