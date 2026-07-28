@@ -332,6 +332,10 @@ body {
     border-bottom-left-radius: 4px;
     white-space: normal;
 }
+/* Une réponse réduite à sa carte laisserait sinon une pastille vide au-dessus. */
+.msg.assistant .msg-text:empty {
+    display: none;
+}
 
 /* Markdown content inside assistant bubbles */
 .msg.assistant .msg-text p { margin-bottom: 0.5em; }
@@ -425,8 +429,11 @@ body {
     pointer-events: none;
 }
 
+/* Une grande carte chasserait le reste de la conversation hors de l'écran :
+   elle défile dans son cadre au lieu d'étirer la bulle indéfiniment. */
 .mermaid-canvas {
-    overflow-x: auto;
+    max-height: 70vh;
+    overflow: auto;
     text-align: center;
 }
 .mermaid-canvas svg {
