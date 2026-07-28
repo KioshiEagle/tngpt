@@ -40,79 +40,106 @@ def test_wants_map_ignore_les_questions_normales(question: str) -> None:
     assert not wants_map(question)
 
 
-def test_sanitize_conserve_un_bloc_valide() -> None:
-    """Un bloc déjà conforme traverse l'assainissement sans dégât."""
-    raw = '```mermaid\ngraph LR\n  TN --> BDE["BDE"]\n```'
-    assert sanitize_mermaid(raw) == 'graph LR\n  TN --> BDE["BDE"]'
+def test_sanitize_conserve_une_carte_valide() -> None:
+    """Une carte mentale déjà conforme traverse l'assainissement sans dégât."""
+    raw = '```mermaid\nmindmap\n  root(("TELECOM Nancy"))\n    N1["BDE"]\n```'
+    assert sanitize_mermaid(raw) == (
+        'mindmap\n  root(("TELECOM Nancy"))\n    N1["BDE"]'
+    )
 
 
-def test_sanitize_ajoute_les_guillemets_manquants() -> None:
-    """Les libellés accentués ou parenthésés non quotés sont réparés."""
-    raw = "graph LR\n  BDE --> C1[Club Œnologie (asso)]\n"
-    assert sanitize_mermaid(raw) == 'graph LR\n  BDE --> C1["Club Œnologie (asso)"]'
+def test_sanitize_met_en_forme_les_libelles_nus() -> None:
+    """Un libellé nu est réémis sous la forme sûre, entre crochets et guillemets."""
+    raw = 'mindmap\n  root(("TELECOM Nancy"))\n    BDE\n      Club Œnologie'
+    cleaned = sanitize_mermaid(raw)
+    assert cleaned is not None
+    assert '    N1["BDE"]' in cleaned
+    assert '      N2["Club Œnologie"]' in cleaned
 
 
-def test_sanitize_ne_reecrit_pas_un_libelle_deja_quote() -> None:
-    """Des parenthèses à l'intérieur d'un libellé quoté ne sont pas re-quotées."""
-    raw = 'graph LR\n  BDE --> C1["Club Impro (2019)"]'
-    assert sanitize_mermaid(raw) == 'graph LR\n  BDE --> C1["Club Impro (2019)"]'
+def test_sanitize_preserve_un_libelle_a_parentheses() -> None:
+    """Le préfixe d'un libellé parenthésé doit survivre.
+
+    Rendu tel quel, `Club Sportif (TOSS)` s'affiche « TOSS » : mermaid prend la
+    parenthèse pour une déclaration de forme et jette le début du nom.
+    """
+    raw = 'mindmap\n  root(("TN"))\n    TNS\n      Club Sportif (TOSS/L-INP)'
+    cleaned = sanitize_mermaid(raw)
+    assert cleaned is not None
+    assert 'N2["Club Sportif (TOSS/L-INP)"]' in cleaned
 
 
-def test_sanitize_force_len_tete_graph_lr() -> None:
-    """Un en-tête absent ou différent est normalisé en `graph LR`."""
-    sans_entete = sanitize_mermaid('  TN --> BDE["BDE"]')
-    assert sans_entete is not None
-    assert sans_entete.splitlines()[0] == "graph LR"
+def test_sanitize_recupere_le_libelle_dun_noeud_deja_forme() -> None:
+    """Un nœud déjà formé garde son libellé complet, parenthèses comprises."""
+    raw = 'mindmap\n  root(("TN"))\n    c1["Club (Marché)"]'
+    cleaned = sanitize_mermaid(raw)
+    assert cleaned is not None
+    assert 'N1["Club (Marché)"]' in cleaned
 
-    autre_entete = sanitize_mermaid('flowchart TD\n  TN --> BDE["BDE"]')
-    assert autre_entete is not None
-    assert autre_entete.splitlines()[0] == "graph LR"
+
+def test_sanitize_normalise_une_indentation_irreguliere() -> None:
+    """Les niveaux sont reconstruits sur l'ordre relatif des indentations."""
+    raw = 'mindmap\n   root(("TN"))\n       BDE\n           CTN\n       BDA'
+    assert sanitize_mermaid(raw) == (
+        'mindmap\n  root(("TN"))\n    N1["BDE"]\n      N2["CTN"]\n    N3["BDA"]'
+    )
+
+
+def test_sanitize_garantit_une_racine_unique() -> None:
+    """Plusieurs nœuds au niveau le plus haut : mermaid refuse, on insère une racine."""
+    raw = "mindmap\n  BDE\n  BDA"
+    cleaned = sanitize_mermaid(raw)
+    assert cleaned is not None
+    lines = cleaned.splitlines()
+    assert lines[0] == "mindmap"
+    assert lines[1] == '  root(("TELECOM Nancy"))'
+    assert len([line for line in lines if line.startswith("  root((")]) == 1
+    assert lines[2] == '    N0["BDE"]'
+    assert lines[3] == '    N1["BDA"]'
 
 
 def test_sanitize_supprime_les_directives_interdites() -> None:
-    """click, style et classDef sont retirés du diagramme."""
+    """click, style, classDef et les icônes FontAwesome sont retirés."""
     raw = (
-        "graph LR\n"
-        '  TN --> BDE["BDE"]\n'
-        '  click BDE "https://exemple.fr"\n'
-        "  style BDE fill:#f00\n"
-        "  classDef gros font-size:20px\n"
+        "mindmap\n"
+        '  root(("TN"))\n'
+        '    N1["BDE"]\n'
+        "    ::icon(fa fa-book)\n"
+        '    click N1 "https://exemple.fr"\n'
+        "    classDef gros font-size:20px\n"
     )
     cleaned = sanitize_mermaid(raw)
     assert cleaned is not None
-    assert "click" not in cleaned
-    assert "style" not in cleaned
-    assert "classDef" not in cleaned
-    assert 'TN --> BDE["BDE"]' in cleaned
+    for interdit in ("click", "classDef", "::icon", "exemple.fr"):
+        assert interdit not in cleaned
 
 
 def test_sanitize_ignore_ce_qui_suit_la_fence_fermante() -> None:
     """La prose émise après le bloc n'entre pas dans le diagramme."""
-    raw = '```mermaid\ngraph LR\n  TN --> BDE["BDE"]\n```\nvoilà la carte !'
+    raw = '```mermaid\nmindmap\n  root(("TN"))\n    N1["BDE"]\n```\nvoilà la carte !'
     cleaned = sanitize_mermaid(raw)
     assert cleaned is not None
     assert "voilà" not in cleaned
 
 
-def test_sanitize_deduplique_les_lignes() -> None:
-    """Une arête répétée n'apparaît qu'une fois."""
-    raw = 'graph LR\n  TN --> BDE["BDE"]\n  TN --> BDE["BDE"]\n'
-    cleaned = sanitize_mermaid(raw)
+def test_sanitize_neutralise_les_guillemets_internes() -> None:
+    """Un guillemet dans un libellé refermerait le nœud : il est converti."""
+    cleaned = sanitize_mermaid('mindmap\n  root(("TN"))\n    Le "vrai" BDE')
     assert cleaned is not None
-    assert cleaned.count("TN --> BDE") == 1
+    assert "N1[\"Le 'vrai' BDE\"]" in cleaned
 
 
 @pytest.mark.parametrize(
     "raw",
     [
         "",
-        "```mermaid\ngraph LR\n```",
-        'graph LR\n  TN["TELECOM Nancy"]\n  BDE["BDE"]',
+        "```mermaid\nmindmap\n```",
+        'mindmap\n  root(("TELECOM Nancy"))',
         "je sais pas, je trouve pas dans mes archives",
     ],
 )
-def test_sanitize_renvoie_none_sans_arete(raw: str) -> None:
-    """Sans arête exploitable, aucun bloc n'est émis plutôt qu'un bloc cassé."""
+def test_sanitize_renvoie_none_sans_ramification(raw: str) -> None:
+    """Sans au moins une branche, aucun bloc n'est émis plutôt qu'une carte vide."""
     assert sanitize_mermaid(raw) is None
 
 
@@ -124,12 +151,11 @@ def _chunked(text: str, size: int = 7) -> list[str]:
 def test_split_streame_la_prose_puis_le_diagramme() -> None:
     """La prose sort telle quelle, le diagramme sort en un bloc assaini."""
     reponse = (
-        "voilà la carte des mers, matelot\n\n"
-        "```mermaid\ngraph LR\n  TN --> BDE[BDE]\n```\n"
+        'voilà la carte, matelot\n\n```mermaid\nmindmap\n  root(("TN"))\n    BDE\n```\n'
     )
     out = "".join(_split_prose_and_diagram(iter(_chunked(reponse))))
-    assert out.startswith("voilà la carte des mers, matelot")
-    assert '```mermaid\ngraph LR\n  TN --> BDE["BDE"]\n```' in out
+    assert out.startswith("voilà la carte, matelot")
+    assert '```mermaid\nmindmap\n  root(("TN"))\n    N1["BDE"]\n```' in out
 
 
 def test_split_sans_diagramme_laisse_la_reponse_intacte() -> None:
@@ -139,8 +165,8 @@ def test_split_sans_diagramme_laisse_la_reponse_intacte() -> None:
 
 
 def test_split_abandonne_un_diagramme_inexploitable() -> None:
-    """Un bloc sans arête est supprimé, la prose est conservée."""
-    reponse = "hop la carte\n\n```mermaid\ngraph LR\n  TN[TN]\n```\n"
+    """Une carte réduite à sa racine est supprimée, la prose est conservée."""
+    reponse = 'hop la carte\n\n```mermaid\nmindmap\n  root(("TN"))\n```\n'
     out = "".join(_split_prose_and_diagram(iter(_chunked(reponse))))
     assert "hop la carte" in out
     assert "mermaid" not in out

@@ -6,7 +6,7 @@
     <meta name="description" content="TN-GPT — L'assistant IA optimisé pour TELECOM Nancy, conçu par la CETEN et Neura'TN.">
     <title>TN-GPT</title>
     <link rel="icon" type="image/webp" href="/static/ducky_cassis.webp">
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="{{ asset('style.css') }}">
     <!-- Prevent dark-mode flash -->
     <script>
         (function () {
@@ -97,7 +97,7 @@
         <div class="chips" id="chips-container"></div>
     </main>
 
-    <script src="/static/marked.min.js"></script>
-    <script src="/static/main.js"></script>
+    <script src="{{ asset('marked.min.js') }}"></script>
+    <script src="{{ asset('main.js') }}"></script>
 </body>
 </html>

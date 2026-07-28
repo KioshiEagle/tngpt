@@ -368,21 +368,95 @@ body {
     margin: 0.4em 0;
 }
 
-/* Carte des mers : le diagramme peut être large, il scrolle dans son cadre
-   plutôt que de faire scroller la page. */
+/* Carte au trésor des clubs : un parchemin taché d'encre, avec sa rose des
+   vents. Le cadre reste fixe et c'est le calque intérieur qui défile, sinon la
+   décoration partirait avec la carte. */
 .mermaid-diagram {
-    margin: 0.7em 0;
-    padding: 12px;
-    background: var(--bg-sidebar);
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    --parchment: #f3e2bd;
+    --map-ink: #6b4a24;
+    --map-edge: #c19a5e;
+    --map-stain: rgba(140, 100, 55, 0.17);
+    position: relative;
+    margin: 0.9em 0;
+    padding: 22px;
+    overflow: hidden;
+    border: 1px solid var(--map-edge);
+    border-radius: 3px;
+    background-color: var(--parchment);
+    background-image:
+        radial-gradient(ellipse at 14% 20%, var(--map-stain), transparent 55%),
+        radial-gradient(ellipse at 86% 76%, var(--map-stain), transparent 52%),
+        radial-gradient(ellipse at 62% 6%, var(--map-stain), transparent 42%);
+    box-shadow:
+        inset 0 0 46px rgba(120, 85, 45, 0.34),
+        0 1px 3px rgba(0, 0, 0, 0.16);
+}
+[data-theme="dark"] .mermaid-diagram {
+    --parchment: #3a2f21;
+    --map-ink: #c9a367;
+    --map-edge: #6b573a;
+    --map-stain: rgba(0, 0, 0, 0.26);
+    box-shadow:
+        inset 0 0 46px rgba(0, 0, 0, 0.45),
+        0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* Liseré intérieur : le double trait à l'encre des cartes gravées. */
+.mermaid-diagram::before {
+    content: "";
+    position: absolute;
+    inset: 7px;
+    border: 1px solid var(--map-edge);
+    border-radius: 2px;
+    opacity: 0.65;
+    pointer-events: none;
+}
+
+/* Rose des vents, en haut à droite. */
+.mermaid-diagram::after {
+    content: "✵";
+    position: absolute;
+    top: 10px;
+    right: 14px;
+    font-size: 21px;
+    line-height: 1;
+    color: var(--map-ink);
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.mermaid-canvas {
     overflow-x: auto;
     text-align: center;
 }
-.mermaid-diagram svg {
+.mermaid-canvas svg {
     max-width: none;
     height: auto;
 }
+/* Les liens de la carte mentale deviennent la route pointillée du trésor.
+   !important est nécessaire : mermaid injecte dans le SVG des règles préfixées
+   par l'identifiant du diagramme, qui l'emportent sur tout sélecteur de classe. */
+.mermaid-canvas svg path.edge {
+    stroke: var(--map-ink) !important;
+    stroke-dasharray: 7 5 !important;
+    stroke-linecap: round;
+    opacity: 0.75;
+}
+
+/* Chaque nœud est cerné d'un trait d'encre, comme une île sur un portulan. */
+.mermaid-canvas svg .mindmap-node > rect,
+.mermaid-canvas svg .mindmap-node > circle,
+.mermaid-canvas svg .mindmap-node > polygon {
+    stroke: var(--map-ink) !important;
+    stroke-width: 1.3 !important;
+}
+/* La racine : un double cercle, l'île au trésor. */
+.mermaid-canvas svg .section-root > circle {
+    fill: var(--parchment) !important;
+    stroke-width: 2.4 !important;
+    stroke-dasharray: none !important;
+}
+
 .mermaid-error {
     margin-top: 8px;
     font-size: 13px;

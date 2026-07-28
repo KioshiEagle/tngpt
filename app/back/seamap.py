@@ -104,21 +104,25 @@ def retrieve_for_map(req: GenerateRequest) -> list[SearchResult]:
 # fencé, que le front ne sait pas reconnaître.
 _MAP_PROMPT_TEMPLATE = (
     "Tu es TN-GPT, l'expert de la vie associative de TELECOM Nancy.\n"
-    "On te demande de dessiner la « carte des mers » des clubs : un diagramme "
-    "mermaid reliant TELECOM Nancy à ses associations mères (BDE, BDA, BDS, "
-    "TNS, et Humani'TN) puis à leurs clubs.\n\n"
+    "On te demande de dresser la carte au trésor des clubs : une carte mentale "
+    "mermaid partant de TELECOM Nancy, ramifiée vers ses associations mères "
+    "(BDE, BDA, BDS, TNS, Humani'TN...) puis vers leurs clubs.\n\n"
     "Format de ta réponse, dans cet ordre exact :\n"
     "1. Deux ou trois lignes maximum, ton décontracté, sans majuscule en début "
-    "de phrase.\n"
+    "de phrase. Présente-la comme tu veux, n'emploie pas de formule imposée.\n"
     "2. Un seul bloc de code mermaid, exactement comme dans l'exemple.\n\n"
     "Règles du diagramme :\n"
-    "- La première ligne du bloc est `graph LR`.\n"
-    "- Les identifiants de nœuds sont en ASCII, sans accent ni espace "
-    "(TN, BDE, C1, C2...).\n"
-    "- Les libellés sont TOUJOURS entre guillemets doubles : "
-    'C1["Club Œnologie"]. Sans guillemets, les accents, apostrophes et '
-    "parenthèses des noms de clubs cassent le rendu.\n"
-    "- N'utilise jamais click, style, classDef, linkStyle, ni de HTML.\n"
+    "- La première ligne du bloc est `mindmap`.\n"
+    "- La hiérarchie se lit UNIQUEMENT à l'indentation : 2 espaces pour la "
+    "racine, 4 pour une association, 6 pour un club. Jamais de flèches.\n"
+    '- Une seule racine, toujours `root(("TELECOM Nancy"))`.\n'
+    "- Chaque autre nœud s'écrit identifiant + crochets + guillemets doubles : "
+    'N1["Club Œnologie"]. Les identifiants sont en ASCII sans accent ni espace '
+    "(N1, N2, N3...).\n"
+    "- Cette forme est OBLIGATOIRE : un libellé nu comme "
+    "`Club Sportif (TOSS)` perd sa première moitié au rendu, seul "
+    '`N1["Club Sportif (TOSS)"]` conserve le nom entier.\n'
+    "- N'utilise jamais click, style, classDef, ::icon, ni de HTML.\n"
     "- N'inscris que des clubs présents dans les archives ci-dessous. "
     "N'invente jamais un club ni une association de tutelle.\n"
     "- Si la demande nomme des clubs précis, ne dessine QUE ceux-là, avec leur "
@@ -127,12 +131,13 @@ _MAP_PROMPT_TEMPLATE = (
     "'je sais pas, je trouve pas dans mes archives', sans aucun bloc mermaid.\n\n"
     "Exemple de bloc attendu :\n"
     "```mermaid\n"
-    "graph LR\n"
-    '  TN(("TELECOM Nancy"))\n'
-    '  TN --> BDE["BDE"]\n'
-    '  TN --> BDA["BDA"]\n'
-    '  BDE --> C1["Club Œnologie"]\n'
-    '  BDA --> C2["Club Impro"]\n'
+    "mindmap\n"
+    '  root(("TELECOM Nancy"))\n'
+    '    N1["BDE"]\n'
+    '      N2["Club Œnologie"]\n'
+    '      N3["Tek\'TN"]\n'
+    '    N4["BDA"]\n'
+    '      N5["Pôle Musique"]\n'
     "```\n\n"
     "Date d'aujourd'hui : {today}\n"
     "{user_line}\n"
@@ -158,50 +163,32 @@ def build_map_prompt(context: str, question: str, user_name: str | None = None) 
 # --- Assainissement du mermaid ------------------------------------------------
 
 _FENCE = re.compile(r"^\s*```")
-_HEADER = re.compile(r"^\s*(?:graph|flowchart)\b", re.IGNORECASE)
+# En-tête de diagramme : celui qu'on impose, ou un reliquat d'une autre syntaxe.
+_HEADER = re.compile(r"^\s*(?:mindmap|graph|flowchart)\b", re.IGNORECASE)
 # Directives capables d'injecter du style ou du JavaScript dans le rendu.
 _FORBIDDEN = re.compile(
     r"^\s*(?:click|style|classDef|linkStyle|class)\b|<\s*script", re.IGNORECASE
 )
-_EDGE = re.compile(r"-{2,}>|-\.-+>|={2,}>|-{3,}(?!>)")
-
-# Un nœud et son libellé, toutes formes confondues. Les alternatives sont
-# ordonnées du délimiteur le plus enveloppant au plus simple — `((` avant `(` —
-# et la substitution se fait en UNE passe, sans réexaminer le texte déjà
-# remplacé : un libellé déjà entre guillemets qui contient des parenthèses
-# n'est donc jamais réécrit.
-_NODE = re.compile(
-    r"(?P<id>\b[A-Za-z_][A-Za-z0-9_]*)"
-    r"(?:"
-    r"\(\((?P<circle>[^()]*)\)\)"
-    r"|\[(?P<square>[^\[\]]*)\]"
-    r"|\{(?P<brace>[^{}]*)\}"
-    r"|\((?P<round>[^()]*)\)"
-    r")"
-)
-_SHAPES = (
-    ("circle", "((", "))"),
-    ("square", "[", "]"),
-    ("brace", "{", "}"),
-    ("round", "(", ")"),
+# Décorations mermaid qu'on ne sert pas (icônes FontAwesome, classes CSS).
+_DECORATIONS = re.compile(r"::icon\([^)]*\)|:::\S+")
+# Puces de liste : le modèle glisse parfois « - » devant les nœuds.
+_BULLET = re.compile(r"^[-*+]\s+")
+# Un nœud déjà mis en forme, sous n'importe quelle syntaxe mermaid. Le libellé
+# est capturé gourmandement et ancré à la fin, pour que `N1["Club (Marché)"]`
+# rende « Club (Marché) » et non « Club (Marché ».
+_SHAPED = re.compile(
+    r"^[A-Za-z0-9_-]*"
+    r"(?:\(\((?P<circle>.*)\)\)"
+    r"|\[(?P<square>.*)\]"
+    r"|\{\{(?P<hexa>.*)\}\}"
+    r"|\((?P<round>.*)\))$"
 )
 
-_DEFAULT_HEADER = "graph LR"
-
-
-def _quote_node(match: re.Match[str]) -> str:
-    """Réécrit un nœud avec son libellé entre guillemets doubles."""
-    for group, opener, closer in _SHAPES:
-        label = match.group(group)
-        if label is None:
-            continue
-        label = label.strip()
-        if len(label) > 1 and label.startswith('"') and label.endswith('"'):
-            return f"{match.group('id')}{opener}{label}{closer}"
-        # Un guillemet interne refermerait le libellé prématurément.
-        safe = label.replace('"', "'")
-        return f'{match.group("id")}{opener}"{safe}"{closer}'
-    return match.group(0)
+_DEFAULT_HEADER = "mindmap"
+_ROOT_LABEL = "TELECOM Nancy"
+# Une racine seule ne dit rien : on exige au moins une ramification.
+_MIN_NODES = 2
+_MAX_LABEL = 60
 
 
 def _extract_block(raw: str) -> str:
@@ -214,45 +201,86 @@ def _extract_block(raw: str) -> str:
     return body if end == -1 else body[:end]
 
 
-def sanitize_mermaid(raw: str) -> str | None:
-    """Nettoie un bloc mermaid produit par le modèle, ou None s'il est inexploitable.
+def _clean_label(text: str) -> str:
+    """Extrait le libellé humain d'une ligne de nœud, quelle qu'en soit la forme.
 
-    Retire fences et directives interdites, force `graph LR` en tête, met les
-    libellés entre guillemets et déduplique les lignes. Renvoie None quand il ne
-    reste aucune arête : mieux vaut pas de carte qu'une carte cassée.
+    Une carte mentale mermaid tronque silencieusement un libellé nu contenant des
+    parenthèses — « Club Sportif (TOSS) » se rend « TOSS ». On récupère donc le
+    texte complet ici, pour le réémettre ensuite sous la seule forme sûre.
     """
-    lines: list[str] = []
-    seen: set[str] = set()
+    text = _BULLET.sub("", _DECORATIONS.sub("", text).strip()).strip()
+    match = _SHAPED.match(text)
+    if match:
+        for group in ("circle", "square", "hexa", "round"):
+            captured = match.group(group)
+            if captured is not None:
+                text = captured.strip()
+                break
+    if len(text) > 1 and text.startswith('"') and text.endswith('"'):
+        text = text[1:-1].strip()
+    # Un guillemet interne refermerait le libellé prématurément.
+    return " ".join(text.replace('"', "'").split())[:_MAX_LABEL]
 
-    for original in _extract_block(raw).splitlines():
+
+def _parse_entries(body: str) -> list[tuple[int, str]]:
+    """Relève les (indentation, libellé) des nœuds, dans l'ordre du document."""
+    entries: list[tuple[int, str]] = []
+    for original in body.splitlines():
         line = original.rstrip()
-        if not line.strip() or _FENCE.match(line):
+        stripped = line.strip()
+        if not stripped or _FENCE.match(line) or stripped.lower() == "mermaid":
             continue
-        if line.strip().lower() == "mermaid":
+        if _HEADER.match(line) or _FORBIDDEN.search(line):
             continue
-        if _FORBIDDEN.search(line):
-            continue
-        # L'en-tête est réécrit une seule fois, en tête du bloc final.
-        if _HEADER.match(line):
-            continue
-        cleaned = _NODE.sub(_quote_node, line)
-        key = cleaned.strip()
-        if key in seen:
-            continue
-        seen.add(key)
-        lines.append(cleaned)
+        label = _clean_label(stripped)
+        if label:
+            entries.append((len(line) - len(line.lstrip()), label))
+    return entries
 
-    if not any(_EDGE.search(line) for line in lines):
-        logger.warning("Bloc mermaid sans arête exploitable : carte abandonnée.")
+
+def sanitize_mermaid(raw: str) -> str | None:
+    """Nettoie une carte mentale mermaid produite par le modèle, ou None si vide.
+
+    Réécrit chaque nœud sous la forme `id["libellé"]`, la seule qui préserve les
+    accents, apostrophes et parenthèses des noms de clubs, et normalise
+    l'indentation qui porte à elle seule la hiérarchie. Garantit une racine
+    unique : mermaid refuse net un diagramme qui en compte deux.
+    """
+    entries = _parse_entries(_extract_block(raw))
+    if len(entries) < _MIN_NODES:
+        logger.warning("Carte mentale vide ou réduite à sa racine : abandonnée.")
         return None
 
-    return "\n".join([_DEFAULT_HEADER, *lines])
+    # Les indentations produites par le modèle sont irrégulières : on ne garde
+    # que leur ordre relatif, converti en niveaux 0, 1, 2...
+    depths = {
+        indent: level for level, indent in enumerate(sorted({i for i, _ in entries}))
+    }
+
+    top = [label for indent, label in entries if depths[indent] == 0]
+    # Racine explicite seulement si le modèle en a produit exactement une, en tête.
+    has_root = len(top) == 1 and depths[entries[0][0]] == 0
+    shift = 0 if has_root else 1
+
+    lines = [_DEFAULT_HEADER]
+    if not has_root:
+        lines.append(f'  root(("{_ROOT_LABEL}"))')
+    for position, (indent, label) in enumerate(entries):
+        level = depths[indent] + shift
+        pad = "  " * (level + 1)
+        if level == 0:
+            lines.append(f'{pad}root(("{label}"))')
+        else:
+            lines.append(f'{pad}N{position}["{label}"]')
+    return "\n".join(lines)
 
 
 # --- Génération ---------------------------------------------------------------
 
 # Début du diagramme : fence explicite, ou en-tête mermaid émis sans fence.
-_DIAGRAM_START = re.compile(r"```|(?:^|\n)[ \t]*(?:graph|flowchart)[ \t]+[A-Za-z]{2}\b")
+_DIAGRAM_START = re.compile(
+    r"```|(?:^|\n)[ \t]*(?:mindmap\b|(?:graph|flowchart)[ \t]+[A-Za-z]{2}\b)"
+)
 # Recouvrement gardé en tampon pour ne pas rater un marqueur coupé entre deux chunks.
 _LOOKBACK = 16
 
