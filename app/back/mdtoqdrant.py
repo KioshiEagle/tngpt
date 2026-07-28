@@ -161,9 +161,10 @@ class VectorStore:
                 continue
 
             processed[source_id] = result.file_hash
-
-        with Path(log_file).open("w") as f:
-            json.dump(processed, f)
+            # Sauvegarde après chaque document : une interruption ne coûte que
+            # le document en cours, pas les appels d'embedding déjà payés.
+            with Path(log_file).open("w") as f:
+                json.dump(processed, f)
 
 
 if __name__ == "__main__":
