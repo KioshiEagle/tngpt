@@ -120,14 +120,21 @@ function loadMermaid() {
     return mermaidPromise;
 }
 
-// La note est posée à côté du <pre>, pas dedans : elle échapperait sinon à la
-// police monospace et au overflow-x du bloc de code.
-function mermaidFallback(pre, message) {
-    if (pre.nextElementSibling?.classList.contains('mermaid-error')) return;
-    const note = document.createElement('div');
-    note.className = 'mermaid-error';
-    note.textContent = message;
-    pre.insertAdjacentElement('afterend', note);
+// Sépare la prose du bloc mermaid AVANT tout rendu markdown, comme le fait
+// DHDA. Les deux vivent ensuite dans des conteneurs distincts : la prose peut
+// être réécrite à chaque frame du streaming sans jamais toucher au diagramme.
+// La fence fermante est facultative, pour ne rien perdre d'une réponse coupée.
+const MERMAID_BLOCK = /```[ \t]*mermaid[ \t]*\r?\n([\s\S]*?)(?:```|$)/i;
+
+function splitResponse(raw) {
+    const match = raw.match(MERMAID_BLOCK);
+    if (!match) return { prose: raw, mermaid: null, complete: false };
+    return {
+        prose: raw.replace(match[0], '').trim(),
+        mermaid: match[1].trim(),
+        // Sans fence fermante, le bloc est encore en cours de réception.
+        complete: match[0].trimEnd().endsWith('```'),
+    };
 }
 
 async function drawDiagram(host, source) {
@@ -144,25 +151,46 @@ async function drawDiagram(host, source) {
     host.replaceChildren(canvas);
 }
 
-// Remplace les blocs ```mermaid d'un message par leur diagramme. À n'appeler
-// qu'une fois le streaming terminé : un rendu par frame serait ruineux.
-async function renderMermaid(container) {
-    if (!container) return;
-    const blocks = container.querySelectorAll('pre > code.language-mermaid');
-    for (const code of blocks) {
-        const pre = code.parentElement;
-        const source = code.textContent;
-        const host = document.createElement('div');
+// Repli : le code brut reste lisible plutôt qu'un cadre vide.
+function showMermaidSource(host, source, message) {
+    const pre = document.createElement('pre');
+    const code = document.createElement('code');
+    code.textContent = source;
+    pre.appendChild(code);
+    const note = document.createElement('div');
+    note.className = 'mermaid-error';
+    note.textContent = message;
+    host.replaceChildren(pre, note);
+}
+
+// Dessine le diagramme dans son propre conteneur, créé à la demande à la suite
+// de la prose. Rien n'est redessiné tant que la source n'a pas changé.
+async function renderMermaid(bubble, source) {
+    if (!bubble || !source) return;
+    let host = bubble.querySelector(':scope > .mermaid-diagram');
+    if (!host) {
+        host = document.createElement('div');
         host.className = 'mermaid-diagram';
-        host.dataset.mermaidSource = source;
-        try {
-            await drawDiagram(host, source);
-            pre.replaceWith(host);
-        } catch (err) {
-            // On garde le bloc de code lisible plutôt qu'un cadre vide.
-            mermaidFallback(pre, 'carte illisible, voici le code brut');
-        }
+        bubble.appendChild(host);
+    } else if (host.dataset.mermaidSource === source) {
+        return;
     }
+    host.dataset.mermaidSource = source;
+    try {
+        await drawDiagram(host, source);
+    } catch (err) {
+        console.warn('mermaid a refusé la carte :', err);
+        showMermaidSource(host, source, 'carte illisible, voici le code brut');
+    }
+}
+
+// Point d'entrée unique : prose dans .msg-text, diagramme dans son voisin.
+function renderAssistant(bubble, raw) {
+    const textEl = bubble.querySelector('.msg-text');
+    const { prose, mermaid, complete } = splitResponse(raw);
+    if (textEl) textEl.innerHTML = marked.parse(prose);
+    bubble.dataset.raw = raw;
+    if (mermaid && complete) renderMermaid(bubble, mermaid);
 }
 
 // Le thème mermaid est figé au rendu : un basculement clair/sombre impose de
@@ -353,17 +381,22 @@ document.addEventListener('DOMContentLoaded', () => {
         let rawText = '';
         let textContainer = null;
         let bubbleContainer = null;
-        let rafPending = false;
+        let rafId = null;
 
         function scheduleRender() {
-            if (rafPending) return;
-            rafPending = true;
-            requestAnimationFrame(() => {
-                rafPending = false;
-                if (textContainer) textContainer.innerHTML = marked.parse(rawText);
-                if (bubbleContainer) bubbleContainer.dataset.raw = rawText;
+            if (rafId !== null) return;
+            rafId = requestAnimationFrame(() => {
+                rafId = null;
+                if (bubbleContainer) renderAssistant(bubbleContainer, rawText);
                 scrollToBottom();
             });
+        }
+
+        // Une frame encore en attente réécrirait la prose après le rendu final.
+        function cancelPendingRender() {
+            if (rafId === null) return;
+            cancelAnimationFrame(rafId);
+            rafId = null;
         }
 
         abortController = new AbortController();
@@ -432,12 +465,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (oiiaAudio) { oiiaAudio.pause(); oiiaAudio = null; }
             thinkingDiv.remove();
             duckyImg.classList.remove('spinning');
-            if (textContainer) {
-                textContainer.classList.remove('streaming');
-                // rendu final propre
-                textContainer.innerHTML = marked.parse(rawText);
-                renderMermaid(textContainer);
-            }
+            cancelPendingRender();
+            if (textContainer) textContainer.classList.remove('streaming');
+            // rendu final propre
+            if (bubbleContainer) renderAssistant(bubbleContainer, rawText);
             if (rawText) conversationHistory.push({ role: 'assistant', content: rawText });
             setStreaming(false);
             inp.focus();
@@ -468,9 +499,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const textDiv = document.createElement('div');
         textDiv.className = 'msg-text';
+        bubbleDiv.appendChild(textDiv);
         if (role === 'assistant') {
-            textDiv.innerHTML = content ? marked.parse(content) : '';
-            if (content) renderMermaid(textDiv);
+            if (content) renderAssistant(bubbleDiv, content);
         } else {
             textDiv.textContent = content;
         }
@@ -487,7 +518,6 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-        bubbleDiv.appendChild(textDiv);
         msgDiv.appendChild(whoDiv);
         msgDiv.appendChild(bubbleDiv);
         msgDiv.appendChild(copyBtn);
