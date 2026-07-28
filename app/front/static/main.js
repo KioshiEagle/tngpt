@@ -23,6 +23,7 @@ const WRITING_PHRASES = [
 ];
 
 const ALL_CHIPS = [
+    { label: 'carte des mers', query: 'Montre-moi la carte des mers des clubs de TELECOM Nancy' },
     { label: 'salles libres', query: 'Salles libres maintenant' },
     { label: "Planning de l'inté", query: "Balance le planning de l'intégration 2026" },
     { label: 'lore TN', query: 'Lore de TELECOM Nancy' },
@@ -38,6 +39,101 @@ const ALL_CHIPS = [
 
 function randomFrom(arr) {
     return arr[Math.floor(Math.random() * arr.length)];
+}
+
+// --- Rendu mermaid (carte des mers) ---
+// mermaid.min.js pèse ~2,7 Mo : on ne le charge qu'à la première carte
+// rencontrée, jamais au chargement de la page.
+let mermaidPromise = null;
+let mermaidSeq = 0;
+
+function currentMermaidTheme() {
+    return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'neutral';
+}
+
+function mermaidConfig() {
+    return {
+        startOnLoad: false,
+        // La sortie du modèle est injectée via innerHTML sans sanitizer :
+        // mermaid ne doit ni exécuter de JS ni rendre de HTML dans les libellés.
+        securityLevel: 'strict',
+        theme: currentMermaidTheme(),
+        // useMaxWidth écraserait la carte à la largeur de la bulle et rendrait
+        // les libellés illisibles : on la laisse à sa taille naturelle et le
+        // conteneur .mermaid-diagram la fait défiler horizontalement.
+        flowchart: { useMaxWidth: false, htmlLabels: false },
+    };
+}
+
+function loadMermaid() {
+    if (mermaidPromise) return mermaidPromise;
+    mermaidPromise = new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = '/static/mermaid.min.js';
+        script.onload = () => {
+            window.mermaid.initialize(mermaidConfig());
+            resolve(window.mermaid);
+        };
+        script.onerror = () => reject(new Error('mermaid indisponible'));
+        document.head.appendChild(script);
+    });
+    return mermaidPromise;
+}
+
+// La note est posée à côté du <pre>, pas dedans : elle échapperait sinon à la
+// police monospace et au overflow-x du bloc de code.
+function mermaidFallback(pre, message) {
+    if (pre.nextElementSibling?.classList.contains('mermaid-error')) return;
+    const note = document.createElement('div');
+    note.className = 'mermaid-error';
+    note.textContent = message;
+    pre.insertAdjacentElement('afterend', note);
+}
+
+async function drawDiagram(host, source) {
+    const mermaid = await loadMermaid();
+    // parse() valide sans toucher au DOM : on distingue une syntaxe invalide
+    // d'une panne de rendu, et on n'insère jamais de diagramme à moitié dessiné.
+    await mermaid.parse(source);
+    const { svg } = await mermaid.render(`mermaid-${++mermaidSeq}`, source);
+    host.innerHTML = svg;
+}
+
+// Remplace les blocs ```mermaid d'un message par leur diagramme. À n'appeler
+// qu'une fois le streaming terminé : un rendu par frame serait ruineux.
+async function renderMermaid(container) {
+    if (!container) return;
+    const blocks = container.querySelectorAll('pre > code.language-mermaid');
+    for (const code of blocks) {
+        const pre = code.parentElement;
+        const source = code.textContent;
+        const host = document.createElement('div');
+        host.className = 'mermaid-diagram';
+        host.dataset.mermaidSource = source;
+        try {
+            await drawDiagram(host, source);
+            pre.replaceWith(host);
+        } catch (err) {
+            // On garde le bloc de code lisible plutôt qu'un cadre vide.
+            mermaidFallback(pre, 'carte illisible, voici le code brut');
+        }
+    }
+}
+
+// Le thème mermaid est figé au rendu : un basculement clair/sombre impose de
+// redessiner les diagrammes déjà affichés.
+async function rerenderMermaidTheme() {
+    const hosts = document.querySelectorAll('.mermaid-diagram[data-mermaid-source]');
+    if (!hosts.length || !mermaidPromise) return;
+    const mermaid = await loadMermaid();
+    mermaid.initialize(mermaidConfig());
+    for (const host of hosts) {
+        try {
+            await drawDiagram(host, host.dataset.mermaidSource);
+        } catch (err) {
+            /* le diagramme précédent reste affiché */
+        }
+    }
 }
 
 function shuffle(arr) {
@@ -79,6 +175,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.documentElement.setAttribute('data-theme', next);
         localStorage.setItem('theme', next);
         updateThemeLabel();
+        rerenderMermaidTheme();
     });
 
     // --- User menu ---
@@ -294,6 +391,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 textContainer.classList.remove('streaming');
                 // rendu final propre
                 textContainer.innerHTML = marked.parse(rawText);
+                renderMermaid(textContainer);
             }
             if (rawText) conversationHistory.push({ role: 'assistant', content: rawText });
             setStreaming(false);
@@ -327,6 +425,7 @@ document.addEventListener('DOMContentLoaded', () => {
         textDiv.className = 'msg-text';
         if (role === 'assistant') {
             textDiv.innerHTML = content ? marked.parse(content) : '';
+            if (content) renderMermaid(textDiv);
         } else {
             textDiv.textContent = content;
         }

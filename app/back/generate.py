@@ -1,7 +1,7 @@
 import logging
 import os
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,7 +12,7 @@ from groq.types.chat import ChatCompletionChunk
 
 from .groqpool import acquire
 from .retrieval import search
-from .types import HistoryMessage, SearchResult
+from .types import GroqParams, HistoryMessage, SearchResult
 
 load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
 
@@ -59,10 +59,10 @@ _PROMPT_TEMPLATE = (
     "ARCHIVES SECRÈTES (CONTEXTE) :\n"
     "{context}\n\n"
     "QUESTION :\n"
-    "{question}\n\n"
-    "RÉPONSE DE TN-GPT :"
+    "{question}\n"
 )
 
+_HTTP_400 = 400
 _HTTP_429 = 429
 _HTTP_413 = 413
 _THINK_OPEN = "<think>"
@@ -78,6 +78,12 @@ class GenerateRequest:
     history: list[HistoryMessage] = field(default_factory=list)
     top_k: int = 5
     user_name: str | None = None
+
+
+# Signature d'un constructeur de prompt : (contexte, question, user_name) -> prompt.
+# Permet de réutiliser toute la logique de repli Groq avec un autre prompt que
+# celui du chat (voir `seamap.build_map_prompt`).
+PromptBuilder = Callable[..., str]
 
 
 def _build_context(results: list[SearchResult]) -> str:
@@ -190,30 +196,40 @@ def generate_answer(
     req: GenerateRequest,
     results: list[SearchResult] | None = None,
     client: Groq | None = None,
+    build: PromptBuilder = build_prompt,
+    params: GroqParams | None = None,
 ) -> Iterator[str]:
     """Génère une réponse en streaming : enrichissement → Qdrant → prompt → Groq.
 
     `results` évite de refaire la recherche quand l'appelant l'a déjà effectuée.
     `client` est le client Groq choisi dans le pool par l'appelant ; à défaut,
     une clé est prélevée du pool ici.
+    `build` permet de substituer un autre prompt (carte des mers) tout en
+    conservant la logique de repli Groq, et `params` d'ajuster l'appel Groq
+    pour ce prompt-là.
     """
     if results is None:
         results = retrieve(req)
     if client is None:
         client, _ = acquire()
-    yield from _stream_with_retries(req, results, client)
+    yield from _stream_with_retries(req, results, client, build, params)
 
 
 def _stream_with_retries(
-    req: GenerateRequest, results: list[SearchResult], client: Groq
+    req: GenerateRequest,
+    results: list[SearchResult],
+    client: Groq,
+    build: PromptBuilder = build_prompt,
+    params: GroqParams | None = None,
 ) -> Iterator[str]:
     """Appelle Groq avec repli (429 : backoff, 413 : moins de contexte)."""
     current_results = results
+    current_params: GroqParams = params if params is not None else {}
     max_retries = 3
 
     for attempt in range(max_retries):
         context = _build_context(current_results)
-        prompt = build_prompt(context, req.question, user_name=req.user_name)
+        prompt = build(context, req.question, user_name=req.user_name)
         try:
             completion = client.chat.completions.create(
                 model=_CHAT_MODEL,
@@ -223,6 +239,7 @@ def _stream_with_retries(
                 ],
                 temperature=0.7,
                 stream=True,
+                **current_params,
             )
             yield from _stream_chunks(completion)
         except APIStatusError as e:
@@ -231,6 +248,20 @@ def _stream_with_retries(
                 continue
             if e.status_code == _HTTP_413 and attempt < max_retries - 1:
                 current_results = current_results[: max(1, len(current_results) // 2)]
+                continue
+            # Paramètres refusés (modèle configuré via GROQ_CHAT_MODEL qui ne
+            # les supporte pas) : on retente sans eux plutôt que d'échouer.
+            if (
+                e.status_code == _HTTP_400
+                and current_params
+                and attempt < max_retries - 1
+            ):
+                logger.warning(
+                    "Groq refuse %s pour %s : nouvel essai sans ces paramètres.",
+                    sorted(current_params),
+                    _CHAT_MODEL,
+                )
+                current_params = {}
                 continue
             logger.exception("Erreur Groq : statut %d", e.status_code)
             yield f"Erreur avec Groq : statut {e.status_code}."
