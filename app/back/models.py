@@ -301,3 +301,93 @@ class GroqKey(db.Model):
     def __repr__(self) -> str:
         """Représentation lisible de la clé."""
         return f"GroqKey {self.masked} ({'active' if self.active else 'inactive'})"
+
+
+# --- Vie associative ----------------------------------------------------------
+#
+# Le RAG échoue sur les questions dont la réponse tient dans un seul document
+# parmi ~400 (« qui est trésorier de TNS ») : le retrieval sémantique ramène des
+# chunks du bon thème mais rate l'unique compte-rendu qui porte le nom. Ces
+# quatre tables tiennent la même information sous forme relationnelle, et
+# `app/back/clubs.py` l'injecte dans le contexte avant l'appel au modèle.
+#
+# Les identifiants sont fixés à la main (`autoincrement=False`), pas alloués par
+# une séquence Postgres : ce sont des énumérations stables, pas des lignes
+# créées à la volée.
+
+
+class Asso(db.Model):
+    """Association mère de TELECOM Nancy (CETEN, BDE, BDA, BDS, TNS, Humani'TN)."""
+
+    __tablename__ = "assos"
+
+    asso_id = db.Column(db.Integer, primary_key=True, autoincrement=False)
+    asso_name = db.Column(db.String(100), nullable=False, unique=True)
+
+    clubs = db.relationship("Club", back_populates="asso")
+
+    def __repr__(self) -> str:
+        """Représentation lisible de l'association."""
+        return f"Asso {self.asso_id} — {self.asso_name}"
+
+
+class Role(db.Model):
+    """Poste au sein d'un bureau (Président, Trésorier, Secrétaire...)."""
+
+    __tablename__ = "roles"
+
+    role_id = db.Column(db.Integer, primary_key=True, autoincrement=False)
+    role_name = db.Column(db.String(80), nullable=False, unique=True)
+
+    def __repr__(self) -> str:
+        """Représentation lisible du rôle."""
+        return f"Role {self.role_id} — {self.role_name}"
+
+
+class Club(db.Model):
+    """Un club de l'école, rattaché à son association mère."""
+
+    __tablename__ = "clubs"
+
+    club_id = db.Column(db.Integer, primary_key=True, autoincrement=False)
+    club_name = db.Column(db.String(120), nullable=False)
+    # Clé courte servant à reconnaître le club dans une question (« tns »), là où
+    # `club_name` porte la forme développée. C'est aussi le slug du logo quand le
+    # club en a un dans la plaquette (voir `seamap.LOGOS`).
+    slug = db.Column(db.String(40), nullable=True, index=True)
+    asso_id = db.Column(db.Integer, db.ForeignKey("assos.asso_id"), nullable=False)
+
+    asso = db.relationship("Asso", back_populates="clubs")
+    bureau = db.relationship(
+        "ClubRole", back_populates="club", cascade="all, delete-orphan"
+    )
+
+    def __repr__(self) -> str:
+        """Représentation lisible du club."""
+        return f"Club {self.club_id} — {self.club_name}"
+
+
+class ClubRole(db.Model):
+    """Qui occupe quel poste, dans quel club, sur quel mandat.
+
+    `mandat` fait partie de la clé primaire : sans lui la table ne pourrait
+    décrire que le bureau courant, alors que les archives — et les questions des
+    utilisateurs — remontent à 2016 (« qui était président du BDE en 2022 »).
+    """
+
+    __tablename__ = "club_roles"
+
+    role_id = db.Column(db.Integer, db.ForeignKey("roles.role_id"), primary_key=True)
+    club_id = db.Column(db.Integer, db.ForeignKey("clubs.club_id"), primary_key=True)
+    # Saison au format « 2025-2026 » : l'ordre lexicographique est l'ordre
+    # chronologique, le mandat courant d'un club est donc son max().
+    mandat = db.Column(db.String(9), primary_key=True)
+    # Nom et prénom dans la forme des archives (« NOM Prénom »).
+    personne = db.Column(db.String(150), nullable=False)
+
+    role = db.relationship("Role")
+    club = db.relationship("Club", back_populates="bureau")
+
+    def __repr__(self) -> str:
+        """Représentation lisible de la ligne de bureau."""
+        return f"ClubRole {self.club_id}/{self.role_id} {self.mandat} — {self.personne}"
