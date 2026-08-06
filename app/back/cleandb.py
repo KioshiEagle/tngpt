@@ -4,6 +4,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient, models
 
+from .embedding import DIMENSIONS
+
 BASE_DIR = Path(__file__).parent.resolve()
 load_dotenv(BASE_DIR.parent.parent / ".env")
 
@@ -24,7 +26,9 @@ def reset_qdrant() -> None:
     print(f"Création d'une collection '{collection_name}' toute neuve...")
     client.create_collection(
         collection_name=collection_name,
-        vectors_config=models.VectorParams(size=384, distance=models.Distance.COSINE),
+        vectors_config=models.VectorParams(
+            size=DIMENSIONS, distance=models.Distance.COSINE
+        ),
     )
 
     log_file = BASE_DIR / "processed_files.json"

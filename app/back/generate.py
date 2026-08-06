@@ -1,7 +1,7 @@
 import logging
 import os
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,9 +12,9 @@ from groq.types.chat import ChatCompletionChunk
 
 from .groqpool import acquire
 from .retrieval import search
-from .types import HistoryMessage, SearchResult
+from .types import GroqParams, HistoryMessage, SearchResult
 
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
 
 logger = logging.getLogger(__name__)
 
@@ -59,15 +59,16 @@ _PROMPT_TEMPLATE = (
     "ARCHIVES SECRÈTES (CONTEXTE) :\n"
     "{context}\n\n"
     "QUESTION :\n"
-    "{question}\n\n"
-    "RÉPONSE DE TN-GPT :"
+    "{question}\n"
 )
 
+_HTTP_400 = 400
 _HTTP_429 = 429
 _HTTP_413 = 413
 _THINK_OPEN = "<think>"
 _THINK_CLOSE = "</think>"
 _SYSTEM_MSG = "Tu es un étudiant de Telecom Nancy."
+_EMPTY_ANSWER = "j'ai perdu le fil sur ce coup-là, tu peux reformuler ?"
 
 
 @dataclass
@@ -78,6 +79,16 @@ class GenerateRequest:
     history: list[HistoryMessage] = field(default_factory=list)
     top_k: int = 5
     user_name: str | None = None
+
+
+# Signature d'un constructeur de prompt : (contexte, question, user_name) -> prompt.
+# Permet de réutiliser toute la logique de repli Groq avec un autre prompt que
+# celui du chat (voir `seamap.build_map_prompt`).
+PromptBuilder = Callable[..., str]
+
+# Lecteur d'une complétion Groq. Le chat lit `delta.content` ; la carte lit
+# `delta.tool_calls`. Une seule échelle de repli, deux façons de la consommer.
+CompletionConsumer = Callable[[Stream[ChatCompletionChunk]], Iterator[str]]
 
 
 def _build_context(results: list[SearchResult]) -> str:
@@ -126,7 +137,7 @@ def build_prompt(context: str, question: str, user_name: str | None = None) -> s
     )
 
 
-def _stream_chunks(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
+def _filter_think(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
     """Streame les chunks en filtrant les blocs <think>...</think>, même multi-chunk."""
     in_thought = False
     buf = ""
@@ -155,6 +166,49 @@ def _stream_chunks(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
 
     if buf and not in_thought:
         yield buf
+
+
+def _stream_chunks(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
+    """Filtre les <think> en garantissant une sortie non vide.
+
+    Un flux qui s'arrête avant la balise fermante voit tout son contenu filtré :
+    la réponse partirait alors vide, et le front — qui ignore un premier morceau
+    blanc — n'afficherait aucune bulle, sans la moindre erreur. Un message vaut
+    mieux que le silence.
+    """
+    produced = False
+    for piece in _filter_think(completion):
+        if piece.strip():
+            produced = True
+        yield piece
+    if not produced:
+        yield _EMPTY_ANSWER
+
+
+@dataclass(frozen=True)
+class CallSpec:
+    """Comment adresser le modèle : quel prompt, quels paramètres, quelle lecture.
+
+    Les trois varient ensemble — le chat streame du texte, la carte force un
+    outil et lit ses arguments — et n'ont donc pas de sens séparément.
+    """
+
+    build: PromptBuilder = build_prompt
+    params: GroqParams | None = None
+    consume: CompletionConsumer = _stream_chunks
+
+
+# Le chat est un RAG simple : le modèle restitue le contexte, il n'a rien à
+# raisonner. Laissé libre, qwen3 part en <think> sur un prompt de cette taille
+# et y épuise son budget de complétion — la balise fermante n'arrive jamais, le
+# filtre jette tout et l'utilisateur reçoit une réponse vide. `hidden` garantit
+# en plus qu'aucun <think> ne transite par `delta.content`.
+CHAT_GROQ_PARAMS: GroqParams = {
+    "reasoning_effort": "none",
+    "reasoning_format": "hidden",
+}
+
+CHAT_SPEC = CallSpec(params=CHAT_GROQ_PARAMS)
 
 
 def _enrich_query(question: str, history: list[HistoryMessage], n: int = 2) -> str:
@@ -190,30 +244,37 @@ def generate_answer(
     req: GenerateRequest,
     results: list[SearchResult] | None = None,
     client: Groq | None = None,
+    spec: CallSpec = CHAT_SPEC,
 ) -> Iterator[str]:
     """Génère une réponse en streaming : enrichissement → Qdrant → prompt → Groq.
 
     `results` évite de refaire la recherche quand l'appelant l'a déjà effectuée.
     `client` est le client Groq choisi dans le pool par l'appelant ; à défaut,
     une clé est prélevée du pool ici.
+    `spec` substitue un autre prompt et une autre lecture de la complétion — la
+    carte au trésor — tout en conservant l'échelle de repli Groq.
     """
     if results is None:
         results = retrieve(req)
     if client is None:
         client, _ = acquire()
-    yield from _stream_with_retries(req, results, client)
+    yield from _stream_with_retries(req, results, client, spec)
 
 
 def _stream_with_retries(
-    req: GenerateRequest, results: list[SearchResult], client: Groq
+    req: GenerateRequest,
+    results: list[SearchResult],
+    client: Groq,
+    spec: CallSpec = CHAT_SPEC,
 ) -> Iterator[str]:
     """Appelle Groq avec repli (429 : backoff, 413 : moins de contexte)."""
     current_results = results
+    current_params: GroqParams = spec.params if spec.params is not None else {}
     max_retries = 3
 
     for attempt in range(max_retries):
         context = _build_context(current_results)
-        prompt = build_prompt(context, req.question, user_name=req.user_name)
+        prompt = spec.build(context, req.question, user_name=req.user_name)
         try:
             completion = client.chat.completions.create(
                 model=_CHAT_MODEL,
@@ -223,14 +284,29 @@ def _stream_with_retries(
                 ],
                 temperature=0.7,
                 stream=True,
+                **current_params,
             )
-            yield from _stream_chunks(completion)
+            yield from spec.consume(completion)
         except APIStatusError as e:
             if e.status_code == _HTTP_429 and attempt < max_retries - 1:
                 time.sleep(2**attempt)
                 continue
             if e.status_code == _HTTP_413 and attempt < max_retries - 1:
                 current_results = current_results[: max(1, len(current_results) // 2)]
+                continue
+            # Paramètres refusés (modèle configuré via GROQ_CHAT_MODEL qui ne
+            # les supporte pas) : on retente sans eux plutôt que d'échouer.
+            if (
+                e.status_code == _HTTP_400
+                and current_params
+                and attempt < max_retries - 1
+            ):
+                logger.warning(
+                    "Groq refuse %s pour %s : nouvel essai sans ces paramètres.",
+                    sorted(current_params),
+                    _CHAT_MODEL,
+                )
+                current_params = {}
                 continue
             logger.exception("Erreur Groq : statut %d", e.status_code)
             yield f"Erreur avec Groq : statut {e.status_code}."
