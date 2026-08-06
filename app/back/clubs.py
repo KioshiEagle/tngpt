@@ -33,9 +33,11 @@ logger = logging.getLogger(__name__)
 # que les archives qu'il est censé compléter.
 MAX_FICHES = 4
 
-# Apostrophes typographiques ramenées à l'apostrophe droite : « Créa'TN » saisi
-# dans la base et « Créa’TN » tapé par l'utilisateur doivent se rencontrer.
-_APOSTROPHES = str.maketrans({"’": "'", "ʼ": "'", "`": "'", "´": "'"})
+# Apostrophes typographiques ramenées à l'apostrophe droite : « Crea'TN » saisi
+# dans la base et la variante courbe tapée par l'utilisateur doivent se
+# rencontrer. Écrites en échappements : ces caractères sont indiscernables à
+# l'œil dans le source.
+_APOSTROPHES = str.maketrans(dict.fromkeys("\u2019\u02bc\u00b4`", "'"))
 
 
 def normalize(text: str) -> str:
@@ -64,10 +66,16 @@ class RoleEntry:
 
 @dataclass(frozen=True)
 class Ligne:
-    """Une ligne de bureau : un poste et son titulaire."""
+    """Un poste et ses titulaires.
+
+    Plusieurs personnes par poste : Anim'Est a deux présidents, le CETEN deux
+    responsables communication. Elles sont regroupées sur une seule ligne plutôt
+    que répétées, pour que le modèle lise « le poste a deux titulaires » et non
+    « deux archives se contredisent ».
+    """
 
     role: str
-    personne: str
+    personnes: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -103,9 +111,9 @@ def _blank(haystack: str, pattern: re.Pattern[str]) -> tuple[str, bool]:
 
 
 def _word(needle: str) -> re.Pattern[str]:
-    """Compile un motif exigeant des frontières de mot autour du terme.
+    r"""Compile un motif exigeant des frontières de mot autour du terme.
 
-    `\\b` ne convient pas : les noms de clubs se terminent volontiers par une
+    `\b` ne convient pas : les noms de clubs se terminent volontiers par une
     apostrophe ou un point, qui ne sont pas des caractères de mot.
     """
     return re.compile(rf"(?<!\w){re.escape(needle)}(?!\w)")
@@ -226,7 +234,10 @@ def format_fiches(fiches: Sequence[Fiche]) -> str:
         "\n".join(
             [
                 _titre(fiche),
-                *(f"- {ligne.role} : {ligne.personne}" for ligne in fiche.lignes),
+                *(
+                    f"- {ligne.role} : {', '.join(ligne.personnes)}"
+                    for ligne in fiche.lignes
+                ),
             ]
         )
         for fiche in fiches
@@ -274,50 +285,79 @@ def load_catalogue() -> tuple[list[ClubEntry], list[RoleEntry]]:
     return clubs, roles
 
 
-def _load_bureaux(club_ids: Sequence[int]) -> dict[int, list[tuple[str, str, int, str]]]:
-    """Lignes de bureau des clubs demandés : (mandat, role_name, role_id, personne)."""
+# Une ligne de bureau brute, telle que la requête la ramène : le mandat vient en
+# premier pour que le tri naturel du tuple ordonne par mandat puis par poste.
+BureauRow = tuple[str, int, str, str]
+
+
+def _load_bureaux(club_ids: Sequence[int]) -> dict[int, list[BureauRow]]:
+    """Lignes de bureau des clubs demandés, groupées par club."""
     rows = db.session.execute(
         db.select(
-            ClubRole.club_id, ClubRole.mandat, Role.role_name, Role.role_id,
-            ClubRole.personne
+            ClubRole.club_id,
+            ClubRole.mandat,
+            Role.role_id,
+            Role.role_name,
+            ClubRole.personne,
         )
         .join(Role, Role.role_id == ClubRole.role_id)
         .where(ClubRole.club_id.in_(club_ids))
     ).all()
 
-    par_club: dict[int, list[tuple[str, str, int, str]]] = {}
-    for club_id, mandat, role_name, role_id, personne in rows:
-        par_club.setdefault(club_id, []).append((mandat, role_name, role_id, personne))
+    par_club: dict[int, list[BureauRow]] = {}
+    for club_id, mandat, role_id, role_name, personne in rows:
+        par_club.setdefault(club_id, []).append((mandat, role_id, role_name, personne))
     return par_club
 
 
-def build_fiches(
+def _grouper(
+    brutes: Sequence[BureauRow], mandat: str, voulus: set[int]
+) -> tuple[Ligne, ...]:
+    """Regroupe les titulaires d'un même poste sur une seule ligne.
+
+    Filtre au passage sur le mandat retenu et, si la question citait des postes,
+    sur ceux-là seulement. Le tri du tuple brut ordonne par mandat puis par
+    identifiant de poste : les postes sortent donc dans l'ordre hiérarchique de
+    la table `roles`, et les titulaires d'un poste dans l'ordre alphabétique.
+    """
+    par_role: dict[str, list[str]] = {}
+    for ligne_mandat, role_id, role_name, personne in sorted(brutes):
+        if ligne_mandat != mandat or (voulus and role_id not in voulus):
+            continue
+        par_role.setdefault(role_name, []).append(personne)
+    return tuple(
+        Ligne(role=role_name, personnes=tuple(personnes))
+        for role_name, personnes in par_role.items()
+    )
+
+
+def assemble_fiches(
     clubs: Sequence[ClubEntry],
     roles: Sequence[RoleEntry],
     annee: str | None,
+    bureaux: dict[int, list[BureauRow]],
 ) -> list[Fiche]:
-    """Assemble les fiches des clubs reconnus, filtrées par mandat puis par poste."""
-    par_club = _load_bureaux([club.club_id for club in clubs])
+    """Assemble les fiches des clubs reconnus, filtrées par mandat puis par poste.
+
+    Reçoit les lignes de bureau plutôt que d'aller les chercher : la sélection
+    reste ainsi vérifiable sans base. Un poste cité restreint la fiche à ce
+    poste ; aucun poste cité montre le bureau entier.
+    """
     voulus = {role.role_id for role in roles}
 
     fiches: list[Fiche] = []
     for club in clubs:
-        lignes_brutes = par_club.get(club.club_id, [])
-        mandat = select_mandat({ligne[0] for ligne in lignes_brutes}, annee)
+        brutes = bureaux.get(club.club_id, [])
+        mandat = select_mandat({ligne[0] for ligne in brutes}, annee)
         if mandat is None:
             continue
-        retenues = [
-            Ligne(role=role_name, personne=personne)
-            for ligne_mandat, role_name, role_id, personne in sorted(lignes_brutes)
-            if ligne_mandat == mandat and (not voulus or role_id in voulus)
-        ]
         fiches.append(
             Fiche(
                 club=club.nom,
                 slug=club.slug,
                 asso=club.asso,
                 mandat=mandat,
-                lignes=tuple(retenues),
+                lignes=_grouper(brutes, mandat, voulus),
             )
         )
     return fiches
@@ -342,7 +382,12 @@ def lookup_context(question: str) -> str:
         )
         cites = cites[:MAX_FICHES]
 
-    fiches = build_fiches(cites, match_roles(question, roles), match_annee(question))
+    fiches = assemble_fiches(
+        cites,
+        match_roles(question, roles),
+        match_annee(question),
+        _load_bureaux([club.club_id for club in cites]),
+    )
     bloc = format_fiches(fiches)
     logger.debug(
         "Fiches clubs : %s → %d ligne(s) injectée(s).",

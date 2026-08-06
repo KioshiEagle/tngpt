@@ -59,15 +59,26 @@ def upgrade():
     with op.batch_alter_table('clubs', schema=None) as batch_op:
         batch_op.create_index(batch_op.f('ix_clubs_slug'), ['slug'], unique=False)
 
+    # Clé primaire technique, et non (role_id, club_id, mandat) : un même poste
+    # peut avoir plusieurs titulaires — Anim'Est a deux présidents, le CETEN deux
+    # responsables communication. Seule la répétition exacte d'une personne sur
+    # un même poste est interdite, par la contrainte d'unicité.
     op.create_table('club_roles',
+    sa.Column('club_role_id', sa.Integer(), nullable=False),
     sa.Column('role_id', sa.Integer(), nullable=False),
     sa.Column('club_id', sa.Integer(), nullable=False),
     sa.Column('mandat', sa.String(length=9), nullable=False),
     sa.Column('personne', sa.String(length=150), nullable=False),
     sa.ForeignKeyConstraint(['club_id'], ['clubs.club_id'], ),
     sa.ForeignKeyConstraint(['role_id'], ['roles.role_id'], ),
-    sa.PrimaryKeyConstraint('role_id', 'club_id', 'mandat')
+    sa.PrimaryKeyConstraint('club_role_id'),
+    sa.UniqueConstraint('role_id', 'club_id', 'mandat', 'personne',
+                        name='uq_club_roles_poste_personne')
     )
+    with op.batch_alter_table('club_roles', schema=None) as batch_op:
+        batch_op.create_index(
+            batch_op.f('ix_club_roles_club_id'), ['club_id'], unique=False
+        )
 
     op.bulk_insert(
         sa.table('assos',
@@ -84,6 +95,9 @@ def upgrade():
 
 
 def downgrade():
+    with op.batch_alter_table('club_roles', schema=None) as batch_op:
+        batch_op.drop_index(batch_op.f('ix_club_roles_club_id'))
+
     op.drop_table('club_roles')
     with op.batch_alter_table('clubs', schema=None) as batch_op:
         batch_op.drop_index(batch_op.f('ix_clubs_slug'))

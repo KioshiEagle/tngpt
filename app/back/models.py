@@ -370,20 +370,38 @@ class Club(db.Model):
 class ClubRole(db.Model):
     """Qui occupe quel poste, dans quel club, sur quel mandat.
 
-    `mandat` fait partie de la clé primaire : sans lui la table ne pourrait
-    décrire que le bureau courant, alors que les archives — et les questions des
-    utilisateurs — remontent à 2016 (« qui était président du BDE en 2022 »).
+    Clé primaire technique, et non (role_id, club_id, mandat) : un même poste
+    peut avoir plusieurs titulaires — Anim'Est a deux présidents, le CETEN deux
+    responsables communication. Seule la répétition exacte d'une personne sur un
+    même poste est interdite, par la contrainte d'unicité.
+
+    `mandat` est obligatoire : sans lui la table ne décrirait que le bureau
+    courant, alors que les archives — et les questions des utilisateurs —
+    remontent à 2016 (« qui était président du BDE en 2022 »).
     """
 
     __tablename__ = "club_roles"
 
-    role_id = db.Column(db.Integer, db.ForeignKey("roles.role_id"), primary_key=True)
-    club_id = db.Column(db.Integer, db.ForeignKey("clubs.club_id"), primary_key=True)
+    club_role_id = db.Column(db.Integer, primary_key=True)
+    role_id = db.Column(db.Integer, db.ForeignKey("roles.role_id"), nullable=False)
+    club_id = db.Column(
+        db.Integer, db.ForeignKey("clubs.club_id"), nullable=False, index=True
+    )
     # Saison au format « 2025-2026 » : l'ordre lexicographique est l'ordre
     # chronologique, le mandat courant d'un club est donc son max().
-    mandat = db.Column(db.String(9), primary_key=True)
+    mandat = db.Column(db.String(9), nullable=False)
     # Nom et prénom dans la forme des archives (« NOM Prénom »).
     personne = db.Column(db.String(150), nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "role_id",
+            "club_id",
+            "mandat",
+            "personne",
+            name="uq_club_roles_poste_personne",
+        ),
+    )
 
     role = db.relationship("Role")
     club = db.relationship("Club", back_populates="bureau")
