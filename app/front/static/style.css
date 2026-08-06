@@ -372,17 +372,22 @@ body {
     margin: 0.4em 0;
 }
 
-/* Carte au trésor des clubs : un parchemin taché d'encre, avec sa rose des
-   vents. Le cadre reste fixe et c'est le calque intérieur qui défile, sinon la
-   décoration partirait avec la carte. */
-.mermaid-diagram {
+/* Carte au trésor des clubs : un parchemin taché d'encre. Le cadre reste fixe
+   et c'est le calque intérieur qui défile, sinon la décoration partirait avec
+   la carte. Les variables sont héritées par le SVG, qui suit donc le thème
+   sans jamais être redessiné. */
+.treasure-map {
     --parchment: #f3e2bd;
     --map-ink: #6b4a24;
     --map-edge: #c19a5e;
+    /* La mer est un lavis pâle, la terre un ocre franc : sans cet écart,
+       les côtes ne se lisent pas. */
+    --map-sea: #f6ead0;
+    --map-terre: #dbbe86;
     --map-stain: rgba(140, 100, 55, 0.17);
     position: relative;
     margin: 0.9em 0;
-    padding: 22px;
+    padding: 14px;
     overflow: hidden;
     border: 1px solid var(--map-edge);
     border-radius: 3px;
@@ -395,76 +400,91 @@ body {
         inset 0 0 46px rgba(120, 85, 45, 0.34),
         0 1px 3px rgba(0, 0, 0, 0.16);
 }
-[data-theme="dark"] .mermaid-diagram {
+[data-theme="dark"] .treasure-map {
     --parchment: #3a2f21;
     --map-ink: #c9a367;
     --map-edge: #6b573a;
+    --map-sea: #2f2519;
+    --map-terre: #4f3f28;
     --map-stain: rgba(0, 0, 0, 0.26);
     box-shadow:
         inset 0 0 46px rgba(0, 0, 0, 0.45),
         0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
-/* Liseré intérieur : le double trait à l'encre des cartes gravées. */
-.mermaid-diagram::before {
-    content: "";
-    position: absolute;
-    inset: 7px;
-    border: 1px solid var(--map-edge);
-    border-radius: 2px;
-    opacity: 0.65;
-    pointer-events: none;
-}
-
-/* Rose des vents, en haut à droite. */
-.mermaid-diagram::after {
-    content: "✵";
-    position: absolute;
-    top: 10px;
-    right: 14px;
-    font-size: 21px;
-    line-height: 1;
-    color: var(--map-ink);
-    opacity: 0.5;
-    pointer-events: none;
-}
-
 /* Une grande carte chasserait le reste de la conversation hors de l'écran :
    elle défile dans son cadre au lieu d'étirer la bulle indéfiniment. */
-.mermaid-canvas {
+.treasure-map-canvas {
     max-height: 70vh;
     overflow: auto;
     text-align: center;
 }
-.mermaid-canvas svg {
+.treasure-map-canvas .tm-svg {
     max-width: none;
     height: auto;
+    /* Une serif système : l'air d'une carte gravée, sans police à charger. */
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+    color: var(--map-ink);
 }
-/* Les liens de la carte mentale deviennent la route pointillée du trésor.
-   !important est nécessaire : mermaid injecte dans le SVG des règles préfixées
-   par l'identifiant du diagramme, qui l'emportent sur tout sélecteur de classe. */
-.mermaid-canvas svg path.edge {
-    stroke: var(--map-ink) !important;
-    stroke-dasharray: 7 5 !important;
+
+.tm-mer { fill: var(--map-sea); }
+.tm-cote {
+    fill: none;
+    stroke: var(--map-ink);
+    stroke-width: 1;
+    opacity: 0.34;
+}
+.tm-terre {
+    fill: var(--map-terre);
+    stroke: var(--map-ink);
+    stroke-width: 1.6;
+}
+/* Les liaisons deviennent la route pointillée du trésor. */
+.tm-route,
+.tm-sentier {
+    fill: none;
+    stroke: var(--map-ink);
+    stroke-dasharray: 7 6;
     stroke-linecap: round;
-    opacity: 0.75;
+}
+.tm-route { stroke-width: 1.8; opacity: 0.6; }
+.tm-sentier { stroke-width: 1.1; opacity: 0.45; }
+
+.tm-etiquette {
+    fill: var(--parchment);
+    stroke: var(--map-ink);
+    stroke-width: 0.8;
+    opacity: 0.95;
+}
+.tm-nom-club {
+    font-size: 12.5px;
+    fill: var(--map-ink);
+}
+.tm-nom-ile {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    fill: var(--map-ink);
+    opacity: 0.85;
+}
+.tm-titre {
+    font-size: 17px;
+    letter-spacing: 1px;
+    fill: var(--map-ink);
+}
+.tm-cardinal {
+    font-size: 13px;
+    font-weight: 700;
+    fill: var(--map-ink);
+}
+.tm-legende {
+    font-size: 11px;
+    font-style: italic;
+    fill: var(--map-ink);
+    opacity: 0.7;
 }
 
-/* Chaque nœud est cerné d'un trait d'encre, comme une île sur un portulan. */
-.mermaid-canvas svg .mindmap-node > rect,
-.mermaid-canvas svg .mindmap-node > circle,
-.mermaid-canvas svg .mindmap-node > polygon {
-    stroke: var(--map-ink) !important;
-    stroke-width: 1.3 !important;
-}
-/* La racine : un double cercle, l'île au trésor. */
-.mermaid-canvas svg .section-root > circle {
-    fill: var(--parchment) !important;
-    stroke-width: 2.4 !important;
-    stroke-dasharray: none !important;
-}
-
-.mermaid-error {
+.map-error {
     margin-top: 8px;
     font-size: 13px;
     font-style: italic;

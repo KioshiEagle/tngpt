@@ -1,11 +1,25 @@
-"""Tests de la carte des mers : détection d'intention et assainissement mermaid.
+"""Tests de la carte au trésor : détection d'intention et validation du payload.
 
 Aucun accès réseau : seules les fonctions pures du module sont couvertes.
 """
 
-import pytest
+import json
+from collections.abc import Iterator, Sequence
+from types import SimpleNamespace
+from typing import cast
 
-from app.back.seamap import _split_prose_and_diagram, sanitize_mermaid, wants_map
+import pytest
+from groq import Stream
+from groq.types.chat import ChatCompletionChunk
+
+from app.back.seamap import (
+    _MAX_COMMENTAIRE,
+    MAP_FENCE,
+    MAP_MAX_CLUBS,
+    _collect_tool_arguments,
+    build_map_payload,
+    wants_map,
+)
 
 _WANTED = [
     "Montre-moi la carte des mers des clubs de TELECOM Nancy",
@@ -40,133 +54,180 @@ def test_wants_map_ignore_les_questions_normales(question: str) -> None:
     assert not wants_map(question)
 
 
-def test_sanitize_conserve_une_carte_valide() -> None:
-    """Une carte mentale déjà conforme traverse l'assainissement sans dégât."""
-    raw = '```mermaid\nmindmap\n  root(("TELECOM Nancy"))\n    N1["BDE"]\n```'
-    assert sanitize_mermaid(raw) == (
-        'mindmap\n  root(("TELECOM Nancy"))\n    N1["BDE"]'
+def _args(**kwargs: object) -> str:
+    """Sérialise des arguments d'outil comme le ferait Groq."""
+    return json.dumps(kwargs, ensure_ascii=False)
+
+
+def test_payload_valide_traverse_sans_degat() -> None:
+    """Une charge utile conforme ressort telle quelle."""
+    payload = build_map_payload(
+        _args(
+            commentaire="voici la carte",
+            clubs=[{"nom": "CréaTN", "tutelle": "BDE", "icone": "atelier"}],
+        )
     )
+    assert payload == {
+        "commentaire": "voici la carte",
+        "clubs": [{"nom": "CréaTN", "tutelle": "BDE", "icone": "atelier"}],
+    }
 
 
-def test_sanitize_met_en_forme_les_libelles_nus() -> None:
-    """Un libellé nu est réémis sous la forme sûre, entre crochets et guillemets."""
-    raw = 'mindmap\n  root(("TELECOM Nancy"))\n    BDE\n      Club Œnologie'
-    cleaned = sanitize_mermaid(raw)
-    assert cleaned is not None
-    assert '    N1["BDE"]' in cleaned
-    assert '      N2["Club Œnologie"]' in cleaned
-
-
-def test_sanitize_preserve_un_libelle_a_parentheses() -> None:
-    """Le préfixe d'un libellé parenthésé doit survivre.
-
-    Rendu tel quel, `Club Sportif (TOSS)` s'affiche « TOSS » : mermaid prend la
-    parenthèse pour une déclaration de forme et jette le début du nom.
-    """
-    raw = 'mindmap\n  root(("TN"))\n    TNS\n      Club Sportif (TOSS/L-INP)'
-    cleaned = sanitize_mermaid(raw)
-    assert cleaned is not None
-    assert 'N2["Club Sportif (TOSS/L-INP)"]' in cleaned
-
-
-def test_sanitize_recupere_le_libelle_dun_noeud_deja_forme() -> None:
-    """Un nœud déjà formé garde son libellé complet, parenthèses comprises."""
-    raw = 'mindmap\n  root(("TN"))\n    c1["Club (Marché)"]'
-    cleaned = sanitize_mermaid(raw)
-    assert cleaned is not None
-    assert 'N1["Club (Marché)"]' in cleaned
-
-
-def test_sanitize_normalise_une_indentation_irreguliere() -> None:
-    """Les niveaux sont reconstruits sur l'ordre relatif des indentations."""
-    raw = 'mindmap\n   root(("TN"))\n       BDE\n           CTN\n       BDA'
-    assert sanitize_mermaid(raw) == (
-        'mindmap\n  root(("TN"))\n    N1["BDE"]\n      N2["CTN"]\n    N3["BDA"]'
+def test_icone_hors_enumeration_retombe_sur_les_mots_cles() -> None:
+    """Une icône inventée est ramenée dans le rang par le nom du club."""
+    payload = build_map_payload(
+        _args(
+            commentaire="",
+            clubs=[
+                {"nom": "CréaTN", "tutelle": "BDE", "icone": "une chouette"},
+                {"nom": "Club Œnologie", "tutelle": "BDE", "icone": None},
+                {"nom": "Club Escalade", "tutelle": "BDS", "icone": 42},
+            ],
+        )
     )
+    assert payload is not None
+    assert [c["icone"] for c in payload["clubs"]] == ["atelier", "vignoble", "terrain"]
 
 
-def test_sanitize_garantit_une_racine_unique() -> None:
-    """Plusieurs nœuds au niveau le plus haut : mermaid refuse, on insère une racine."""
-    raw = "mindmap\n  BDE\n  BDA"
-    cleaned = sanitize_mermaid(raw)
-    assert cleaned is not None
-    lines = cleaned.splitlines()
-    assert lines[0] == "mindmap"
-    assert lines[1] == '  root(("TELECOM Nancy"))'
-    assert len([line for line in lines if line.startswith("  root((")]) == 1
-    assert lines[2] == '    N0["BDE"]'
-    assert lines[3] == '    N1["BDA"]'
-
-
-def test_sanitize_supprime_les_directives_interdites() -> None:
-    """click, style, classDef et les icônes FontAwesome sont retirés."""
-    raw = (
-        "mindmap\n"
-        '  root(("TN"))\n'
-        '    N1["BDE"]\n'
-        "    ::icon(fa fa-book)\n"
-        '    click N1 "https://exemple.fr"\n'
-        "    classDef gros font-size:20px\n"
+def test_club_inconnu_recoit_un_drapeau() -> None:
+    """Sans mot-clé reconnaissable, le club garde tout de même un symbole."""
+    payload = build_map_payload(
+        _args(commentaire="", clubs=[{"nom": "Zorglub", "tutelle": "?", "icone": "x"}])
     )
-    cleaned = sanitize_mermaid(raw)
-    assert cleaned is not None
-    for interdit in ("click", "classDef", "::icon", "exemple.fr"):
-        assert interdit not in cleaned
+    assert payload is not None
+    assert payload["clubs"][0]["icone"] == "drapeau"
 
 
-def test_sanitize_ignore_ce_qui_suit_la_fence_fermante() -> None:
-    """La prose émise après le bloc n'entre pas dans le diagramme."""
-    raw = '```mermaid\nmindmap\n  root(("TN"))\n    N1["BDE"]\n```\nvoilà la carte !'
-    cleaned = sanitize_mermaid(raw)
-    assert cleaned is not None
-    assert "voilà" not in cleaned
+def test_tutelle_absente_prend_une_valeur_par_defaut() -> None:
+    """Un club sans association mère est rattaché à l'école."""
+    payload = build_map_payload(
+        _args(commentaire="", clubs=[{"nom": "CTN", "icone": "drapeau"}])
+    )
+    assert payload is not None
+    assert payload["clubs"][0]["tutelle"] == "TELECOM Nancy"
 
 
-def test_sanitize_neutralise_les_guillemets_internes() -> None:
-    """Un guillemet dans un libellé refermerait le nœud : il est converti."""
-    cleaned = sanitize_mermaid('mindmap\n  root(("TN"))\n    Le "vrai" BDE')
-    assert cleaned is not None
-    assert "N1[\"Le 'vrai' BDE\"]" in cleaned
+def test_doublons_supprimes() -> None:
+    """Le même club répété n'apparaît qu'une fois sur la carte."""
+    payload = build_map_payload(
+        _args(
+            commentaire="",
+            clubs=[
+                {"nom": "CTN", "tutelle": "BDE", "icone": "drapeau"},
+                {"nom": "ctn", "tutelle": "bde", "icone": "drapeau"},
+            ],
+        )
+    )
+    assert payload is not None
+    assert len(payload["clubs"]) == 1
+
+
+def test_plafond_du_nombre_de_clubs() -> None:
+    """Au-delà du plafond, la carte deviendrait illisible."""
+    clubs = [
+        {"nom": f"Club {i}", "tutelle": "BDE", "icone": "drapeau"} for i in range(60)
+    ]
+    payload = build_map_payload(_args(commentaire="", clubs=clubs))
+    assert payload is not None
+    assert len(payload["clubs"]) == MAP_MAX_CLUBS
+
+
+def test_entrees_inexploitables_ignorees() -> None:
+    """Une entrée sans nom, ou qui n'est pas un objet, est écartée sans tout casser."""
+    payload = build_map_payload(
+        _args(
+            commentaire="",
+            clubs=[
+                "pas un objet",
+                {"tutelle": "BDE", "icone": "drapeau"},
+                {"nom": "   ", "tutelle": "BDE"},
+                {"nom": "CTN", "tutelle": "BDE", "icone": "drapeau"},
+            ],
+        )
+    )
+    assert payload is not None
+    assert [c["nom"] for c in payload["clubs"]] == ["CTN"]
+
+
+def test_commentaire_coupe_sur_une_frontiere_de_phrase() -> None:
+    """Un commentaire trop long est tronqué proprement, jamais en plein mot."""
+    long_texte = ("voici la carte des clubs de telecom nancy. " * 20).strip()
+    payload = build_map_payload(
+        _args(
+            commentaire=long_texte,
+            clubs=[{"nom": "CTN", "tutelle": "BDE", "icone": "drapeau"}],
+        )
+    )
+    assert payload is not None
+    commentaire = payload["commentaire"]
+    assert isinstance(commentaire, str)
+    assert len(commentaire) <= _MAX_COMMENTAIRE
+    assert commentaire.endswith((".", "…"))
 
 
 @pytest.mark.parametrize(
-    "raw",
+    "arguments",
     [
         "",
-        "```mermaid\nmindmap\n```",
-        'mindmap\n  root(("TELECOM Nancy"))',
-        "je sais pas, je trouve pas dans mes archives",
+        '{"clubs": [{"nom": "CTN"',
+        '{"commentaire": "rien", "clubs": []}',
+        '{"commentaire": "rien"}',
+        "[1, 2, 3]",
     ],
 )
-def test_sanitize_renvoie_none_sans_ramification(raw: str) -> None:
-    """Sans au moins une branche, aucun bloc n'est émis plutôt qu'une carte vide."""
-    assert sanitize_mermaid(raw) is None
+def test_payload_none_quand_il_n_y_a_pas_de_carte(arguments: str) -> None:
+    """JSON tronqué ou liste vide : pas de carte plutôt qu'une carte vide."""
+    assert build_map_payload(arguments) is None
 
 
-def _chunked(text: str, size: int = 7) -> list[str]:
-    """Découpe un texte comme le ferait le streaming Groq, marqueurs coupés inclus."""
-    return [text[i : i + size] for i in range(0, len(text), size)]
+def _fausse_completion(
+    fragments: Sequence[str | None],
+) -> Stream[ChatCompletionChunk]:
+    """Imite un flux Groq d'appel d'outil, arguments fragmentés compris.
+
+    Le cast assume ce que le canard fait déjà : seule la forme des deltas
+    compte pour le consommateur, pas la vraie classe du SDK.
+    """
+
+    def flux() -> Iterator[object]:
+        for fragment in fragments:
+            call = SimpleNamespace(function=SimpleNamespace(arguments=fragment))
+            yield SimpleNamespace(
+                choices=[SimpleNamespace(delta=SimpleNamespace(tool_calls=[call]))]
+            )
+
+    return cast("Stream[ChatCompletionChunk]", flux())
 
 
-def test_split_streame_la_prose_puis_le_diagramme() -> None:
-    """La prose sort telle quelle, le diagramme sort en un bloc assaini."""
-    reponse = (
-        'voilà la carte, matelot\n\n```mermaid\nmindmap\n  root(("TN"))\n    BDE\n```\n'
+def test_consommateur_recolle_les_arguments_fragmentes() -> None:
+    """Les arguments arrivent en morceaux : rien n'est exploitable avant la fin."""
+    args = _args(
+        commentaire="voilà la carte, matelot",
+        clubs=[{"nom": "CréaTN", "tutelle": "BDE", "icone": "atelier"}],
     )
-    out = "".join(_split_prose_and_diagram(iter(_chunked(reponse))))
-    assert out.startswith("voilà la carte, matelot")
-    assert '```mermaid\nmindmap\n  root(("TN"))\n    N1["BDE"]\n```' in out
+    fragments = [args[i : i + 5] for i in range(0, len(args), 5)]
+    sortie = "".join(_collect_tool_arguments(_fausse_completion(fragments)))
+
+    assert sortie.startswith("voilà la carte, matelot")
+    assert f"```{MAP_FENCE}" in sortie
+    charge = json.loads(sortie.split(f"```{MAP_FENCE}")[1].split("```")[0])
+    assert charge["clubs"] == [{"nom": "CréaTN", "tutelle": "BDE", "icone": "atelier"}]
+    # Le commentaire est déjà dans la prose : il ne doit pas être dupliqué.
+    assert "commentaire" not in charge
 
 
-def test_split_sans_diagramme_laisse_la_reponse_intacte() -> None:
-    """Une réponse sans bloc mermaid traverse le découpage sans perte."""
-    reponse = "je sais pas, je trouve pas dans mes archives"
-    assert "".join(_split_prose_and_diagram(iter(_chunked(reponse)))) == reponse
+def test_consommateur_sans_club_ne_produit_pas_de_bloc() -> None:
+    """Une liste vide donne une phrase d'excuse, jamais une fence orpheline."""
+    sortie = "".join(
+        _collect_tool_arguments(
+            _fausse_completion([_args(commentaire="rien", clubs=[])])
+        )
+    )
+    assert MAP_FENCE not in sortie
+    assert "je sais pas" in sortie
 
 
-def test_split_abandonne_un_diagramme_inexploitable() -> None:
-    """Une carte réduite à sa racine est supprimée, la prose est conservée."""
-    reponse = 'hop la carte\n\n```mermaid\nmindmap\n  root(("TN"))\n```\n'
-    out = "".join(_split_prose_and_diagram(iter(_chunked(reponse))))
-    assert "hop la carte" in out
-    assert "mermaid" not in out
+def test_consommateur_tolere_un_flux_sans_appel_doutil() -> None:
+    """Si le modèle n'appelle pas l'outil, on ne plante pas."""
+    sortie = "".join(_collect_tool_arguments(_fausse_completion([None])))
+    assert MAP_FENCE not in sortie
