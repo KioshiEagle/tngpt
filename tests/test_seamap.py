@@ -4,7 +4,9 @@ Aucun accès réseau : seules les fonctions pures du module sont couvertes.
 """
 
 import json
+import re
 from collections.abc import Iterator, Sequence
+from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
@@ -13,12 +15,20 @@ from groq import Stream
 from groq.types.chat import ChatCompletionChunk
 
 from app.back.seamap import (
+    _LOGO_MOTS,
     _MAX_COMMENTAIRE,
+    LOGOS,
     MAP_FENCE,
     MAP_MAX_CLUBS,
     _collect_tool_arguments,
+    _resolve_logo,
     build_map_payload,
     wants_map,
+)
+
+_LOGOS_DIR = Path(__file__).resolve().parent.parent / "app/front/static/logos"
+_TREASUREMAP_JS = (
+    Path(__file__).resolve().parent.parent / "app/front/static/treasuremap.js"
 )
 
 _WANTED = [
@@ -69,7 +79,14 @@ def test_payload_valide_traverse_sans_degat() -> None:
     )
     assert payload == {
         "commentaire": "voici la carte",
-        "clubs": [{"nom": "CréaTN", "tutelle": "BDE", "icone": "atelier"}],
+        "clubs": [
+            {
+                "nom": "CréaTN",
+                "tutelle": "BDE",
+                "icone": "atelier",
+                "logo": "creatn",
+            }
+        ],
     }
 
 
@@ -211,7 +228,9 @@ def test_consommateur_recolle_les_arguments_fragmentes() -> None:
     assert sortie.startswith("voilà la carte, matelot")
     assert f"```{MAP_FENCE}" in sortie
     charge = json.loads(sortie.split(f"```{MAP_FENCE}")[1].split("```")[0])
-    assert charge["clubs"] == [{"nom": "CréaTN", "tutelle": "BDE", "icone": "atelier"}]
+    assert charge["clubs"] == [
+        {"nom": "CréaTN", "tutelle": "BDE", "icone": "atelier", "logo": "creatn"}
+    ]
     # Le commentaire est déjà dans la prose : il ne doit pas être dupliqué.
     assert "commentaire" not in charge
 
@@ -231,3 +250,67 @@ def test_consommateur_tolere_un_flux_sans_appel_doutil() -> None:
     """Si le modèle n'appelle pas l'outil, on ne plante pas."""
     sortie = "".join(_collect_tool_arguments(_fausse_completion([None])))
     assert MAP_FENCE not in sortie
+
+
+# --- Logos de la plaquette ----------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("nom", "attendu"),
+    [
+        ("Neura'TN", "neuratn"),
+        ("neura tn", "neuratn"),
+        ("Créa'TN", "creatn"),
+        ("Hackin'TN", "hackintn"),
+        ("Club Œnologie", "oenologie"),
+        ("Les Baroudeurs", "baroudeurs"),
+        ("Chok'Bar", "bar"),
+        ("Le Bar", "bar"),
+        ("Amphi Suze", "amphisuze"),
+        ("Les Intéductibles Gaulois", "inte"),
+        ("Anim'Est", "animest"),
+        ("TéléGameDesign", "tgd"),
+    ],
+)
+def test_logo_reconnu_malgre_accents_et_apostrophes(nom: str, attendu: str) -> None:
+    """Le nom du club suffit à retrouver son logo, quelle que soit sa graphie."""
+    assert _resolve_logo(nom) == attendu
+
+
+@pytest.mark.parametrize(
+    "nom", ["Fashion'TN", "BricksTN", "Cafélécom", "Elsass'TN", "Club Zzz"]
+)
+def test_club_sans_logo_renvoie_une_chaine_vide(nom: str) -> None:
+    """Tous les clubs n'ont pas de logo : le pictogramme dessiné prend le relais."""
+    assert _resolve_logo(nom) == ""
+
+
+def test_le_logo_ne_vient_jamais_de_la_tutelle() -> None:
+    """Sinon tous les clubs d'un bureau porteraient le logo de leur mère."""
+    payload = build_map_payload(
+        _args(
+            commentaire="",
+            clubs=[{"nom": "Club Zzz", "tutelle": "BDE", "icone": "drapeau"}],
+        )
+    )
+    assert payload is not None
+    assert payload["clubs"][0]["logo"] == ""
+
+
+def test_chaque_slug_annonce_possede_son_fichier() -> None:
+    """Un slug sans fichier donnerait un médaillon vide, sans erreur visible."""
+    manquants = [slug for slug in LOGOS if not (_LOGOS_DIR / f"{slug}.png").is_file()]
+    assert manquants == []
+
+
+def test_les_motifs_ne_pointent_que_vers_des_logos_connus() -> None:
+    """Un slug mal orthographié dans la table sortirait de l'énumération."""
+    assert {logo for _, logo in _LOGO_MOTS} <= set(LOGOS)
+
+
+def test_la_liste_blanche_du_front_suit_le_backend() -> None:
+    """Le front filtre sur sa propre liste : une dérive masquerait des logos."""
+    source = _TREASUREMAP_JS.read_text(encoding="utf-8")
+    bloc = re.search(r"const LOGOS = new Set\(\[(.*?)\]\)", source, re.DOTALL)
+    assert bloc is not None
+    assert set(re.findall(r"'([a-z]+)'", bloc.group(1))) == set(LOGOS)

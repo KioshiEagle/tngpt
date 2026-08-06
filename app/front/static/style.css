@@ -456,6 +456,14 @@ body {
     stroke-width: 0.8;
     opacity: 0.95;
 }
+/* Pastille posée sous un logo de la plaquette : elle isole des couleurs
+   étrangères au parchemin et donne le même gabarit rond à tous les clubs. */
+.tm-medaillon {
+    fill: var(--map-sea);
+    stroke: var(--map-ink);
+    stroke-width: 1;
+    opacity: 0.92;
+}
 .tm-nom-club {
     font-size: 12.5px;
     fill: var(--map-ink);
