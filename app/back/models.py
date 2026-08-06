@@ -355,6 +355,10 @@ class Club(db.Model):
     # `club_name` porte la forme développée. C'est aussi le slug du logo quand le
     # club en a un dans la plaquette (voir `seamap.LOGOS`).
     slug = db.Column(db.String(40), nullable=True, index=True)
+    # Présentation du club, reprise de la plaquette alpha. Sert à répondre aux
+    # « c'est quoi X ? » sans passer par les archives. NULL pour les clubs que la
+    # plaquette ne décrit pas : mieux vaut aucune description qu'une inventée.
+    description = db.Column(db.Text, nullable=True)
     asso_id = db.Column(db.Integer, db.ForeignKey("assos.asso_id"), nullable=False)
 
     asso = db.relationship("Asso", back_populates="clubs")
