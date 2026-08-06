@@ -54,6 +54,7 @@ class ClubEntry:
     nom: str
     slug: str
     asso: str
+    description: str = ""
 
 
 @dataclass(frozen=True)
@@ -80,13 +81,19 @@ class Ligne:
 
 @dataclass(frozen=True)
 class Fiche:
-    """Le bureau d'un club sur un mandat donné, prêt à être mis en forme."""
+    """Le bureau d'un club sur un mandat donné, prêt à être mis en forme.
+
+    `description` n'est renseignée que sur les questions qui ne visent aucun
+    poste précis : « c'est quoi Neura'TN » a besoin de la présentation, « qui
+    est trésorier de TNS » n'en ferait que des tokens perdus.
+    """
 
     club: str
     slug: str
     asso: str
     mandat: str
     lignes: tuple[Ligne, ...]
+    description: str = ""
 
 
 # --- Reconnaissance ------------------------------------------------------------
@@ -227,13 +234,16 @@ _ENTETE = "FICHE OFFICIELLE — base de données de l'école, fait autorité."
 def format_fiches(fiches: Sequence[Fiche]) -> str:
     """Rend les fiches en texte, ou une chaîne vide s'il n'y a rien à montrer.
 
-    Le bloc se termine par une ligne blanche : il est concaténé tel quel devant
-    le contexte issu de Qdrant.
+    Une description seule suffit à produire une fiche : tant que les bureaux ne
+    sont pas saisis, c'est elle qui porte tout l'apport du SQL. Le bloc se
+    termine par une ligne blanche, il est concaténé tel quel devant le contexte
+    issu de Qdrant.
     """
     blocs = [
         "\n".join(
             [
                 _titre(fiche),
+                *([fiche.description] if fiche.description else []),
                 *(
                     f"- {ligne.role} : {', '.join(ligne.personnes)}"
                     for ligne in fiche.lignes
@@ -241,7 +251,7 @@ def format_fiches(fiches: Sequence[Fiche]) -> str:
             ]
         )
         for fiche in fiches
-        if fiche.lignes
+        if fiche.lignes or fiche.description
     ]
     if not blocs:
         return ""
@@ -264,7 +274,11 @@ def _titre(fiche: Fiche) -> str:
     nom = fiche.club
     if fiche.slug and _lettres(fiche.slug) != _lettres(nom):
         nom = f"{nom} ({fiche.slug.upper()})"
-    return f"{nom} — rattaché à {fiche.asso} — mandat {fiche.mandat}"
+    titre = f"{nom} — rattaché à {fiche.asso}"
+    # Pas de mandat quand aucun bureau n'est saisi : annoncer « mandat  » vide
+    # laisserait croire à une donnée manquante plutôt qu'à une fiche de
+    # présentation.
+    return f"{titre} — mandat {fiche.mandat}" if fiche.mandat else titre
 
 
 # --- Accès à la base -----------------------------------------------------------
@@ -282,6 +296,7 @@ def load_catalogue() -> tuple[list[ClubEntry], list[RoleEntry]]:
             nom=club.club_name,
             slug=club.slug or "",
             asso=club.asso.asso_name if club.asso else "TELECOM Nancy",
+            description=club.description or "",
         )
         for club in db.session.scalars(db.select(Club)).all()
     ]
@@ -348,7 +363,12 @@ def assemble_fiches(
 
     Reçoit les lignes de bureau plutôt que d'aller les chercher : la sélection
     reste ainsi vérifiable sans base. Un poste cité restreint la fiche à ce
-    poste ; aucun poste cité montre le bureau entier.
+    poste et écarte la description ; aucun poste cité montre le bureau entier et
+    la présentation du club.
+
+    Un club sans bureau saisi produit quand même sa fiche, réduite à sa
+    description : c'est le cas de toute la base tant que les mandats ne sont pas
+    renseignés.
     """
     voulus = {role.role_id for role in roles}
 
@@ -356,15 +376,14 @@ def assemble_fiches(
     for club in clubs:
         brutes = bureaux.get(club.club_id, [])
         mandat = select_mandat({ligne[0] for ligne in brutes}, annee)
-        if mandat is None:
-            continue
         fiches.append(
             Fiche(
                 club=club.nom,
                 slug=club.slug,
                 asso=club.asso,
-                mandat=mandat,
-                lignes=_grouper(brutes, mandat, voulus),
+                mandat=mandat or "",
+                lignes=_grouper(brutes, mandat, voulus) if mandat else (),
+                description="" if voulus else club.description,
             )
         )
     return fiches
