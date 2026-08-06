@@ -49,7 +49,8 @@ _ROLES = [_PRESIDENT, _VICE, _TRESORIER, _SECRETAIRE, _RESPO_COM]
         ("le trésorier de Telecom Nancy Services", [_TNS]),
         ("c'est quoi tns au juste", [_TNS]),
         ("qui préside Anim'Est ?", [_ANIMEST]),
-        ("qui préside Anim’Est ?", [_ANIMEST]),
+        # Apostrophe courbe : celle que produisent la plupart des claviers.
+        ("qui préside Anim’Est ?", [_ANIMEST]),  # noqa: RUF001
         ("le bureau de animest", [_ANIMEST]),
         ("président des baroudeurs et de TNS", [_TNS, _BAROUDEURS]),
     ],
@@ -160,7 +161,8 @@ def test_select_mandat_sans_donnees() -> None:
 
 # --- Assemblage ----------------------------------------------------------------
 
-# (mandat, role_id, role_name, personne)
+# Lignes de bureau brutes, dans l'ordre où la requête les ramène : mandat,
+# identifiant de poste, intitulé de poste, puis la personne.
 _BUREAU_TNS = [
     ("2025-2026", 0, "Président", "NOBILE Tobias"),
     ("2025-2026", 2, "Trésorier", "DUPONT Marie"),
@@ -228,6 +230,18 @@ def test_format_fiches_rend_un_bloc_lisible() -> None:
     assert rendu.endswith("\n\n")
 
 
+def test_format_fiches_ne_repete_pas_un_slug_identique_au_nom() -> None:
+    """« Anim'Est (ANIMEST) » n'apprend rien : la ponctuation ne compte pas."""
+    fiche = Fiche(
+        club="Anim'Est",
+        slug="animest",
+        asso="CETEN",
+        mandat="2025-2026",
+        lignes=(Ligne(role="Président", personnes=("PETIT Luc",)),),
+    )
+    assert "Anim'Est — rattaché à CETEN" in format_fiches([fiche])
+
+
 def test_format_fiches_separe_les_titulaires_par_une_virgule() -> None:
     """Plusieurs titulaires d'un poste sont listés sur la même ligne."""
     fiche = Fiche(
@@ -254,4 +268,4 @@ def test_format_fiches_vide_ne_produit_rien(fiches: list[Fiche]) -> None:
 
 def test_normalize_replie_accents_et_apostrophes() -> None:
     """La comparaison se fait sur une forme sans accent ni apostrophe courbe."""
-    assert normalize("  Créa’TN   ") == normalize("crea'tn")
+    assert normalize("  Créa’TN   ") == normalize("crea'tn")  # noqa: RUF001
