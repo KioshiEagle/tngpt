@@ -323,8 +323,15 @@ class Asso(db.Model):
 
     asso_id = db.Column(db.Integer, primary_key=True, autoincrement=False)
     asso_name = db.Column(db.String(100), nullable=False, unique=True)
+    # Mêmes rôles que sur `Club` : clé courte de reconnaissance dans une
+    # question, et présentation reprise de la plaquette.
+    slug = db.Column(db.String(40), nullable=True, index=True)
+    description = db.Column(db.Text, nullable=True)
 
     clubs = db.relationship("Club", back_populates="asso")
+    bureau = db.relationship(
+        "AssoRole", back_populates="asso", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         """Représentation lisible de l'association."""
@@ -413,3 +420,41 @@ class ClubRole(db.Model):
     def __repr__(self) -> str:
         """Représentation lisible de la ligne de bureau."""
         return f"ClubRole {self.club_id}/{self.role_id} {self.mandat} — {self.personne}"
+
+
+class AssoRole(db.Model):
+    """Qui occupe quel poste, dans quelle association, sur quel mandat.
+
+    Jumelle de `ClubRole`, sur une table distincte : une association n'est pas
+    un club. Les mélanger obligeait à inscrire CETEN, le BDS ou TNS dans
+    `clubs`, ce qui produisait des fiches absurdes (« CETEN rattaché à CETEN »)
+    et laissait le modèle croire qu'une association était un club parmi
+    quarante.
+    """
+
+    __tablename__ = "asso_roles"
+
+    asso_role_id = db.Column(db.Integer, primary_key=True)
+    role_id = db.Column(db.Integer, db.ForeignKey("roles.role_id"), nullable=False)
+    asso_id = db.Column(
+        db.Integer, db.ForeignKey("assos.asso_id"), nullable=False, index=True
+    )
+    mandat = db.Column(db.String(9), nullable=False)
+    personne = db.Column(db.String(150), nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "role_id",
+            "asso_id",
+            "mandat",
+            "personne",
+            name="uq_asso_roles_poste_personne",
+        ),
+    )
+
+    role = db.relationship("Role")
+    asso = db.relationship("Asso", back_populates="bureau")
+
+    def __repr__(self) -> str:
+        """Représentation lisible de la ligne de bureau."""
+        return f"AssoRole {self.asso_id}/{self.role_id} {self.mandat} — {self.personne}"
