@@ -25,11 +25,16 @@ class HistoryMessage(TypedDict):
 
 
 class MapClub(TypedDict):
-    """Un club tel qu'il figure sur la carte au trésor."""
+    """Un club tel qu'il figure sur la carte au trésor.
+
+    `logo` porte le fichier de la plaquette quand le club en a un, sinon la
+    chaîne vide : `icone` reste renseignée dans tous les cas et sert de repli.
+    """
 
     nom: str
     tutelle: str
     icone: str
+    logo: str
 
 
 class MapPayload(TypedDict):
