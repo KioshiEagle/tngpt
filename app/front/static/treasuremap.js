@@ -21,6 +21,17 @@
     // Au-delà de ce nombre de clubs, l'île répartit ses marqueurs sur deux anneaux.
     const DOUBLE_ANNEAU = 5;
 
+    // Logos disponibles dans /static/logos/, alignés sur `seamap.LOGOS`. Cette
+    // liste sert de garde : le slug vient du serveur mais finit dans une URL, et
+    // rien d'autre que ces valeurs ne doit pouvoir y entrer.
+    const LOGOS = new Set([
+        'absoludique', 'algo', 'allintn', 'amphisuze', 'animest', 'astn', 'bar',
+        'baroudeurs', 'bda', 'bde', 'bds', 'brasserie', 'bravo', 'breizhtn',
+        'cooking', 'creatn', 'gala', 'gaming', 'hackintn', 'humanitn',
+        'instantthe', 'inte', 'marche', 'minitel', 'neuratn', 'oenologie', 'sdf',
+        'studio', 'tektn', 'tgd', 'tns', 'touristn', 'voyage',
+    ]);
+
     // --- Aléatoire reproductible ---------------------------------------------
 
     function hashString(str) {
@@ -102,6 +113,10 @@
                 'stroke-linejoin': 'round',
             }, sym);
         }
+        // Les logos de la plaquette ont des formats libres, certains sur fond
+        // rectangulaire : ce disque les ramène tous au même gabarit rond.
+        const clip = el('clipPath', { id: 'tm-clip-logo', clipPathUnits: 'userSpaceOnUse' }, d);
+        el('circle', { cx: 0, cy: -16, r: 15 }, clip);
         // Houle : une trame de vaguelettes qui remplit la mer.
         const pat = el('pattern', {
             id: 'houle', width: 46, height: 30, patternUnits: 'userSpaceOnUse',
@@ -348,6 +363,7 @@
                 label,
                 largeur: largeurEtiquette(club.nom),
                 icone: ICONES[club.icone] ? club.icone : 'drapeau',
+                logo: LOGOS.has(club.logo) ? club.logo : '',
             };
         });
     }
@@ -382,7 +398,17 @@
             const noeud = el('g', {
                 transform: `translate(${m.x.toFixed(1)} ${m.y.toFixed(1)})`, class: 'tm-marqueur',
             }, g);
-            el('use', { href: '#ico-' + m.icone, x: -14, y: -30, width: 28, height: 28 }, noeud);
+            if (m.logo) {
+                el('circle', { cx: 0, cy: -16, r: 15, class: 'tm-medaillon' }, noeud);
+                el('image', {
+                    href: `/static/logos/${m.logo}.png`,
+                    x: -14, y: -30, width: 28, height: 28,
+                    preserveAspectRatio: 'xMidYMid meet',
+                    'clip-path': 'url(#tm-clip-logo)',
+                }, noeud);
+            } else {
+                el('use', { href: '#ico-' + m.icone, x: -14, y: -30, width: 28, height: 28 }, noeud);
+            }
             el('rect', {
                 x: -m.largeur / 2, y: 2, width: m.largeur, height: 19, rx: 3, class: 'tm-etiquette',
             }, noeud);
