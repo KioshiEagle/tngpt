@@ -248,14 +248,21 @@ def format_fiches(fiches: Sequence[Fiche]) -> str:
     return f"{_ENTETE}\n" + "\n".join(blocs) + "\n\n"
 
 
+def _lettres(text: str) -> str:
+    """Ne garde que lettres et chiffres : « Anim'Est » et « animest » se rejoignent."""
+    return "".join(c for c in normalize(text) if c.isalnum())
+
+
 def _titre(fiche: Fiche) -> str:
     """Ligne d'en-tête d'une fiche : le club, sa tutelle et le mandat couvert.
 
-    Le slug est rappelé entre parenthèses quand il n'est pas déjà le nom : c'est
+    Le slug est rappelé entre parenthèses quand il apporte quelque chose — c'est
     sous cette forme courte (« TNS ») que les archives citent souvent le club.
+    La ponctuation est ignorée dans la comparaison : « Anim'Est (ANIMEST) » ne
+    répéterait que le même mot.
     """
     nom = fiche.club
-    if fiche.slug and normalize(fiche.slug) != normalize(nom):
+    if fiche.slug and _lettres(fiche.slug) != _lettres(nom):
         nom = f"{nom} ({fiche.slug.upper()})"
     return f"{nom} — rattaché à {fiche.asso} — mandat {fiche.mandat}"
 
