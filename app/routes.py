@@ -12,6 +12,7 @@ from flask import (
 )
 from flask_login import current_user, login_required
 
+from .back.clubs import lookup_context
 from .back.generate import GenerateRequest, generate_answer, retrieve
 from .back.groqpool import acquire
 from .back.seamap import generate_map, retrieve_for_map, wants_map
@@ -81,6 +82,15 @@ def chat() -> Response | tuple[Response, int]:
     # enregistré même si le client se déconnecte pendant la réponse, et on
     # n'écrit pas en base depuis un générateur dont le contexte se démonte.
     results = retrieve_for_map(req) if is_map else retrieve(req)
+
+    # Fiches SQL des clubs cités, quand la question en nomme un. Résolues ici,
+    # dans le contexte de requête, et non dans le générateur : même raison que
+    # le retrieval ci-dessus, la session SQLAlchemy ne doit pas être sollicitée
+    # depuis un générateur dont le contexte se démonte. La carte a son propre
+    # prompt, sans emplacement pour les fiches.
+    if not is_map:
+        req.fiches = lookup_context(user_message)
+
     log_retrieval(
         user_id=user_id,
         question=user_message,
