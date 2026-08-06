@@ -60,8 +60,6 @@ build_and_push_image:
     name: gcr.io/kaniko-project/executor:v1.14.0-debug
     entrypoint: [""]
 
-  # 2. PLUS BESOIN de la section "services" (on oublie dind et les problèmes de TLS)
-
   variables:
     IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
 
