@@ -23,7 +23,13 @@ from app.back.clubs import (
 # Catalogue de test : TNS pour le cas nominal (nom développé + sigle),
 # Baroudeurs et Bar pour le piège du terme court inclus dans le terme long,
 # Anim'Est pour l'apostrophe.
-_TNS = ClubEntry(club_id=1, nom="Telecom Nancy Services", slug="tns", asso="CETEN")
+_TNS = ClubEntry(
+    club_id=1,
+    nom="Telecom Nancy Services",
+    slug="tns",
+    asso="CETEN",
+    description="TNS est la junior-entreprise de l'école.",
+)
 _BAR = ClubEntry(club_id=2, nom="Chok'Bar", slug="bar", asso="CETEN")
 _BAROUDEURS = ClubEntry(club_id=3, nom="Les Baroudeurs", slug="baroudeurs", asso="BDS")
 _ANIMEST = ClubEntry(club_id=4, nom="Anim'Est", slug="animest", asso="CETEN")
@@ -205,9 +211,25 @@ def test_assemble_retient_le_mandat_demande() -> None:
     assert fiches[0].lignes[0].personnes == ("MARTIN Paul",)
 
 
-def test_assemble_ignore_un_club_sans_bureau() -> None:
-    """Un club connu mais dont le bureau n'est pas saisi ne produit pas de fiche."""
-    assert assemble_fiches([_TNS], [], None, {}) == []
+def test_assemble_sans_bureau_garde_la_description() -> None:
+    """Sans bureau saisi, la fiche se réduit à la présentation du club."""
+    fiches = assemble_fiches([_TNS], [], None, {})
+    assert len(fiches) == 1
+    assert fiches[0].lignes == ()
+    assert fiches[0].mandat == ""
+    assert fiches[0].description == _TNS.description
+
+
+def test_assemble_sans_bureau_ni_description_ne_rend_rien() -> None:
+    """Un club vide de bout en bout n'injecte rien dans le prompt."""
+    nu = ClubEntry(club_id=9, nom="Breizh'TN", slug="breizhtn", asso="CETEN")
+    assert format_fiches(assemble_fiches([nu], [], None, {})) == ""
+
+
+def test_assemble_ecarte_la_description_quand_un_poste_est_cite() -> None:
+    """« qui est trésorier de TNS » n'a que faire de la présentation du club."""
+    fiches = assemble_fiches([_TNS], [_TRESORIER], None, {1: _BUREAU_TNS})
+    assert fiches[0].description == ""
 
 
 # --- Rendu ---------------------------------------------------------------------
@@ -228,6 +250,22 @@ def test_format_fiches_rend_un_bloc_lisible() -> None:
     assert "- Trésorier : DUPONT Marie" in rendu
     # Terminé par une ligne blanche : le bloc est collé devant les archives.
     assert rendu.endswith("\n\n")
+
+
+def test_format_fiches_rend_une_description_seule() -> None:
+    """Sans bureau, la fiche porte la présentation et tait le mandat."""
+    fiche = Fiche(
+        club="Neura'TN",
+        slug="neuratn",
+        asso="CETEN",
+        mandat="",
+        lignes=(),
+        description="Club d'intelligence artificielle.",
+    )
+    rendu = format_fiches([fiche])
+    assert "Neura'TN — rattaché à CETEN\n" in rendu
+    assert "Club d'intelligence artificielle." in rendu
+    assert "mandat" not in rendu
 
 
 def test_format_fiches_ne_repete_pas_un_slug_identique_au_nom() -> None:
