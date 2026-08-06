@@ -7,14 +7,16 @@ fonctions pures du module sont couvertes.
 import pytest
 
 from app.back.clubs import (
-    ClubEntry,
+    NATURE_ASSO,
+    NATURE_CLUB,
+    Entite,
     Fiche,
     Ligne,
     RoleEntry,
     assemble_fiches,
     format_fiches,
     match_annee,
-    match_clubs,
+    match_entites,
     match_roles,
     normalize,
     select_mandat,
@@ -23,16 +25,27 @@ from app.back.clubs import (
 # Catalogue de test : TNS pour le cas nominal (nom développé + sigle),
 # Baroudeurs et Bar pour le piège du terme court inclus dans le terme long,
 # Anim'Est pour l'apostrophe.
-_TNS = ClubEntry(
-    club_id=1,
+_TNS = Entite(
+    entite_id=1,
     nom="Telecom Nancy Services",
     slug="tns",
-    asso="CETEN",
+    nature=NATURE_CLUB,
+    tutelle="CETEN",
     description="TNS est la junior-entreprise de l'école.",
 )
-_BAR = ClubEntry(club_id=2, nom="Chok'Bar", slug="bar", asso="CETEN")
-_BAROUDEURS = ClubEntry(club_id=3, nom="Les Baroudeurs", slug="baroudeurs", asso="BDS")
-_ANIMEST = ClubEntry(club_id=4, nom="Anim'Est", slug="animest", asso="CETEN")
+_BAR = Entite(
+    entite_id=2, nom="Chok'Bar", slug="bar", nature=NATURE_CLUB, tutelle="CETEN"
+)
+_BAROUDEURS = Entite(
+    entite_id=3,
+    nom="Les Baroudeurs",
+    slug="baroudeurs",
+    nature=NATURE_CLUB,
+    tutelle="BDS",
+)
+_ANIMEST = Entite(
+    entite_id=4, nom="Anim'Est", slug="animest", nature=NATURE_CLUB, tutelle="CETEN"
+)
 
 _CATALOGUE = [_TNS, _BAR, _BAROUDEURS, _ANIMEST]
 
@@ -61,21 +74,21 @@ _ROLES = [_PRESIDENT, _VICE, _TRESORIER, _SECRETAIRE, _RESPO_COM]
         ("président des baroudeurs et de TNS", [_TNS, _BAROUDEURS]),
     ],
 )
-def test_match_clubs_reconnait_noms_et_sigles(
-    question: str, attendu: list[ClubEntry]
+def test_match_entites_reconnait_noms_et_sigles(
+    question: str, attendu: list[Entite]
 ) -> None:
     """Un club se reconnaît sur son nom développé comme sur son sigle."""
-    assert match_clubs(question, _CATALOGUE) == attendu
+    assert match_entites(question, _CATALOGUE) == attendu
 
 
-def test_match_clubs_ne_confond_pas_un_terme_court_inclus() -> None:
+def test_match_entites_ne_confond_pas_un_terme_court_inclus() -> None:
     """« baroudeurs » ne doit pas déclencher le club « bar » qu'il contient."""
-    assert match_clubs("qui gère les baroudeurs ?", _CATALOGUE) == [_BAROUDEURS]
+    assert match_entites("qui gère les baroudeurs ?", _CATALOGUE) == [_BAROUDEURS]
 
 
-def test_match_clubs_exige_des_frontieres_de_mot() -> None:
+def test_match_entites_exige_des_frontieres_de_mot() -> None:
     """Un sigle noyé dans un mot plus long ne compte pas."""
-    assert match_clubs("je bosse sur les transports", _CATALOGUE) == []
+    assert match_entites("je bosse sur les transports", _CATALOGUE) == []
 
 
 @pytest.mark.parametrize(
@@ -86,9 +99,9 @@ def test_match_clubs_exige_des_frontieres_de_mot() -> None:
         "salut",
     ],
 )
-def test_match_clubs_ignore_les_questions_sans_club(question: str) -> None:
+def test_match_entites_ignore_les_questions_sans_club(question: str) -> None:
     """Sans club cité, aucune fiche n'est injectée et le RAG garde la main."""
-    assert match_clubs(question, _CATALOGUE) == []
+    assert match_entites(question, _CATALOGUE) == []
 
 
 # --- Reconnaissance des rôles --------------------------------------------------
@@ -186,7 +199,7 @@ _BUREAU_ANIMEST = [
 
 def test_assemble_regroupe_les_titulaires_dun_meme_poste() -> None:
     """Deux présidents tiennent sur une seule ligne, pas sur deux."""
-    fiches = assemble_fiches([_ANIMEST], [], None, {4: _BUREAU_ANIMEST})
+    fiches = assemble_fiches([_ANIMEST], [], None, {_ANIMEST.cle: _BUREAU_ANIMEST})
     presidence = fiches[0].lignes[0]
     assert presidence.role == "Président"
     assert presidence.personnes == ("PETIT Luc", "ROUX Sarah")
@@ -194,19 +207,19 @@ def test_assemble_regroupe_les_titulaires_dun_meme_poste() -> None:
 
 def test_assemble_filtre_sur_le_poste_cite() -> None:
     """Un poste cité restreint la fiche à ce seul poste."""
-    fiches = assemble_fiches([_TNS], [_TRESORIER], None, {1: _BUREAU_TNS})
+    fiches = assemble_fiches([_TNS], [_TRESORIER], None, {_TNS.cle: _BUREAU_TNS})
     assert fiches[0].lignes == (Ligne(role="Trésorier", personnes=("DUPONT Marie",)),)
 
 
 def test_assemble_montre_tout_le_bureau_sans_poste_cite() -> None:
     """Aucun poste cité : tout le bureau du mandat courant."""
-    fiches = assemble_fiches([_TNS], [], None, {1: _BUREAU_TNS})
+    fiches = assemble_fiches([_TNS], [], None, {_TNS.cle: _BUREAU_TNS})
     assert [ligne.role for ligne in fiches[0].lignes] == ["Président", "Trésorier"]
 
 
 def test_assemble_retient_le_mandat_demande() -> None:
     """Une année dans la question fait ressortir le bureau de l'époque."""
-    fiches = assemble_fiches([_TNS], [_PRESIDENT], "2024", {1: _BUREAU_TNS})
+    fiches = assemble_fiches([_TNS], [_PRESIDENT], "2024", {_TNS.cle: _BUREAU_TNS})
     assert fiches[0].mandat == "2024-2025"
     assert fiches[0].lignes[0].personnes == ("MARTIN Paul",)
 
@@ -222,14 +235,43 @@ def test_assemble_sans_bureau_garde_la_description() -> None:
 
 def test_assemble_sans_bureau_ni_description_ne_rend_rien() -> None:
     """Un club vide de bout en bout n'injecte rien dans le prompt."""
-    nu = ClubEntry(club_id=9, nom="Breizh'TN", slug="breizhtn", asso="CETEN")
+    nu = Entite(
+        entite_id=9,
+        nom="Breizh'TN",
+        slug="breizhtn",
+        nature=NATURE_CLUB,
+        tutelle="CETEN",
+    )
     assert format_fiches(assemble_fiches([nu], [], None, {})) == ""
 
 
 def test_assemble_ecarte_la_description_quand_un_poste_est_cite() -> None:
     """« qui est trésorier de TNS » n'a que faire de la présentation du club."""
-    fiches = assemble_fiches([_TNS], [_TRESORIER], None, {1: _BUREAU_TNS})
+    fiches = assemble_fiches([_TNS], [_TRESORIER], None, {_TNS.cle: _BUREAU_TNS})
     assert fiches[0].description == ""
+
+
+def test_assemble_ne_melange_pas_asso_et_club_de_meme_id() -> None:
+    """Les deux tables commencent à 0 : seule la nature sépare leurs bureaux.
+
+    Sans la nature dans la clé, le bureau de l'association irait se coller au
+    club portant le même numéro.
+    """
+    asso = Entite(entite_id=1, nom="BDS", slug="bds", nature=NATURE_ASSO)
+    bureaux = {
+        asso.cle: [("2025-2026", 0, "Président", "ASSO Personne")],
+        _TNS.cle: [("2025-2026", 0, "Président", "CLUB Personne")],
+    }
+    fiches = assemble_fiches([asso, _TNS], [], None, bureaux)
+    assert fiches[0].lignes[0].personnes == ("ASSO Personne",)
+    assert fiches[1].lignes[0].personnes == ("CLUB Personne",)
+
+
+def test_match_entites_classe_les_assos_avant_les_clubs() -> None:
+    """Une question citant les deux présente d'abord la structure porteuse."""
+    bds = Entite(entite_id=0, nom="BDS", slug="bds", nature=NATURE_ASSO)
+    trouves = match_entites("le BDS et les baroudeurs", [_BAROUDEURS, bds])
+    assert [e.nature for e in trouves] == [NATURE_ASSO, NATURE_CLUB]
 
 
 # --- Rendu ---------------------------------------------------------------------
@@ -238,15 +280,19 @@ def test_assemble_ecarte_la_description_quand_un_poste_est_cite() -> None:
 def test_format_fiches_rend_un_bloc_lisible() -> None:
     """La fiche annonce sa source, le club, sa tutelle et le mandat."""
     fiche = Fiche(
-        club="Telecom Nancy Services",
+        nom="Telecom Nancy Services",
         slug="tns",
-        asso="CETEN",
+        nature=NATURE_CLUB,
+        tutelle="CETEN",
         mandat="2025-2026",
         lignes=(Ligne(role="Trésorier", personnes=("DUPONT Marie",)),),
     )
     rendu = format_fiches([fiche])
     assert "FICHE OFFICIELLE" in rendu
-    assert "Telecom Nancy Services (TNS) — rattaché à CETEN — mandat 2025-2026" in rendu
+    assert (
+        "Telecom Nancy Services (TNS) — club rattaché à CETEN — mandat 2025-2026"
+        in rendu
+    )
     assert "- Trésorier : DUPONT Marie" in rendu
     # Terminé par une ligne blanche : le bloc est collé devant les archives.
     assert rendu.endswith("\n\n")
@@ -255,38 +301,62 @@ def test_format_fiches_rend_un_bloc_lisible() -> None:
 def test_format_fiches_rend_une_description_seule() -> None:
     """Sans bureau, la fiche porte la présentation et tait le mandat."""
     fiche = Fiche(
-        club="Neura'TN",
+        nom="Neura'TN",
         slug="neuratn",
-        asso="CETEN",
+        nature=NATURE_CLUB,
+        tutelle="CETEN",
         mandat="",
         lignes=(),
         description="Club d'intelligence artificielle.",
     )
     rendu = format_fiches([fiche])
-    assert "Neura'TN — rattaché à CETEN\n" in rendu
+    assert "Neura'TN — club rattaché à CETEN\n" in rendu
     assert "Club d'intelligence artificielle." in rendu
     assert "mandat" not in rendu
 
 
 @pytest.mark.parametrize(
-    ("club", "slug", "asso", "attendu"),
+    ("nom", "slug", "nature", "tutelle", "attendu"),
     [
         # Le slug n'apprend rien : ni l'apostrophe ni le mot « Les » ne comptent.
-        ("Anim'Est", "animest", "CETEN", "Anim'Est — rattaché à CETEN"),
-        ("Les Baroudeurs", "baroudeurs", "CETEN", "Les Baroudeurs — rattaché à CETEN"),
-        # Le sigle, lui, est la forme sous laquelle les archives citent le club.
-        ("Telecom Nancy Services", "tns", "TNS", "Telecom Nancy Services (TNS)"),
-        # Un club qui est sa propre association ne se voit pas rattaché à soi.
-        ("BDS", "bds", "BDS", "BDS"),
-        ("CETEN", "bde", "CETEN", "CETEN (BDE)"),
+        (
+            "Anim'Est",
+            "animest",
+            NATURE_CLUB,
+            "CETEN",
+            "Anim'Est — club rattaché à CETEN",
+        ),
+        (
+            "Les Baroudeurs",
+            "baroudeurs",
+            NATURE_CLUB,
+            "CETEN",
+            "Les Baroudeurs — club rattaché à CETEN",
+        ),
+        # Le sigle, lui, est la forme sous laquelle les archives citent l'entité.
+        (
+            "Telecom Nancy Services",
+            "tns",
+            NATURE_ASSO,
+            "",
+            "Telecom Nancy Services (TNS) — association de TELECOM Nancy",
+        ),
+        # Une association n'est jamais rattachée à quoi que ce soit, et le mot
+        # « association » doit figurer : c'est lui qui empêche le modèle de
+        # présenter le BDS comme un club parmi les quarante.
+        ("BDS", "bds", NATURE_ASSO, "", "BDS — association de TELECOM Nancy"),
+        ("CETEN", "bde", NATURE_ASSO, "", "CETEN (BDE) — association de TELECOM Nancy"),
     ],
 )
-def test_titre_de_fiche(club: str, slug: str, asso: str, attendu: str) -> None:
-    """L'en-tête ne répète ni le nom du club ni sa propre association."""
+def test_titre_de_fiche(
+    nom: str, slug: str, nature: str, tutelle: str, attendu: str
+) -> None:
+    """L'en-tête annonce la nature de l'entité et ne se répète pas."""
     fiche = Fiche(
-        club=club,
+        nom=nom,
         slug=slug,
-        asso=asso,
+        nature=nature,
+        tutelle=tutelle,
         mandat="",
         lignes=(),
         description="Une présentation.",
@@ -297,9 +367,10 @@ def test_titre_de_fiche(club: str, slug: str, asso: str, attendu: str) -> None:
 def test_format_fiches_separe_les_titulaires_par_une_virgule() -> None:
     """Plusieurs titulaires d'un poste sont listés sur la même ligne."""
     fiche = Fiche(
-        club="Anim'Est",
+        nom="Anim'Est",
         slug="animest",
-        asso="CETEN",
+        nature=NATURE_CLUB,
+        tutelle="CETEN",
         mandat="2025-2026",
         lignes=(Ligne(role="Président", personnes=("PETIT Luc", "ROUX Sarah")),),
     )
@@ -310,7 +381,16 @@ def test_format_fiches_separe_les_titulaires_par_une_virgule() -> None:
     "fiches",
     [
         [],
-        [Fiche(club="TNS", slug="tns", asso="CETEN", mandat="2025-2026", lignes=())],
+        [
+            Fiche(
+                nom="TNS",
+                slug="tns",
+                nature=NATURE_CLUB,
+                tutelle="CETEN",
+                mandat="2025-2026",
+                lignes=(),
+            )
+        ],
     ],
 )
 def test_format_fiches_vide_ne_produit_rien(fiches: list[Fiche]) -> None:

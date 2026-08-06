@@ -1,18 +1,24 @@
-"""Fiches officielles des clubs : le SQL répond là où le RAG échoue.
+"""Fiches officielles de la vie associative : le SQL répond là où le RAG échoue.
 
 « Qui est trésorier de TNS » porte sur une information présente dans un seul
 document parmi ~400 : le retrieval sémantique ramène des chunks du bon thème
 mais rate régulièrement l'unique compte-rendu qui porte le nom. Les tables
-`assos`, `roles`, `clubs` et `club_roles` tiennent la même information sous
-forme relationnelle ; ce module la retrouve et la met en tête du contexte, où
-le prompt lui donne autorité sur les archives.
+`assos`, `clubs`, `roles`, `asso_roles` et `club_roles` tiennent la même
+information sous forme relationnelle ; ce module la retrouve et la met en tête
+du contexte, où le prompt lui donne autorité sur les archives.
+
+Associations et clubs sont deux choses distinctes — cinq associations d'un côté
+(CETEN, BDS, TNS, Humani'TN, Anim'Est), une quarantaine de clubs de l'autre —
+et chacune a sa table de bureaux. Le traitement, lui, est commun : `Entite` les
+représente indifféremment, et la fiche produite annonce toujours laquelle des
+deux natures elle décrit, pour que le modèle ne prenne pas une association pour
+un club.
 
 La reconnaissance est **déterministe**, pas déléguée au modèle. Trois raisons :
 le chat ne fait qu'un seul appel Groq et le streame (un outil en imposerait
 deux, sur un tier à 8000 tokens/minute), il tourne en `reasoning_effort="none"`
-et déciderait donc mal d'appeler un outil, et l'espace est fermé — une
-quarantaine de clubs, une poignée de rôles. Aucun club reconnu : rien n'est
-injecté et le comportement reste celui d'avant.
+et déciderait donc mal d'appeler un outil, et l'espace est fermé. Rien de
+reconnu : rien n'est injecté et le comportement reste celui d'avant.
 
 Les fonctions de décision sont pures et reçoivent le catalogue en argument :
 elles sont ainsi testables sans base ni application Flask.
@@ -23,15 +29,19 @@ import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
-from .models import Club, ClubRole, Role, db
+from .models import Asso, AssoRole, Club, ClubRole, Role, db
 from .textnorm import strip_accents
 
 logger = logging.getLogger(__name__)
 
-# Plafond de clubs détaillés dans une même fiche. Une question en cite une ou
+# Plafond d'entités détaillées dans une même fiche. Une question en cite une ou
 # deux ; au-delà, c'est une reconnaissance trop large et le bloc pèserait plus
 # que les archives qu'il est censé compléter.
 MAX_FICHES = 4
+
+# Les deux natures d'entité. Le libellé part tel quel dans le prompt.
+NATURE_CLUB = "club"
+NATURE_ASSO = "association"
 
 # Apostrophes typographiques ramenées à l'apostrophe droite : « Crea'TN » saisi
 # dans la base et la variante courbe tapée par l'utilisateur doivent se
@@ -47,14 +57,28 @@ def normalize(text: str) -> str:
 
 
 @dataclass(frozen=True)
-class ClubEntry:
-    """Un club tel que la reconnaissance le manipule, hors de tout ORM."""
+class Entite:
+    """Un club ou une association, hors de tout ORM.
 
-    club_id: int
+    `tutelle` ne vaut que pour un club ; une association ne relève de personne.
+    """
+
+    entite_id: int
     nom: str
     slug: str
-    asso: str
+    nature: str
+    tutelle: str = ""
     description: str = ""
+
+    @property
+    def cle(self) -> tuple[str, int]:
+        """Identifiant unique toutes natures confondues.
+
+        Les identifiants de `clubs` et d'`assos` se recoupent (les deux tables
+        commencent à 0) : la nature doit entrer dans la clé, sans quoi le bureau
+        d'une association irait se coller à un club de même numéro.
+        """
+        return (self.nature, self.entite_id)
 
 
 @dataclass(frozen=True)
@@ -81,16 +105,17 @@ class Ligne:
 
 @dataclass(frozen=True)
 class Fiche:
-    """Le bureau d'un club sur un mandat donné, prêt à être mis en forme.
+    """Le bureau d'une entité sur un mandat donné, prêt à être mis en forme.
 
     `description` n'est renseignée que sur les questions qui ne visent aucun
     poste précis : « c'est quoi Neura'TN » a besoin de la présentation, « qui
     est trésorier de TNS » n'en ferait que des tokens perdus.
     """
 
-    club: str
+    nom: str
     slug: str
-    asso: str
+    nature: str
+    tutelle: str
     mandat: str
     lignes: tuple[Ligne, ...]
     description: str = ""
@@ -126,8 +151,8 @@ def _word(needle: str) -> re.Pattern[str]:
     return re.compile(rf"(?<!\w){re.escape(needle)}(?!\w)")
 
 
-def match_clubs(question: str, catalogue: Sequence[ClubEntry]) -> list[ClubEntry]:
-    """Clubs cités dans la question, reconnus sur leur nom comme sur leur slug.
+def match_entites(question: str, catalogue: Sequence[Entite]) -> list[Entite]:
+    """Clubs et associations cités, reconnus sur leur nom comme sur leur slug.
 
     Les termes les plus longs sont essayés d'abord et consomment le texte
     trouvé : « Telecom Nancy Services » l'emporte donc sur « TNS », et
@@ -136,21 +161,23 @@ def match_clubs(question: str, catalogue: Sequence[ClubEntry]) -> list[ClubEntry
     haystack = normalize(question)
     needles = sorted(
         (
-            (normalize(raw), club)
-            for club in catalogue
-            for raw in (club.nom, club.slug)
+            (normalize(raw), entite)
+            for entite in catalogue
+            for raw in (entite.nom, entite.slug)
             if raw and raw.strip()
         ),
         key=lambda pair: len(pair[0]),
         reverse=True,
     )
 
-    found: dict[int, ClubEntry] = {}
-    for needle, club in needles:
+    found: dict[tuple[str, int], Entite] = {}
+    for needle, entite in needles:
         haystack, hit = _blank(haystack, _word(needle))
         if hit:
-            found.setdefault(club.club_id, club)
-    return sorted(found.values(), key=lambda club: club.club_id)
+            found.setdefault(entite.cle, entite)
+    # Les associations d'abord : quand une question cite les deux, c'est la
+    # structure porteuse qui éclaire le reste.
+    return sorted(found.values(), key=lambda e: (e.nature != NATURE_ASSO, e.entite_id))
 
 
 # Motifs de rôle, appliqués à la question normalisée, du plus spécifique au plus
@@ -209,7 +236,7 @@ def match_annee(question: str) -> str | None:
 
 
 def select_mandat(mandats: Iterable[str], annee: str | None) -> str | None:
-    """Choisit le mandat à présenter parmi ceux que le club a connus.
+    """Choisit le mandat à présenter parmi ceux que l'entité a connus.
 
     Sans année, le plus récent — l'ordre lexicographique de « 2025-2026 » est
     l'ordre chronologique. Avec une année, le plus récent de ceux qui la
@@ -264,21 +291,27 @@ def _lettres(text: str) -> str:
 
 
 def _titre(fiche: Fiche) -> str:
-    """Ligne d'en-tête d'une fiche : le club, sa tutelle et le mandat couvert.
+    """Ligne d'en-tête d'une fiche : ce qu'est l'entité, sa tutelle, son mandat.
 
-    Le slug n'est rappelé entre parenthèses que s'il apprend quelque chose —
-    « Telecom Nancy Services (TNS) » oui, « Les Baroudeurs (BAROUDEURS) » non.
-    La tutelle disparaît quand le club EST son association : les cinq
-    associations de l'école figurent aussi dans `clubs`, pour pouvoir porter un
-    bureau, et « TNS — rattaché à TNS » ne dirait rien.
+    La nature est écrite noir sur blanc — « association » ou « club » — c'est
+    elle qui empêche le modèle de présenter le BDS comme un club parmi les
+    autres. Le slug n'est rappelé entre parenthèses que s'il apprend quelque
+    chose : « Telecom Nancy Services (TNS) » oui, « Les Baroudeurs
+    (BAROUDEURS) » non.
     """
-    nom, slug, asso = _lettres(fiche.club), _lettres(fiche.slug), _lettres(fiche.asso)
+    nom, slug = _lettres(fiche.nom), _lettres(fiche.slug)
 
-    titre = fiche.club
+    titre = fiche.nom
     if slug and slug not in nom:
         titre = f"{titre} ({fiche.slug.upper()})"
-    if asso and asso not in (nom, slug):
-        titre = f"{titre} — rattaché à {fiche.asso}"
+
+    if fiche.nature == NATURE_ASSO:
+        titre = f"{titre} — association de TELECOM Nancy"
+    else:
+        titre = f"{titre} — club"
+        if fiche.tutelle and _lettres(fiche.tutelle) not in (nom, slug):
+            titre = f"{titre} rattaché à {fiche.tutelle}"
+
     # Pas de mandat quand aucun bureau n'est saisi : annoncer « mandat  » vide
     # laisserait croire à une donnée manquante plutôt qu'à une fiche de
     # présentation.
@@ -288,18 +321,29 @@ def _titre(fiche: Fiche) -> str:
 # --- Accès à la base -----------------------------------------------------------
 
 
-def load_catalogue() -> tuple[list[ClubEntry], list[RoleEntry]]:
-    """Charge clubs et rôles depuis la base, sous une forme détachée de l'ORM.
+def load_catalogue() -> tuple[list[Entite], list[RoleEntry]]:
+    """Charge associations, clubs et rôles, sous une forme détachée de l'ORM.
 
-    Les deux tables sont minuscules (une quarantaine de lignes en tout) : deux
-    SELECT par question restent négligeables devant l'appel à Groq.
+    Les trois tables sont minuscules (une cinquantaine de lignes en tout) :
+    quelques SELECT par question restent négligeables devant l'appel à Groq.
     """
+    assos = [
+        Entite(
+            entite_id=asso.asso_id,
+            nom=asso.asso_name,
+            slug=asso.slug or "",
+            nature=NATURE_ASSO,
+            description=asso.description or "",
+        )
+        for asso in db.session.scalars(db.select(Asso)).all()
+    ]
     clubs = [
-        ClubEntry(
-            club_id=club.club_id,
+        Entite(
+            entite_id=club.club_id,
             nom=club.club_name,
             slug=club.slug or "",
-            asso=club.asso.asso_name if club.asso else "TELECOM Nancy",
+            nature=NATURE_CLUB,
+            tutelle=club.asso.asso_name if club.asso else "TELECOM Nancy",
             description=club.description or "",
         )
         for club in db.session.scalars(db.select(Club)).all()
@@ -308,32 +352,46 @@ def load_catalogue() -> tuple[list[ClubEntry], list[RoleEntry]]:
         RoleEntry(role_id=role.role_id, nom=role.role_name)
         for role in db.session.scalars(db.select(Role)).all()
     ]
-    return clubs, roles
+    return assos + clubs, roles
 
 
 # Une ligne de bureau brute, telle que la requête la ramène : le mandat vient en
 # premier pour que le tri naturel du tuple ordonne par mandat puis par poste.
 BureauRow = tuple[str, int, str, str]
+Bureaux = dict[tuple[str, int], list[BureauRow]]
 
 
-def _load_bureaux(club_ids: Sequence[int]) -> dict[int, list[BureauRow]]:
-    """Lignes de bureau des clubs demandés, groupées par club."""
-    rows = db.session.execute(
-        db.select(
-            ClubRole.club_id,
-            ClubRole.mandat,
-            Role.role_id,
-            Role.role_name,
-            ClubRole.personne,
-        )
-        .join(Role, Role.role_id == ClubRole.role_id)
-        .where(ClubRole.club_id.in_(club_ids))
-    ).all()
+def _load_bureaux(entites: Sequence[Entite]) -> Bureaux:
+    """Lignes de bureau des entités demandées, groupées par clé (nature, id).
 
-    par_club: dict[int, list[BureauRow]] = {}
-    for club_id, mandat, role_id, role_name, personne in rows:
-        par_club.setdefault(club_id, []).append((mandat, role_id, role_name, personne))
-    return par_club
+    Deux requêtes, une par table de bureaux : associations et clubs ne partagent
+    pas la leur.
+    """
+    par_entite: Bureaux = {}
+    tables = (
+        (NATURE_ASSO, AssoRole, AssoRole.asso_id),
+        (NATURE_CLUB, ClubRole, ClubRole.club_id),
+    )
+    for nature, modele, colonne_id in tables:
+        ids = [e.entite_id for e in entites if e.nature == nature]
+        if not ids:
+            continue
+        rows = db.session.execute(
+            db.select(
+                colonne_id,
+                modele.mandat,
+                Role.role_id,
+                Role.role_name,
+                modele.personne,
+            )
+            .join(Role, Role.role_id == modele.role_id)
+            .where(colonne_id.in_(ids))
+        ).all()
+        for entite_id, mandat, role_id, role_name, personne in rows:
+            par_entite.setdefault((nature, entite_id), []).append(
+                (mandat, role_id, role_name, personne)
+            )
+    return par_entite
 
 
 def _grouper(
@@ -358,36 +416,37 @@ def _grouper(
 
 
 def assemble_fiches(
-    clubs: Sequence[ClubEntry],
+    entites: Sequence[Entite],
     roles: Sequence[RoleEntry],
     annee: str | None,
-    bureaux: dict[int, list[BureauRow]],
+    bureaux: Bureaux,
 ) -> list[Fiche]:
-    """Assemble les fiches des clubs reconnus, filtrées par mandat puis par poste.
+    """Assemble les fiches reconnues, filtrées par mandat puis par poste.
 
     Reçoit les lignes de bureau plutôt que d'aller les chercher : la sélection
     reste ainsi vérifiable sans base. Un poste cité restreint la fiche à ce
     poste et écarte la description ; aucun poste cité montre le bureau entier et
-    la présentation du club.
+    la présentation.
 
-    Un club sans bureau saisi produit quand même sa fiche, réduite à sa
+    Une entité sans bureau saisi produit quand même sa fiche, réduite à sa
     description : c'est le cas de toute la base tant que les mandats ne sont pas
     renseignés.
     """
     voulus = {role.role_id for role in roles}
 
     fiches: list[Fiche] = []
-    for club in clubs:
-        brutes = bureaux.get(club.club_id, [])
+    for entite in entites:
+        brutes = bureaux.get(entite.cle, [])
         mandat = select_mandat({ligne[0] for ligne in brutes}, annee)
         fiches.append(
             Fiche(
-                club=club.nom,
-                slug=club.slug,
-                asso=club.asso,
+                nom=entite.nom,
+                slug=entite.slug,
+                nature=entite.nature,
+                tutelle=entite.tutelle,
                 mandat=mandat or "",
                 lignes=_grouper(brutes, mandat, voulus) if mandat else (),
-                description="" if voulus else club.description,
+                description="" if voulus else entite.description,
             )
         )
     return fiches
@@ -396,19 +455,20 @@ def assemble_fiches(
 def lookup_context(question: str) -> str:
     """Bloc de fiches à placer en tête du contexte, ou une chaîne vide.
 
-    Chaîne vide dans tous les cas incertains — aucun club reconnu, bureau non
-    renseigné : le chat retombe alors exactement sur son comportement RAG.
+    Chaîne vide dans tous les cas incertains — rien de reconnu, bureau non
+    renseigné et pas de description : le chat retombe alors exactement sur son
+    comportement RAG.
     """
-    clubs, roles = load_catalogue()
-    if not clubs:
+    catalogue, roles = load_catalogue()
+    if not catalogue:
         return ""
 
-    cites = match_clubs(question, clubs)
+    cites = match_entites(question, catalogue)
     if not cites:
         return ""
     if len(cites) > MAX_FICHES:
         logger.debug(
-            "Fiches clubs : %d clubs reconnus, plafonné à %d.", len(cites), MAX_FICHES
+            "Fiches : %d entités reconnues, plafonné à %d.", len(cites), MAX_FICHES
         )
         cites = cites[:MAX_FICHES]
 
@@ -416,12 +476,12 @@ def lookup_context(question: str) -> str:
         cites,
         match_roles(question, roles),
         match_annee(question),
-        _load_bureaux([club.club_id for club in cites]),
+        _load_bureaux(cites),
     )
     bloc = format_fiches(fiches)
     logger.debug(
-        "Fiches clubs : %s → %d ligne(s) injectée(s).",
-        ", ".join(club.nom for club in cites),
+        "Fiches : %s → %d ligne(s) injectée(s).",
+        ", ".join(f"{e.nom} ({e.nature})" for e in cites),
         sum(len(fiche.lignes) for fiche in fiches),
     )
     return bloc
