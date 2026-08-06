@@ -366,6 +366,13 @@ class Club(db.Model):
     # « c'est quoi X ? » sans passer par les archives. NULL pour les clubs que la
     # plaquette ne décrit pas : mieux vaut aucune description qu'une inventée.
     description = db.Column(db.Text, nullable=True)
+    # Catégorie du club au sens du CETEN : Loisirs, Événementiel ou Services.
+    type_club = db.Column(db.String(20), nullable=True)
+    contact_email = db.Column(db.String(150), nullable=True)
+    # Format libre (« 01/10/24 » comme « 16/09/2025 ») : stockée telle quelle,
+    # même parti pris que `Document.doc_date`, plutôt que de risquer une
+    # interprétation jour/mois sur des saisies hétérogènes.
+    date_creation = db.Column(db.String(10), nullable=True)
     asso_id = db.Column(db.Integer, db.ForeignKey("assos.asso_id"), nullable=False)
 
     asso = db.relationship("Asso", back_populates="clubs")
