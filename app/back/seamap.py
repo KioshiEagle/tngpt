@@ -163,6 +163,104 @@ def _resolve_icone(propose: object, nom: str, tutelle: str) -> str:
     return _ICONE_DEFAUT
 
 
+# --- Logos --------------------------------------------------------------------
+
+# Logos découpés de la plaquette alpha 2026-2027 (voir `app/front/static/logos/`).
+# Le modèle ne les choisit pas : un club porte le sien ou n'en porte pas, et
+# c'est son nom qui trie. Les 41 clubs de l'école n'ont pas tous un logo dans la
+# plaquette — les absents gardent le pictogramme dessiné.
+LOGOS = (
+    "absoludique",
+    "algo",
+    "allintn",
+    "amphisuze",
+    "animest",
+    "astn",
+    "bar",
+    "baroudeurs",
+    "bda",
+    "bde",
+    "bds",
+    "brasserie",
+    "bravo",
+    "breizhtn",
+    "cooking",
+    "creatn",
+    "gala",
+    "gaming",
+    "hackintn",
+    "humanitn",
+    "instantthe",
+    "inte",
+    "marche",
+    "minitel",
+    "neuratn",
+    "oenologie",
+    "sdf",
+    "studio",
+    "tektn",
+    "tgd",
+    "tns",
+    "touristn",
+    "voyage",
+)
+
+# Motifs appliqués au nom désaccentué, du plus spécifique au plus général : la
+# première correspondance gagne. `baroudeurs` précède `bar` pour cette raison.
+_LOGO_MOTS: tuple[tuple[re.Pattern[str], str], ...] = tuple(
+    (re.compile(motif, re.IGNORECASE), logo)
+    for motif, logo in (
+        (r"baroudeur", "baroudeurs"),
+        (r"gaulois|inteductible|integration|\binte\b", "inte"),
+        (r"anim.?est", "animest"),
+        (r"humani", "humanitn"),
+        (r"\bbde\b|ceten|cercle des eleves", "bde"),
+        (r"\bbda\b|bureau des arts", "bda"),
+        (r"\bbds\b|bureau des sports", "bds"),
+        (r"\btns\b|telecom nancy services", "tns"),
+        (r"allin|poker", "allintn"),
+        (r"gala", "gala"),
+        (r"studio", "studio"),
+        (r"abso|ludique", "absoludique"),
+        (r"voyage", "voyage"),
+        (r"marche", "marche"),
+        (r"chok|\bbar\b", "bar"),
+        (r"mini.?tel|journal", "minitel"),
+        (r"gaming", "gaming"),
+        (r"algo", "algo"),
+        (r"hackin|hacking", "hackintn"),
+        (r"cooking|cuisine", "cooking"),
+        (r"oeno", "oenologie"),
+        (r"brasserie|brewery", "brasserie"),
+        (r"breizh|breton|bretagne", "breizhtn"),
+        (r"tek.?tn|\btek\b", "tektn"),
+        (r"\btgd\b|telegame|game design", "tgd"),
+        (r"crea", "creatn"),
+        (r"\bastn\b|admis sur titre", "astn"),
+        (r"instant.?the|podcast", "instantthe"),
+        (r"touris", "touristn"),
+        (r"bravo", "bravo"),
+        (r"\bsdf\b|degommeurs|fromage", "sdf"),
+        (r"neura", "neuratn"),
+        (r"suze", "amphisuze"),
+    )
+)
+
+
+def _resolve_logo(nom: str) -> str:
+    """Slug du logo du club, ou chaîne vide s'il n'en a pas dans la plaquette.
+
+    Seul le nom décide, jamais la tutelle : sans quoi tous les clubs d'un même
+    bureau hériteraient du logo de leur association mère et la carte n'afficherait
+    plus qu'une poignée de symboles répétés.
+    """
+    cible = _strip_accents(nom)
+    for motif, logo in _LOGO_MOTS:
+        if motif.search(cible):
+            return logo
+    return ""
+
+
 # --- Outil Groq ---------------------------------------------------------------
 
 MAP_TOOL_NAME = "generate_map"
@@ -289,6 +387,7 @@ def _clean_club(entry: object) -> MapClub | None:
         nom=nom,
         tutelle=tutelle,
         icone=_resolve_icone(entry.get("icone"), nom, tutelle),
+        logo=_resolve_logo(nom),
     )
 
 
