@@ -41,172 +41,72 @@ function randomFrom(arr) {
     return arr[Math.floor(Math.random() * arr.length)];
 }
 
-// --- Rendu de la carte au trésor (mermaid) ---
-// mermaid.min.js pèse ~2,7 Mo : on ne le charge qu'à la première carte
-// rencontrée, jamais au chargement de la page.
-let mermaidPromise = null;
-let mermaidSeq = 0;
-
-// Palettes parchemin. Les tons des branches restent dans la gamme des encres
-// et pigments d'une vieille carte : sépia, sanguine, vert-de-gris, indigo passé.
-// Les teintes de branche restent des lavis très pâles : sur une carte gravée,
-// c'est le trait à l'encre qui distingue les régions, pas des aplats de couleur.
-// Un fond saturé rendrait aussi le libellé sombre illisible.
-const TREASURE_PALETTES = {
-    light: {
-        ink: '#6b4a24',
-        text: '#3f2f1c',
-        parchment: '#f3e2bd',
-        branches: ['#e5d0a4', '#e0c3a8', '#cfd3ad', '#d6cbb0', '#e2cdb2', '#cdc7ab'],
-    },
-    dark: {
-        ink: '#c9a367',
-        text: '#f2e4c6',
-        parchment: '#3a2f21',
-        branches: ['#5a4a33', '#5e4536', '#4b5540', '#514a3a', '#5c4c39', '#4e4a38'],
-    },
-};
-
-function isDarkTheme() {
-    return document.documentElement.getAttribute('data-theme') === 'dark';
-}
-
-function mermaidConfig() {
-    const p = TREASURE_PALETTES[isDarkTheme() ? 'dark' : 'light'];
-    // cScaleN colore les branches d'une carte mentale ; cScaleLabelN leur texte.
-    const branches = {};
-    p.branches.forEach((color, i) => {
-        branches[`cScale${i}`] = color;
-        branches[`cScaleLabel${i}`] = p.text;
-    });
-    return {
-        startOnLoad: false,
-        // La sortie du modèle est injectée via innerHTML sans sanitizer :
-        // mermaid ne doit ni exécuter de JS ni rendre de HTML dans les libellés.
-        securityLevel: 'strict',
-        theme: 'base',
-        themeVariables: {
-            ...branches,
-            background: p.parchment,
-            primaryColor: p.parchment,
-            primaryTextColor: p.text,
-            primaryBorderColor: p.ink,
-            lineColor: p.ink,
-            textColor: p.text,
-            // Une serif système : l'air d'une carte gravée, sans police à charger.
-            fontFamily: 'Georgia, "Iowan Old Style", "Palatino Linotype", serif',
-            fontSize: '15px',
-        },
-        // useMaxWidth écraserait la carte à la largeur de la bulle et rendrait
-        // les libellés illisibles : on la laisse à sa taille naturelle et le
-        // conteneur .mermaid-diagram la fait défiler horizontalement.
-        mindmap: { useMaxWidth: false, padding: 14 },
-        flowchart: { useMaxWidth: false, htmlLabels: false },
-    };
-}
-
-function loadMermaid() {
-    if (mermaidPromise) return mermaidPromise;
-    mermaidPromise = new Promise((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = '/static/mermaid.min.js';
-        script.onload = () => {
-            window.mermaid.initialize(mermaidConfig());
-            resolve(window.mermaid);
-        };
-        script.onerror = () => reject(new Error('mermaid indisponible'));
-        document.head.appendChild(script);
-    });
-    return mermaidPromise;
-}
-
-// Sépare la prose du bloc mermaid AVANT tout rendu markdown, comme le fait
-// DHDA. Les deux vivent ensuite dans des conteneurs distincts : la prose peut
-// être réécrite à chaque frame du streaming sans jamais toucher au diagramme.
+// --- Rendu de la carte au trésor ---
+// La prose et la carte sont séparées AVANT tout rendu markdown, comme le fait
+// DHDA. Elles vivent ensuite dans des conteneurs distincts : la prose peut être
+// réécrite à chaque frame du streaming sans jamais toucher à la carte.
 // La fence fermante est facultative, pour ne rien perdre d'une réponse coupée.
-const MERMAID_BLOCK = /```[ \t]*mermaid[ \t]*\r?\n([\s\S]*?)(?:```|$)/i;
+const CARTE_BLOCK = /```[ \t]*tngpt-carte[ \t]*\r?\n([\s\S]*?)(?:```|$)/i;
 
 function splitResponse(raw) {
-    const match = raw.match(MERMAID_BLOCK);
-    if (!match) return { prose: raw, mermaid: null, complete: false };
+    const match = raw.match(CARTE_BLOCK);
+    if (!match) return { prose: raw, carte: null, complete: false };
     return {
         prose: raw.replace(match[0], '').trim(),
-        mermaid: match[1].trim(),
-        // Sans fence fermante, le bloc est encore en cours de réception.
+        carte: match[1].trim(),
+        // Sans fence fermante, la charge utile est encore en cours de réception.
         complete: match[0].trimEnd().endsWith('```'),
     };
 }
 
-async function drawDiagram(host, source) {
-    const mermaid = await loadMermaid();
-    // parse() valide sans toucher au DOM : on distingue une syntaxe invalide
-    // d'une panne de rendu, et on n'insère jamais de diagramme à moitié dessiné.
-    await mermaid.parse(source);
-    const { svg } = await mermaid.render(`mermaid-${++mermaidSeq}`, source);
-    // Le SVG vit dans un calque intérieur : c'est lui qui défile, pendant que le
-    // cadre de parchemin et sa rose des vents restent en place.
-    const canvas = document.createElement('div');
-    canvas.className = 'mermaid-canvas';
-    canvas.innerHTML = svg;
-    host.replaceChildren(canvas);
-}
-
-// Repli : le code brut reste lisible plutôt qu'un cadre vide.
-function showMermaidSource(host, source, message) {
-    const pre = document.createElement('pre');
-    const code = document.createElement('code');
-    code.textContent = source;
-    pre.appendChild(code);
+// Repli : la liste des clubs reste lisible plutôt qu'un cadre vide.
+function showMapFallback(host, payload, message) {
+    const liste = document.createElement('ul');
+    for (const club of (payload && payload.clubs) || []) {
+        const li = document.createElement('li');
+        li.textContent = `${club.nom} — ${club.tutelle}`;
+        liste.appendChild(li);
+    }
     const note = document.createElement('div');
-    note.className = 'mermaid-error';
+    note.className = 'map-error';
     note.textContent = message;
-    host.replaceChildren(pre, note);
+    host.replaceChildren(liste.children.length ? liste : note, note);
 }
 
-// Dessine le diagramme dans son propre conteneur, créé à la demande à la suite
-// de la prose. Rien n'est redessiné tant que la source n'a pas changé.
-async function renderMermaid(bubble, source) {
+// Dessine la carte dans son propre conteneur, créé à la demande à la suite de
+// la prose. Rien n'est redessiné tant que la charge utile n'a pas changé.
+function renderTreasureMap(bubble, source) {
     if (!bubble || !source) return;
-    let host = bubble.querySelector(':scope > .mermaid-diagram');
+    let host = bubble.querySelector(':scope > .treasure-map');
     if (!host) {
         host = document.createElement('div');
-        host.className = 'mermaid-diagram';
+        host.className = 'treasure-map';
         bubble.appendChild(host);
-    } else if (host.dataset.mermaidSource === source) {
+    } else if (host.dataset.mapSource === source) {
         return;
     }
-    host.dataset.mermaidSource = source;
+    host.dataset.mapSource = source;
+
+    let payload = null;
     try {
-        await drawDiagram(host, source);
+        payload = JSON.parse(source);
+        const canvas = document.createElement('div');
+        canvas.className = 'treasure-map-canvas';
+        canvas.appendChild(drawTreasureMap(payload));
+        host.replaceChildren(canvas);
     } catch (err) {
-        console.warn('mermaid a refusé la carte :', err);
-        showMermaidSource(host, source, 'carte illisible, voici le code brut');
+        console.warn('carte non dessinée :', err);
+        showMapFallback(host, payload, "j'ai pas réussi à dessiner la carte");
     }
 }
 
-// Point d'entrée unique : prose dans .msg-text, diagramme dans son voisin.
+// Point d'entrée unique : prose dans .msg-text, carte dans son voisin.
 function renderAssistant(bubble, raw) {
     const textEl = bubble.querySelector('.msg-text');
-    const { prose, mermaid, complete } = splitResponse(raw);
+    const { prose, carte, complete } = splitResponse(raw);
     if (textEl) textEl.innerHTML = marked.parse(prose);
     bubble.dataset.raw = raw;
-    if (mermaid && complete) renderMermaid(bubble, mermaid);
-}
-
-// Le thème mermaid est figé au rendu : un basculement clair/sombre impose de
-// redessiner les diagrammes déjà affichés.
-async function rerenderMermaidTheme() {
-    const hosts = document.querySelectorAll('.mermaid-diagram[data-mermaid-source]');
-    if (!hosts.length || !mermaidPromise) return;
-    const mermaid = await loadMermaid();
-    mermaid.initialize(mermaidConfig());
-    for (const host of hosts) {
-        try {
-            await drawDiagram(host, host.dataset.mermaidSource);
-        } catch (err) {
-            /* le diagramme précédent reste affiché */
-        }
-    }
+    if (carte && complete) renderTreasureMap(bubble, carte);
 }
 
 function shuffle(arr) {
@@ -248,7 +148,8 @@ document.addEventListener('DOMContentLoaded', () => {
         document.documentElement.setAttribute('data-theme', next);
         localStorage.setItem('theme', next);
         updateThemeLabel();
-        rerenderMermaidTheme();
+        // La carte peint avec des variables CSS : elle suit le thème sans
+        // qu'on ait à la redessiner.
     });
 
     // --- User menu ---
@@ -452,6 +353,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     rawText += chunk;
                 }
                 scheduleRender();
+            }
+
+            // Flux entièrement blanc : aucune bulle n'a été créée plus haut, et
+            // sans ce cas l'écran resterait muet, sans erreur ni trace.
+            if (firstChunk) {
+                appendMessage('assistant', "Je n'ai rien réussi à répondre là. Reformule ?");
             }
         } catch (err) {
             clearTimeout(slowTimer);
