@@ -47,6 +47,10 @@ _PROMPT_TEMPLATE = (
     "- Ne cite pas la source, sauf si on te le demande explicitement.\n"
     "- En cas de doute entre plusieurs archives, préfère la plus récente.\n\n"
     "Sources officielles :\n"
+    "- Un bloc « FICHE OFFICIELLE » en tête du contexte vient de la base de données "
+    "de l'école : il fait autorité et prime sur toute archive, même plus récente. "
+    "S'il répond à la question, réponds avec, sans chercher ailleurs. Un poste peut "
+    "y avoir plusieurs titulaires : cite-les alors tous.\n"
     "- Les Réunions Ouvertes (RO) sont la référence pour les postes officiels du BDE. "
     "Dans un RO, la section 'Membres du bureau présents' "
     "liste les membres du bureau BDE "
@@ -79,6 +83,10 @@ class GenerateRequest:
     history: list[HistoryMessage] = field(default_factory=list)
     top_k: int = 5
     user_name: str | None = None
+    # Fiches des clubs cités, tirées du SQL par `clubs.lookup_context` et placées
+    # devant les archives. Vide par défaut : les appelants qui ne les remplissent
+    # pas (bancs Optuna, carte des mers) gardent exactement l'ancien prompt.
+    fiches: str = ""
 
 
 # Signature d'un constructeur de prompt : (contexte, question, user_name) -> prompt.
@@ -273,7 +281,10 @@ def _stream_with_retries(
     max_retries = 3
 
     for attempt in range(max_retries):
-        context = _build_context(current_results)
+        # Les fiches passent devant les archives et survivent au repli 413, qui
+        # ne rogne que `current_results` : c'est la partie courte du contexte,
+        # et la seule qui fasse autorité.
+        context = req.fiches + _build_context(current_results)
         prompt = spec.build(context, req.question, user_name=req.user_name)
         try:
             completion = client.chat.completions.create(
