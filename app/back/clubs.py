@@ -266,15 +266,19 @@ def _lettres(text: str) -> str:
 def _titre(fiche: Fiche) -> str:
     """Ligne d'en-tête d'une fiche : le club, sa tutelle et le mandat couvert.
 
-    Le slug est rappelé entre parenthèses quand il apporte quelque chose — c'est
-    sous cette forme courte (« TNS ») que les archives citent souvent le club.
-    La ponctuation est ignorée dans la comparaison : « Anim'Est (ANIMEST) » ne
-    répéterait que le même mot.
+    Le slug n'est rappelé entre parenthèses que s'il apprend quelque chose —
+    « Telecom Nancy Services (TNS) » oui, « Les Baroudeurs (BAROUDEURS) » non.
+    La tutelle disparaît quand le club EST son association : les cinq
+    associations de l'école figurent aussi dans `clubs`, pour pouvoir porter un
+    bureau, et « TNS — rattaché à TNS » ne dirait rien.
     """
-    nom = fiche.club
-    if fiche.slug and _lettres(fiche.slug) != _lettres(nom):
-        nom = f"{nom} ({fiche.slug.upper()})"
-    titre = f"{nom} — rattaché à {fiche.asso}"
+    nom, slug, asso = _lettres(fiche.club), _lettres(fiche.slug), _lettres(fiche.asso)
+
+    titre = fiche.club
+    if slug and slug not in nom:
+        titre = f"{titre} ({fiche.slug.upper()})"
+    if asso and asso not in (nom, slug):
+        titre = f"{titre} — rattaché à {fiche.asso}"
     # Pas de mandat quand aucun bureau n'est saisi : annoncer « mandat  » vide
     # laisserait croire à une donnée manquante plutôt qu'à une fiche de
     # présentation.

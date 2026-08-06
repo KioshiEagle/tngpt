@@ -268,16 +268,30 @@ def test_format_fiches_rend_une_description_seule() -> None:
     assert "mandat" not in rendu
 
 
-def test_format_fiches_ne_repete_pas_un_slug_identique_au_nom() -> None:
-    """« Anim'Est (ANIMEST) » n'apprend rien : la ponctuation ne compte pas."""
+@pytest.mark.parametrize(
+    ("club", "slug", "asso", "attendu"),
+    [
+        # Le slug n'apprend rien : ni l'apostrophe ni le mot « Les » ne comptent.
+        ("Anim'Est", "animest", "CETEN", "Anim'Est — rattaché à CETEN"),
+        ("Les Baroudeurs", "baroudeurs", "CETEN", "Les Baroudeurs — rattaché à CETEN"),
+        # Le sigle, lui, est la forme sous laquelle les archives citent le club.
+        ("Telecom Nancy Services", "tns", "TNS", "Telecom Nancy Services (TNS)"),
+        # Un club qui est sa propre association ne se voit pas rattaché à soi.
+        ("BDS", "bds", "BDS", "BDS"),
+        ("CETEN", "bde", "CETEN", "CETEN (BDE)"),
+    ],
+)
+def test_titre_de_fiche(club: str, slug: str, asso: str, attendu: str) -> None:
+    """L'en-tête ne répète ni le nom du club ni sa propre association."""
     fiche = Fiche(
-        club="Anim'Est",
-        slug="animest",
-        asso="CETEN",
-        mandat="2025-2026",
-        lignes=(Ligne(role="Président", personnes=("PETIT Luc",)),),
+        club=club,
+        slug=slug,
+        asso=asso,
+        mandat="",
+        lignes=(),
+        description="Une présentation.",
     )
-    assert "Anim'Est — rattaché à CETEN" in format_fiches([fiche])
+    assert f"{attendu}\n" in format_fiches([fiche])
 
 
 def test_format_fiches_separe_les_titulaires_par_une_virgule() -> None:
