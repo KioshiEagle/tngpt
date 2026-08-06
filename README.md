@@ -160,6 +160,6 @@ Utilise l'extension Ruff pour VS Code pour appliquer directement les bonnes prat
 Voir [docs/architecture.md](docs/architecture.md) pour le détail des composants, du trajet d'une question et de la pipeline d'ingestion.
 
 - **Authentification** : OAuth Google restreint aux comptes `@telecomnancy.net`.
-- **Retrieval** : recherche sémantique via embeddings E5 dans Qdrant.
+- **Retrieval** : recherche sémantique via embeddings Cloudflare Workers AI dans Qdrant.
 - **Génération** : Groq (modèle configurable via `GROQ_CHAT_MODEL`), avec un pool de clés API réparties.
 - **Contrôle** : PostgreSQL porte les utilisateurs, permissions, quotas, journal d'usage et catalogue de documents.

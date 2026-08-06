@@ -23,6 +23,7 @@ const WRITING_PHRASES = [
 ];
 
 const ALL_CHIPS = [
+    { label: 'carte des mers', query: 'Montre-moi la carte des mers des clubs de TELECOM Nancy' },
     { label: 'salles libres', query: 'Salles libres maintenant' },
     { label: "Planning de l'inté", query: "Balance le planning de l'intégration 2026" },
     { label: 'lore TN', query: 'Lore de TELECOM Nancy' },
@@ -38,6 +39,74 @@ const ALL_CHIPS = [
 
 function randomFrom(arr) {
     return arr[Math.floor(Math.random() * arr.length)];
+}
+
+// --- Rendu de la carte au trésor ---
+// La prose et la carte sont séparées AVANT tout rendu markdown, comme le fait
+// DHDA. Elles vivent ensuite dans des conteneurs distincts : la prose peut être
+// réécrite à chaque frame du streaming sans jamais toucher à la carte.
+// La fence fermante est facultative, pour ne rien perdre d'une réponse coupée.
+const CARTE_BLOCK = /```[ \t]*tngpt-carte[ \t]*\r?\n([\s\S]*?)(?:```|$)/i;
+
+function splitResponse(raw) {
+    const match = raw.match(CARTE_BLOCK);
+    if (!match) return { prose: raw, carte: null, complete: false };
+    return {
+        prose: raw.replace(match[0], '').trim(),
+        carte: match[1].trim(),
+        // Sans fence fermante, la charge utile est encore en cours de réception.
+        complete: match[0].trimEnd().endsWith('```'),
+    };
+}
+
+// Repli : la liste des clubs reste lisible plutôt qu'un cadre vide.
+function showMapFallback(host, payload, message) {
+    const liste = document.createElement('ul');
+    for (const club of (payload && payload.clubs) || []) {
+        const li = document.createElement('li');
+        li.textContent = `${club.nom} — ${club.tutelle}`;
+        liste.appendChild(li);
+    }
+    const note = document.createElement('div');
+    note.className = 'map-error';
+    note.textContent = message;
+    host.replaceChildren(liste.children.length ? liste : note, note);
+}
+
+// Dessine la carte dans son propre conteneur, créé à la demande à la suite de
+// la prose. Rien n'est redessiné tant que la charge utile n'a pas changé.
+function renderTreasureMap(bubble, source) {
+    if (!bubble || !source) return;
+    let host = bubble.querySelector(':scope > .treasure-map');
+    if (!host) {
+        host = document.createElement('div');
+        host.className = 'treasure-map';
+        bubble.appendChild(host);
+    } else if (host.dataset.mapSource === source) {
+        return;
+    }
+    host.dataset.mapSource = source;
+
+    let payload = null;
+    try {
+        payload = JSON.parse(source);
+        const canvas = document.createElement('div');
+        canvas.className = 'treasure-map-canvas';
+        canvas.appendChild(drawTreasureMap(payload));
+        host.replaceChildren(canvas);
+    } catch (err) {
+        console.warn('carte non dessinée :', err);
+        showMapFallback(host, payload, "j'ai pas réussi à dessiner la carte");
+    }
+}
+
+// Point d'entrée unique : prose dans .msg-text, carte dans son voisin.
+function renderAssistant(bubble, raw) {
+    const textEl = bubble.querySelector('.msg-text');
+    const { prose, carte, complete } = splitResponse(raw);
+    if (textEl) textEl.innerHTML = marked.parse(prose);
+    bubble.dataset.raw = raw;
+    if (carte && complete) renderTreasureMap(bubble, carte);
 }
 
 function shuffle(arr) {
@@ -79,6 +148,8 @@ document.addEventListener('DOMContentLoaded', () => {
         document.documentElement.setAttribute('data-theme', next);
         localStorage.setItem('theme', next);
         updateThemeLabel();
+        // La carte peint avec des variables CSS : elle suit le thème sans
+        // qu'on ait à la redessiner.
     });
 
     // --- User menu ---
@@ -211,17 +282,22 @@ document.addEventListener('DOMContentLoaded', () => {
         let rawText = '';
         let textContainer = null;
         let bubbleContainer = null;
-        let rafPending = false;
+        let rafId = null;
 
         function scheduleRender() {
-            if (rafPending) return;
-            rafPending = true;
-            requestAnimationFrame(() => {
-                rafPending = false;
-                if (textContainer) textContainer.innerHTML = marked.parse(rawText);
-                if (bubbleContainer) bubbleContainer.dataset.raw = rawText;
+            if (rafId !== null) return;
+            rafId = requestAnimationFrame(() => {
+                rafId = null;
+                if (bubbleContainer) renderAssistant(bubbleContainer, rawText);
                 scrollToBottom();
             });
+        }
+
+        // Une frame encore en attente réécrirait la prose après le rendu final.
+        function cancelPendingRender() {
+            if (rafId === null) return;
+            cancelAnimationFrame(rafId);
+            rafId = null;
         }
 
         abortController = new AbortController();
@@ -278,6 +354,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 scheduleRender();
             }
+
+            // Flux entièrement blanc : aucune bulle n'a été créée plus haut, et
+            // sans ce cas l'écran resterait muet, sans erreur ni trace.
+            if (firstChunk) {
+                appendMessage('assistant', "Je n'ai rien réussi à répondre là. Reformule ?");
+            }
         } catch (err) {
             clearTimeout(slowTimer);
             if (oiiaAudio) { oiiaAudio.pause(); oiiaAudio = null; }
@@ -290,11 +372,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (oiiaAudio) { oiiaAudio.pause(); oiiaAudio = null; }
             thinkingDiv.remove();
             duckyImg.classList.remove('spinning');
-            if (textContainer) {
-                textContainer.classList.remove('streaming');
-                // rendu final propre
-                textContainer.innerHTML = marked.parse(rawText);
-            }
+            cancelPendingRender();
+            if (textContainer) textContainer.classList.remove('streaming');
+            // rendu final propre
+            if (bubbleContainer) renderAssistant(bubbleContainer, rawText);
             if (rawText) conversationHistory.push({ role: 'assistant', content: rawText });
             setStreaming(false);
             inp.focus();
@@ -325,8 +406,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const textDiv = document.createElement('div');
         textDiv.className = 'msg-text';
+        bubbleDiv.appendChild(textDiv);
         if (role === 'assistant') {
-            textDiv.innerHTML = content ? marked.parse(content) : '';
+            if (content) renderAssistant(bubbleDiv, content);
         } else {
             textDiv.textContent = content;
         }
@@ -343,7 +425,6 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-        bubbleDiv.appendChild(textDiv);
         msgDiv.appendChild(whoDiv);
         msgDiv.appendChild(bubbleDiv);
         msgDiv.appendChild(copyBtn);
