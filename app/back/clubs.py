@@ -197,13 +197,54 @@ def match_entites(question: str, catalogue: Sequence[Entite]) -> list[Entite]:
 _ROLE_MOTS: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
     (nom, re.compile(motif))
     for nom, motif in (
-        ("vice-president", r"vice.?presid|\bvp\b"),
-        ("responsable communication", r"respo.?com|responsable.?comm?unication"),
+        # Les postes en « vice- » d'abord : leurs abréviations contiennent celles
+        # du poste de base (« vice-trez » contient « trez »).
+        ("vice-president", r"vice[\s-]*(?:presid|prez|pres)|\bvp\b"),
+        ("vice-tresorier", r"vice[\s-]*(?:tresor|trez|treso)|\bvt\b"),
+        ("vice-secretaire", r"vice[\s-]*(?:secretai|secretar|secre)"),
+        # Abréviations trop courtes pour la troncature générique à quatre
+        # lettres, mais d'usage constant dans les bureaux.
+        (
+            "responsable communication",
+            r"respos?[\s-]*comm?\b|responsables?[\s-]*comm?unication",
+        ),
+        ("responsable logistique", r"respos?[\s-]*logs?\b"),
+        ("responsable evenements", r"respos?[\s-]*events?\b"),
         ("president", r"presid|\bprez\b|\bpres\b"),
         ("tresorier", r"tresor|\btrez\b|\btreso\b"),
         ("secretaire", r"secretai|secretar|\bsecre\b"),
     )
 )
+
+
+# Longueur à partir de laquelle un intitulé de poste peut être tronqué :
+# « respo choré » doit atteindre « Responsable chorégraphie ». Quatre lettres
+# suffisent à distinguer tous les postes existants — trois confondraient
+# « informatique » et « infrastructure ».
+_TRONCATURE = 4
+
+
+def _motif_role(nom_normalise: str) -> re.Pattern[str]:
+    """Motif reconnaissant un intitulé de poste et ses formes courantes.
+
+    Trois libertés, tirées de l'usage : « Responsable X » s'abrège en
+    « respo X », tout intitulé se met au pluriel (« les respos logistique »), et
+    le mot qui suit « respo » peut être tronqué (« respo choré »). Dériver tout
+    cela de l'intitulé évite d'inscrire à la main chacun des vingt-quatre postes
+    que comptent désormais les bureaux.
+    """
+    if not nom_normalise.startswith("responsable "):
+        return re.compile(rf"(?<!\w){re.escape(nom_normalise)}s?(?!\w)")
+
+    suffixe = nom_normalise.removeprefix("responsable ")
+    premier, _, suite = suffixe.partition(" ")
+    if len(premier) > _TRONCATURE:
+        corps = re.escape(premier[:_TRONCATURE]) + r"[\w']*"
+    else:
+        corps = re.escape(premier)
+    if suite:
+        corps += rf"(?:\s+{re.escape(suite)})?"
+    return re.compile(rf"(?<!\w)(?:responsables?|respos?|resp)\s+{corps}s?(?!\w)")
 
 
 def match_roles(question: str, roles: Sequence[RoleEntry]) -> list[RoleEntry]:
@@ -215,18 +256,23 @@ def match_roles(question: str, roles: Sequence[RoleEntry]) -> list[RoleEntry]:
     par_nom = {normalize(role.nom): role for role in roles}
 
     found: dict[int, RoleEntry] = {}
+
+    # Les intitulés de la table d'abord, du plus long au plus court, et chacun
+    # consomme le texte trouvé. C'est cet ordre qui fait que « vice-trésorier »
+    # est reconnu comme tel : la table d'abréviations ci-dessous cherche
+    # « tresor », qui matcherait sinon à l'intérieur du mot.
+    for nom in sorted(par_nom, key=len, reverse=True):
+        haystack, hit = _blank(haystack, _motif_role(nom))
+        if hit:
+            role = par_nom[nom]
+            found.setdefault(role.role_id, role)
+
+    # Puis les abréviations qui ne se déduisent pas de l'intitulé (« prez »,
+    # « trez », « respo com »).
     for nom, motif in _ROLE_MOTS:
         haystack, hit = _blank(haystack, motif)
         role = par_nom.get(nom)
         if hit and role is not None:
-            found.setdefault(role.role_id, role)
-
-    # Les rôles hors table d'abréviations restent reconnaissables sur leur nom
-    # exact : la table `roles` est éditée à la main et peut contenir n'importe
-    # quel intitulé.
-    for nom, role in par_nom.items():
-        haystack, hit = _blank(haystack, _word(nom))
-        if hit:
             found.setdefault(role.role_id, role)
 
     return sorted(found.values(), key=lambda role: role.role_id)
