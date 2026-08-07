@@ -327,6 +327,11 @@ class Asso(db.Model):
     # question, et présentation reprise de la plaquette.
     slug = db.Column(db.String(40), nullable=True, index=True)
     description = db.Column(db.Text, nullable=True)
+    # Autres appellations, séparées par « | » : le nom d'usage diffère souvent du
+    # nom officiel (« Abso » pour Abso'Ludique). Une colonne plutôt qu'une table :
+    # le catalogue entier tient en mémoire à chaque question, une jointure
+    # n'apporterait rien et la saisie à la main reste sur une seule ligne.
+    aliases = db.Column(db.Text, nullable=True)
 
     clubs = db.relationship("Club", back_populates="asso")
     bureau = db.relationship(
@@ -373,6 +378,11 @@ class Club(db.Model):
     # même parti pris que `Document.doc_date`, plutôt que de risquer une
     # interprétation jour/mois sur des saisies hétérogènes.
     date_creation = db.Column(db.String(10), nullable=True)
+    # Autres appellations, séparées par « | » : le nom d'usage diffère souvent du
+    # nom officiel (« Abso » pour Abso'Ludique). Une colonne plutôt qu'une table :
+    # le catalogue entier tient en mémoire à chaque question, une jointure
+    # n'apporterait rien et la saisie à la main reste sur une seule ligne.
+    aliases = db.Column(db.Text, nullable=True)
     asso_id = db.Column(db.Integer, db.ForeignKey("assos.asso_id"), nullable=False)
 
     asso = db.relationship("Asso", back_populates="clubs")

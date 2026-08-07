@@ -69,6 +69,10 @@ class Entite:
     nature: str
     tutelle: str = ""
     description: str = ""
+    # Appellations d'usage en plus du nom officiel et du slug : « Abso » pour
+    # Abso'Ludique, « Intégration » pour Les Intéductibles Gaulois. Sans elles,
+    # la reconnaissance rate les noms que les gens emploient réellement.
+    aliases: tuple[str, ...] = ()
 
     @property
     def cle(self) -> tuple[str, int]:
@@ -121,6 +125,12 @@ class Fiche:
     description: str = ""
 
 
+# Une ligne de bureau brute, telle que la requête la ramène : le mandat vient en
+# premier pour que le tri naturel du tuple ordonne par mandat puis par poste.
+BureauRow = tuple[str, int, str, str]
+Bureaux = dict[tuple[str, int], list[BureauRow]]
+
+
 # --- Reconnaissance ------------------------------------------------------------
 
 
@@ -152,7 +162,7 @@ def _word(needle: str) -> re.Pattern[str]:
 
 
 def match_entites(question: str, catalogue: Sequence[Entite]) -> list[Entite]:
-    """Clubs et associations cités, reconnus sur leur nom comme sur leur slug.
+    """Clubs et associations cités : nom officiel, slug ou appellation d'usage.
 
     Les termes les plus longs sont essayés d'abord et consomment le texte
     trouvé : « Telecom Nancy Services » l'emporte donc sur « TNS », et
@@ -163,7 +173,7 @@ def match_entites(question: str, catalogue: Sequence[Entite]) -> list[Entite]:
         (
             (normalize(raw), entite)
             for entite in catalogue
-            for raw in (entite.nom, entite.slug)
+            for raw in (entite.nom, entite.slug, *entite.aliases)
             if raw and raw.strip()
         ),
         key=lambda pair: len(pair[0]),
@@ -285,6 +295,55 @@ def format_fiches(fiches: Sequence[Fiche]) -> str:
     return f"{_ENTETE}\n" + "\n".join(blocs) + "\n\n"
 
 
+# Repli quand la reconnaissance ne trouve rien : l'annuaire entier part dans le
+# prompt et c'est le modèle qui fait le rapprochement — lui saura relier « Abso »
+# à Abso'Ludique, ce qu'une regex ne peut pas deviner sans alias.
+#
+# Mesuré à ~1350 tokens, contre un tier Groq à 8000 tokens/minute et un prompt de
+# chat déjà à ~3900. D'où le garde-fou : seules les questions qui parlent
+# visiblement de vie associative le paient. Une salutation ou une question
+# hors-sujet n'y a pas droit.
+_CUE_ASSO = re.compile(r"\bclubs?\b|\bassos?\b|\bassociations?\b|\bbureaux?\b")
+
+_ENTETE_ANNUAIRE = (
+    "ANNUAIRE DE LA VIE ASSOCIATIVE — base de données de l'école, fait autorité.\n"
+    "Aucun nom n'a été reconnu tel quel dans la question. Identifie toi-même "
+    "l'entité visée dans la liste ci-dessous, même si elle y figure sous un autre "
+    "nom, puis réponds avec ses données. Si aucune ne correspond, dis-le."
+)
+
+
+def format_annuaire(entites: Sequence[Entite], bureaux: Bureaux) -> str:
+    """Annuaire complet : une ligne par entité, avec son bureau courant.
+
+    Une seule ligne par club plutôt qu'une par poste : à quarante-cinq entités,
+    la différence de volume est celle qui fait tenir le bloc dans le budget.
+    """
+    lignes = []
+    for entite in entites:
+        brutes = bureaux.get(entite.cle, [])
+        mandat = select_mandat({b[0] for b in brutes}, None)
+        postes = _grouper(brutes, mandat, set()) if mandat else ()
+        detail = " ; ".join(
+            f"{poste.role} : {', '.join(poste.personnes)}" for poste in postes
+        )
+        marque = "asso" if entite.nature == NATURE_ASSO else "club"
+        lignes.append(f"- {entite.nom} ({marque})" + (f" — {detail}" if detail else ""))
+    if not lignes:
+        return ""
+    return f"{_ENTETE_ANNUAIRE}\n" + "\n".join(lignes) + "\n\n"
+
+
+def veut_annuaire(question: str, roles_cites: Sequence[RoleEntry]) -> bool:
+    """Indique si une question non reconnue mérite qu'on lui serve l'annuaire.
+
+    Un poste cité ou le mot « club »/« asso »/« bureau » suffisent : c'est le
+    signe que la question porte sur la vie associative, et donc qu'un nom nous a
+    échappé plutôt qu'elle ne parle d'autre chose.
+    """
+    return bool(roles_cites) or bool(_CUE_ASSO.search(normalize(question)))
+
+
 def _lettres(text: str) -> str:
     """Ne garde que lettres et chiffres : « Anim'Est » et « animest » se rejoignent."""
     return "".join(c for c in normalize(text) if c.isalnum())
@@ -321,6 +380,11 @@ def _titre(fiche: Fiche) -> str:
 # --- Accès à la base -----------------------------------------------------------
 
 
+def _aliases(brut: str | None) -> tuple[str, ...]:
+    """Découpe la colonne `aliases`, une liste séparée par des barres verticales."""
+    return tuple(a.strip() for a in (brut or "").split("|") if a.strip())
+
+
 def load_catalogue() -> tuple[list[Entite], list[RoleEntry]]:
     """Charge associations, clubs et rôles, sous une forme détachée de l'ORM.
 
@@ -334,6 +398,7 @@ def load_catalogue() -> tuple[list[Entite], list[RoleEntry]]:
             slug=asso.slug or "",
             nature=NATURE_ASSO,
             description=asso.description or "",
+            aliases=_aliases(asso.aliases),
         )
         for asso in db.session.scalars(db.select(Asso)).all()
     ]
@@ -345,6 +410,7 @@ def load_catalogue() -> tuple[list[Entite], list[RoleEntry]]:
             nature=NATURE_CLUB,
             tutelle=club.asso.asso_name if club.asso else "TELECOM Nancy",
             description=club.description or "",
+            aliases=_aliases(club.aliases),
         )
         for club in db.session.scalars(db.select(Club)).all()
     ]
@@ -353,12 +419,6 @@ def load_catalogue() -> tuple[list[Entite], list[RoleEntry]]:
         for role in db.session.scalars(db.select(Role)).all()
     ]
     return assos + clubs, roles
-
-
-# Une ligne de bureau brute, telle que la requête la ramène : le mandat vient en
-# premier pour que le tri naturel du tuple ordonne par mandat puis par poste.
-BureauRow = tuple[str, int, str, str]
-Bureaux = dict[tuple[str, int], list[BureauRow]]
 
 
 def _load_bureaux(entites: Sequence[Entite]) -> Bureaux:
@@ -465,7 +525,13 @@ def lookup_context(question: str) -> str:
 
     cites = match_entites(question, catalogue)
     if not cites:
-        return ""
+        # Rien de reconnu : soit la question ne parle pas de vie associative et
+        # on se tait, soit un nom nous a échappé et on laisse le modèle le
+        # retrouver dans l'annuaire.
+        if not veut_annuaire(question, match_roles(question, roles)):
+            return ""
+        logger.debug("Aucune entité reconnue : repli sur l'annuaire complet.")
+        return format_annuaire(catalogue, _load_bureaux(catalogue))
     if len(cites) > MAX_FICHES:
         logger.debug(
             "Fiches : %d entités reconnues, plafonné à %d.", len(cites), MAX_FICHES

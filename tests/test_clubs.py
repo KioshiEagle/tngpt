@@ -14,12 +14,14 @@ from app.back.clubs import (
     Ligne,
     RoleEntry,
     assemble_fiches,
+    format_annuaire,
     format_fiches,
     match_annee,
     match_entites,
     match_roles,
     normalize,
     select_mandat,
+    veut_annuaire,
 )
 
 # Catalogue de test : TNS pour le cas nominal (nom développé + sigle),
@@ -272,6 +274,58 @@ def test_match_entites_classe_les_assos_avant_les_clubs() -> None:
     bds = Entite(entite_id=0, nom="BDS", slug="bds", nature=NATURE_ASSO)
     trouves = match_entites("le BDS et les baroudeurs", [_BAROUDEURS, bds])
     assert [e.nature for e in trouves] == [NATURE_ASSO, NATURE_CLUB]
+
+
+# --- Repli sur l'annuaire ------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "qui est le président de Machin ?",
+        "le trésorier de Truc",
+        "c'est quoi le club Bidule ?",
+        "quelles sont les assos de l'école ?",
+        "le bureau de je-sais-plus-quoi",
+    ],
+)
+def test_veut_annuaire_sur_une_question_associative(question: str) -> None:
+    """Un poste cité ou le mot club/asso/bureau déclenche le repli."""
+    assert veut_annuaire(question, match_roles(question, _ROLES))
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "salut",
+        "c'est quoi le WEI ?",
+        "quelles sont les salles libres ?",
+        "feur",
+    ],
+)
+def test_veut_pas_annuaire_hors_sujet(question: str) -> None:
+    """Une question étrangère à la vie associative ne paie pas les ~1350 tokens."""
+    assert not veut_annuaire(question, match_roles(question, _ROLES))
+
+
+def test_format_annuaire_liste_tout_avec_la_nature() -> None:
+    """L'annuaire donne une ligne par entité, son type et son bureau."""
+    asso = Entite(entite_id=0, nom="BDS", slug="bds", nature=NATURE_ASSO)
+    bureaux = {_TNS.cle: _BUREAU_TNS}
+    rendu = format_annuaire([asso, _TNS], bureaux)
+    assert "ANNUAIRE DE LA VIE ASSOCIATIVE" in rendu
+    assert "- BDS (asso)" in rendu
+    # Bureau courant seulement : MARTIN Paul est le président 2024-2025.
+    assert (
+        "- Telecom Nancy Services (club) — Président : NOBILE Tobias ; "
+        "Trésorier : DUPONT Marie" in rendu
+    )
+    assert "MARTIN Paul" not in rendu
+
+
+def test_format_annuaire_vide() -> None:
+    """Sans entité, pas d'annuaire — on ne poste pas un en-tête tout seul."""
+    assert format_annuaire([], {}) == ""
 
 
 # --- Rendu ---------------------------------------------------------------------
