@@ -119,6 +119,8 @@ def test_match_entites_ignore_les_questions_sans_club(question: str) -> None:
         ("le prez de TNS", [_PRESIDENT]),
         ("qui est secrétaire ?", [_SECRETAIRE]),
         ("le respo com de TNS", [_RESPO_COM]),
+        ("les respos com du CETEN", [_RESPO_COM]),
+        ("les responsables communication", [_RESPO_COM]),
         ("qui est responsable communication ?", [_RESPO_COM]),
     ],
 )
@@ -129,9 +131,56 @@ def test_match_roles_reconnait_intitules_et_abreviations(
     assert match_roles(question, _ROLES) == attendu
 
 
-def test_match_roles_distingue_vice_president_de_president() -> None:
-    """« vice-président » consomme le terme et n'entraîne pas « président »."""
-    assert match_roles("qui est vice-président de TNS ?", _ROLES) == [_VICE]
+_VICE_TRESORIER = RoleEntry(role_id=7, nom="Vice-trésorier")
+_VICE_SECRETAIRE = RoleEntry(role_id=8, nom="Vice-secrétaire")
+_RESPO_LOG = RoleEntry(role_id=5, nom="Responsable logistique")
+_RESPO_CHORE = RoleEntry(role_id=17, nom="Responsable chorégraphie")
+_RESPO_INFO = RoleEntry(role_id=21, nom="Responsable informatique")
+_RESPO_INFRA = RoleEntry(role_id=22, nom="Responsable infrastructure")
+_ROLES_ETENDUS = [
+    *_ROLES,
+    _RESPO_LOG,
+    _VICE_TRESORIER,
+    _VICE_SECRETAIRE,
+    _RESPO_CHORE,
+    _RESPO_INFO,
+    _RESPO_INFRA,
+]
+
+
+@pytest.mark.parametrize(
+    ("question", "attendu"),
+    [
+        # Les préfixes « vice- » doivent l'emporter sur le poste qu'ils
+        # contiennent : « tresor » matche à l'intérieur de « vice-trésorier ».
+        ("qui est vice-président de TNS ?", [_VICE]),
+        ("qui est vice-trésorier du BDE ?", [_VICE_TRESORIER]),
+        ("le vice-trésorier", [_VICE_TRESORIER]),
+        # Abréviations d'usage : « vice-trez » ne doit pas dégénérer en trésorier.
+        ("le vice-trez du BDE", [_VICE_TRESORIER]),
+        ("qui est vice trez ?", [_VICE_TRESORIER]),
+        ("le vice-prez", [_VICE]),
+        ("qui est vice prez du BDE ?", [_VICE]),
+        ("le vice-secré", [_VICE_SECRETAIRE]),
+        # « Responsable X » s'abrège et se met au pluriel dans l'usage.
+        ("les respos logistique d'Anim'Est", [_RESPO_LOG]),
+        ("le respo logistique", [_RESPO_LOG]),
+        ("responsables logistique", [_RESPO_LOG]),
+        ("qui est responsable logistique ?", [_RESPO_LOG]),
+        ("le respo log", [_RESPO_LOG]),
+        # Le mot qui suit « respo » peut être tronqué.
+        ("le respo choré d'Anim'Est", [_RESPO_CHORE]),
+        ("qui est respo chorégraphie ?", [_RESPO_CHORE]),
+        # Quatre lettres séparent « informatique » d'« infrastructure ».
+        ("le respo info", [_RESPO_INFO]),
+        ("le respo infra", [_RESPO_INFRA]),
+    ],
+)
+def test_match_roles_prefixes_et_pluriels(
+    question: str, attendu: list[RoleEntry]
+) -> None:
+    """Un intitulé long prime sur le court qu'il contient, pluriel compris."""
+    assert match_roles(question, _ROLES_ETENDUS) == attendu
 
 
 def test_match_roles_sans_poste_cite() -> None:
