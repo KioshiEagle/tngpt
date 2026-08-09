@@ -39,6 +39,9 @@ _CORPS_MIN = 200
 # Identifiant de document : `Document.source_id` est un VARCHAR(128).
 _MAX_SOURCE_ID = 128
 
+# Archives WordPress : des listes d'amorces, sans contenu propre.
+_SEGMENTS_ARCHIVE = ("/category/", "/tag/", "/author/")
+
 _NON_SLUG = re.compile(r"[^a-z0-9]+")
 # Séparateurs possibles devant le suffixe du site, en échappement : le
 # demi-cadratin est indiscernable du trait d'union à l'oeil dans le source.
@@ -83,19 +86,31 @@ def _nettoyer_titre(brut: str | None, url: str) -> str:
     return segments[-1].replace("-", " ") if segments else url
 
 
-def _doublon_connu(url: str) -> bool:
-    """Écarte les URLs qui redoublent une page déjà listée sous une autre forme.
+def _hors_perimetre(url: str) -> bool:
+    """Écarte les URLs sans contenu propre à indexer.
 
-    Le sitemap WordPress liste deux fois chaque contenu : sous son permalien
-    propre et sous sa forme brute (`/?p=11279`, `/?page_id=311`). Toutes ces
-    formes brutes ont un chemin vide et se réduisaient au même `source_id`, donc
-    au même document, chacune écrasant la précédente.
+    Deux familles.
 
-    Les traductions `?lang=en` posaient le même problème en pire : partageant le
-    chemin de leur original, elles écrasaient la version française — dans une
-    base interrogée en français.
+    Les doublons d'abord. Le sitemap WordPress liste chaque contenu sous son
+    permalien propre et sous sa forme brute (`/?p=11279`, `/?page_id=311`) :
+    toutes ces formes ont un chemin vide et se réduisaient au même `source_id`,
+    donc au même document, chacune écrasant la précédente. Les traductions
+    `?lang=en` faisaient pire, écrasant la version française de leur original
+    dans une base interrogée en français.
+
+    Les archives de catégorie, d'étiquette et d'auteur ensuite. Elles n'ont pas
+    de contenu propre — seulement des amorces d'articles — et portent la date de
+    leur dernière régénération, donc une fraîcheur perpétuellement maximale. Au
+    classement hybride, « Archives des études » doublait ainsi les vraies pages
+    sur la question « qui est Guillaume Rozier » avec un score sémantique
+    pourtant inférieur (0.543 contre 0.603), et repoussait la réponse hors des
+    cinq premiers résultats. Le contrôle d'URL canonique ne les attrape pas :
+    contrairement aux pages de listing, leur canonique est bien la leur.
     """
-    return bool(urlparse(url).query)
+    parts = urlparse(url)
+    return bool(parts.query) or any(
+        segment in parts.path for segment in _SEGMENTS_ARCHIVE
+    )
 
 
 def lire(url: str, html: str) -> Page | None:
@@ -234,7 +249,7 @@ def crawl(
     client = httpx.Client(
         timeout=_TIMEOUT, follow_redirects=True, headers={"User-Agent": _USER_AGENT}
     )
-    urls = [u for u in lister_urls(client, sitemap) if not _doublon_connu(u)][:limite]
+    urls = [u for u in lister_urls(client, sitemap) if not _hors_perimetre(u)][:limite]
     stats = {"total": len(urls), "converties": 0, "ignorees": 0, "echecs": 0}
 
     for rang, url in enumerate(urls, start=1):
