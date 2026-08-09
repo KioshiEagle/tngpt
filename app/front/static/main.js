@@ -109,6 +109,18 @@ function renderAssistant(bubble, raw) {
     if (carte && complete) renderTreasureMap(bubble, carte);
 }
 
+// Un rendu qui échoue ne doit jamais emporter le flux avec lui : la réponse
+// s'affiche alors en texte brut, et l'erreur part en console pour être vue.
+function safeRenderAssistant(bubble, raw) {
+    try {
+        renderAssistant(bubble, raw);
+    } catch (err) {
+        console.error('Rendu de la réponse impossible', err);
+        const textEl = bubble.querySelector('.msg-text');
+        if (textEl) textEl.textContent = raw;
+    }
+}
+
 function shuffle(arr) {
     const a = [...arr];
     for (let i = a.length - 1; i > 0; i--) {
@@ -351,7 +363,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (rafId !== null) return;
             rafId = requestAnimationFrame(() => {
                 rafId = null;
-                if (bubbleContainer) renderAssistant(bubbleContainer, rawText);
+                if (bubbleContainer) safeRenderAssistant(bubbleContainer, rawText);
                 scrollToBottom();
             });
         }
@@ -449,11 +461,19 @@ document.addEventListener('DOMContentLoaded', () => {
             duckyImg.classList.remove('spinning');
             cancelPendingRender();
             if (textContainer) textContainer.classList.remove('streaming');
-            // rendu final propre
-            if (bubbleContainer) renderAssistant(bubbleContainer, rawText);
+
+            // Le retour à l'état « prêt » passe avant le rendu final. Placé
+            // après, la moindre exception de `renderAssistant` — marked absent,
+            // carte au trésor malformée — sautait `setStreaming(false)` et
+            // laissait le bouton bloqué sur « stop » : plus aucun message ne
+            // pouvait être envoyé, sans autre trace qu'une erreur en console.
             if (rawText) conversationHistory.push({ role: 'assistant', content: rawText });
             setStreaming(false);
             inp.focus();
+
+            // rendu final propre ; à défaut, le texte brut vaut mieux qu'une
+            // bulle vide.
+            if (bubbleContainer) safeRenderAssistant(bubbleContainer, rawText);
         }
     });
 
@@ -483,7 +503,7 @@ document.addEventListener('DOMContentLoaded', () => {
         textDiv.className = 'msg-text';
         bubbleDiv.appendChild(textDiv);
         if (role === 'assistant') {
-            if (content) renderAssistant(bubbleDiv, content);
+            if (content) safeRenderAssistant(bubbleDiv, content);
         } else {
             textDiv.textContent = content;
         }
