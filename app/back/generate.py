@@ -90,6 +90,7 @@ _PROMPT_TEMPLATE = (
 _HTTP_400 = 400
 _HTTP_429 = 429
 _HTTP_413 = 413
+_MAX_RETRIES = 3
 _THINK_OPEN = "<think>"
 _THINK_CLOSE = "</think>"
 _SYSTEM_MSG = "Tu es un étudiant de Telecom Nancy."
@@ -383,6 +384,53 @@ def _classify_error(
     return _RetryOutcome(error_message=f"Erreur inattendue : {e!s}")
 
 
+def _attempt(
+    req: GenerateRequest,
+    results: list[SearchResult],
+    client: Groq,
+    spec: CallSpec,
+    params: GroqParams,
+) -> Iterator[str]:
+    """Un essai : construit le prompt, appelle Groq et cède la complétion lue."""
+    # Les fiches passent devant les archives et survivent au repli 413, qui
+    # ne rogne que `results` : c'est la partie courte du contexte, et la seule
+    # qui fasse autorité.
+    context = req.fiches + _build_context(results)
+    prompt = spec.build(context, req.question, user_name=req.user_name)
+    completion = client.chat.completions.create(
+        model=_CHAT_MODEL,
+        messages=[
+            {"role": "system", "content": _SYSTEM_MSG},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.7,
+        stream=True,
+        **params,
+    )
+    yield from spec.consume(completion)
+
+
+def _apply(
+    outcome: _RetryOutcome,
+    results: list[SearchResult],
+    params: GroqParams,
+    attempt: int,
+) -> tuple[list[SearchResult], GroqParams]:
+    """Applique le repli décidé avant de relancer un essai."""
+    if outcome.smaller_context:
+        results = results[: max(1, len(results) // 2)]
+    if outcome.drop_params:
+        logger.warning(
+            "Groq refuse %s pour %s : nouvel essai sans ces paramètres.",
+            sorted(params),
+            _CHAT_MODEL,
+        )
+        params = {}
+    if outcome.backoff:
+        time.sleep(2**attempt)
+    return results, params
+
+
 def _stream_with_retries(
     req: GenerateRequest,
     results: list[SearchResult],
@@ -392,46 +440,21 @@ def _stream_with_retries(
     """Appelle Groq avec repli (429 : backoff, 413 : moins de contexte)."""
     current_results = results
     current_params: GroqParams = spec.params if spec.params is not None else {}
-    max_retries = 3
 
-    for attempt in range(max_retries):
-        # Les fiches passent devant les archives et survivent au repli 413, qui
-        # ne rogne que `current_results` : c'est la partie courte du contexte,
-        # et la seule qui fasse autorité.
-        context = req.fiches + _build_context(current_results)
-        prompt = spec.build(context, req.question, user_name=req.user_name)
+    for attempt in range(_MAX_RETRIES):
         try:
-            completion = client.chat.completions.create(
-                model=_CHAT_MODEL,
-                messages=[
-                    {"role": "system", "content": _SYSTEM_MSG},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.7,
-                stream=True,
-                **current_params,
-            )
-            yield from spec.consume(completion)
+            yield from _attempt(req, current_results, client, spec, current_params)
         except Exception as e:  # noqa: BLE001
             outcome = _classify_error(
-                e, attempt, max_retries, has_params=bool(current_params)
+                e, attempt, _MAX_RETRIES, has_params=bool(current_params)
             )
-            if outcome.smaller_context:
-                current_results = current_results[: max(1, len(current_results) // 2)]
-            if outcome.drop_params:
-                logger.warning(
-                    "Groq refuse %s pour %s : nouvel essai sans ces paramètres.",
-                    sorted(current_params),
-                    _CHAT_MODEL,
-                )
-                current_params = {}
-            if outcome.retry:
-                if outcome.backoff:
-                    time.sleep(2**attempt)
-                continue
-            # _classify_error garantit un message quand retry est False.
-            assert outcome.error_message is not None
-            yield outcome.error_message
-            return
+            if not outcome.retry:
+                # _classify_error garantit un message quand retry est False.
+                assert outcome.error_message is not None
+                yield outcome.error_message
+                return
+            current_results, current_params = _apply(
+                outcome, current_results, current_params, attempt
+            )
         else:
             return
