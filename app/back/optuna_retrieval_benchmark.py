@@ -17,6 +17,7 @@ from sentence_transformers import CrossEncoder, SentenceTransformer
 
 from app.back.chunking import get_hybrid_chunks
 from app.back.mdtoqdrant import _parse_frontmatter
+
 # Réutilisation directe des constantes/fonction de fraîcheur de la prod
 # (plutôt que de les dupliquer) : garantit que le benchmark ne peut jamais
 # diverger silencieusement de ce qui tourne réellement en prod. Note : cet
@@ -26,7 +27,9 @@ from app.back.mdtoqdrant import _parse_frontmatter
 # ne pas surprendre.
 from app.back.retrieval import CANDIDATE_MULTIPLIER, FRESHNESS_ALPHA, _freshness_score
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 # ==========================================
@@ -133,7 +136,9 @@ def _chunk_metrics(retrieved: list, answer_snippets: list, expected_docs: set) -
             return 1.0, 1.0, 1.0, 1.0
         return 0.0, 0.0, 0.0, 0.0
 
-    relevance_flags = [_chunk_is_relevant(r, answer_snippets, expected_docs) for r in retrieved]
+    relevance_flags = [
+        _chunk_is_relevant(r, answer_snippets, expected_docs) for r in retrieved
+    ]
 
     mrr = 0.0
     for rank, rel in enumerate(relevance_flags, 1):
@@ -147,7 +152,9 @@ def _chunk_metrics(retrieved: list, answer_snippets: list, expected_docs: set) -
     # l'idéal (idcg) se calcule avec k=1, donc nDCG se réduit quasiment au même
     # signal que MRR (rang du premier hit) — les deux ensemble comptaient deux
     # fois la même information dans le score composite.
-    dcg = sum(1.0 / math.log2(rank + 1) for rank, rel in enumerate(relevance_flags, 1) if rel)
+    dcg = sum(
+        1.0 / math.log2(rank + 1) for rank, rel in enumerate(relevance_flags, 1) if rel
+    )
     k = min(len(retrieved), len(answer_snippets)) if retrieved else 1
     idcg = sum(1.0 / math.log2(rank + 1) for rank in range(1, k + 1)) if k > 0 else 1.0
     ndcg = dcg / idcg if idcg > 0 else 0.0
@@ -155,8 +162,12 @@ def _chunk_metrics(retrieved: list, answer_snippets: list, expected_docs: set) -
     # Le recall ne compte que le texte des chunks dont la source est valide,
     # pour la même raison que _chunk_is_relevant : un chunk hors-sujet ne doit
     # pas pouvoir "satisfaire" un groupe de snippets par coïncidence.
-    combined = " ".join(r["text"] for r in retrieved if r["source"] in expected_docs).lower()
-    satisfied_groups = sum(1 for group in answer_snippets if any(alt.lower() in combined for alt in group))
+    combined = " ".join(
+        r["text"] for r in retrieved if r["source"] in expected_docs
+    ).lower()
+    satisfied_groups = sum(
+        1 for group in answer_snippets if any(alt.lower() in combined for alt in group)
+    )
     recall = satisfied_groups / len(answer_snippets)
 
     precision = (sum(relevance_flags) / len(retrieved)) if retrieved else 0.0
@@ -179,6 +190,8 @@ def _append_trial_log(record: dict) -> None:
 
 # Cache models
 _embedding_models_cache = {}
+
+
 def _get_embedding_model(model_name: str):
     model_map = {
         "miniLM": "all-MiniLM-L6-v2",
@@ -208,11 +221,15 @@ def _get_embedding_model(model_name: str):
         # trust_remote_code=True : sans effet sur les modèles actuels
         # (architectures stock) ; laissé en place pour le jour où gte-multi
         # (ou un autre modèle à code custom) serait réactivé ci-dessus.
-        _embedding_models_cache[real_name] = SentenceTransformer(real_name, trust_remote_code=True)
+        _embedding_models_cache[real_name] = SentenceTransformer(
+            real_name, trust_remote_code=True
+        )
         # SentenceTransformer choisit cuda automatiquement si torch.cuda est
         # disponible — ce log rend explicite si l'encodage tourne sur CPU
         # (lent) ou GPU (rapide), sans avoir à deviner depuis les logs génériques.
-        logger.info(f"  -> device utilisé : {_embedding_models_cache[real_name].device}")
+        logger.info(
+            f"  -> device utilisé : {_embedding_models_cache[real_name].device}"
+        )
     return _embedding_models_cache[real_name]
 
 
@@ -227,12 +244,19 @@ RERANK_MODEL_NAME = "BAAI/bge-reranker-v2-m3"
 RERANK_POOL_SIZE = 20
 
 _reranker_models_cache = {}
+
+
 def _get_reranker_model():
     if RERANK_MODEL_NAME not in _reranker_models_cache:
         logger.info(f"Chargement du reranker: {RERANK_MODEL_NAME}")
-        _reranker_models_cache[RERANK_MODEL_NAME] = CrossEncoder(RERANK_MODEL_NAME, trust_remote_code=True)
-        logger.info(f"  -> device utilisé : {_reranker_models_cache[RERANK_MODEL_NAME].model.device}")
+        _reranker_models_cache[RERANK_MODEL_NAME] = CrossEncoder(
+            RERANK_MODEL_NAME, trust_remote_code=True
+        )
+        logger.info(
+            f"  -> device utilisé : {_reranker_models_cache[RERANK_MODEL_NAME].model.device}"
+        )
     return _reranker_models_cache[RERANK_MODEL_NAME]
+
 
 # ==========================================
 # 1. DATASET DE RETRIEVAL (100% SANS LLM)
@@ -244,130 +268,474 @@ def _get_reranker_model():
 # unique et pèse une seule fois dans le score.
 RETRIEVAL_DATASET = [
     # --- CR BDE du 03/01/2022 (1Fx6hkwnMyEqELbhTxmVUuvKH9r_2CEi6) ---
-    {"question": "Qui a présidé la réunion du Bureau des Élèves du 3 janvier 2022 ?", "expected_documents": ["1Fx6hkwnMyEqELbhTxmVUuvKH9r_2CEi6"], "answer_snippets": [["Quentin ROUSSEY"]]},
-    {"question": "Qui présidait le Bureau des Élèves lors de la séance du 3 janvier 2022 ?", "expected_documents": ["1Fx6hkwnMyEqELbhTxmVUuvKH9r_2CEi6"], "answer_snippets": [["Quentin ROUSSEY"]]},
-    {"question": "Qui était secrétaire de séance à la réunion du BDE du 3 janvier 2022 ?", "expected_documents": ["1Fx6hkwnMyEqELbhTxmVUuvKH9r_2CEi6"], "answer_snippets": [["Rachel BACZYNSKI"]]},
-    {"question": "Quelles sont les dates des campagnes d'intégration 2022 annoncées lors de la réunion du 3 janvier 2022 ?", "expected_documents": ["1Fx6hkwnMyEqELbhTxmVUuvKH9r_2CEi6"], "answer_snippets": [["24 janvier au 4 février 2022"]]},
-    {"question": "Contre quelle entreprise le CETEN a-t-il un procès en cours, évoqué lors de la réunion du BDE du 3 janvier 2022 ?", "expected_documents": ["1Fx6hkwnMyEqELbhTxmVUuvKH9r_2CEi6"], "answer_snippets": [["GOLDEN Voyages", "WEI and GO"]]},
-    {"question": "Quel délai la secrétaire du BDE 2022 annonce-t-elle pour l'envoi des comptes-rendus ?", "expected_documents": ["1Fx6hkwnMyEqELbhTxmVUuvKH9r_2CEi6"], "answer_snippets": [["48h"]]},
-
+    {
+        "question": "Qui a présidé la réunion du Bureau des Élèves du 3 janvier 2022 ?",
+        "expected_documents": ["1Fx6hkwnMyEqELbhTxmVUuvKH9r_2CEi6"],
+        "answer_snippets": [["Quentin ROUSSEY"]],
+    },
+    {
+        "question": "Qui présidait le Bureau des Élèves lors de la séance du 3 janvier 2022 ?",
+        "expected_documents": ["1Fx6hkwnMyEqELbhTxmVUuvKH9r_2CEi6"],
+        "answer_snippets": [["Quentin ROUSSEY"]],
+    },
+    {
+        "question": "Qui était secrétaire de séance à la réunion du BDE du 3 janvier 2022 ?",
+        "expected_documents": ["1Fx6hkwnMyEqELbhTxmVUuvKH9r_2CEi6"],
+        "answer_snippets": [["Rachel BACZYNSKI"]],
+    },
+    {
+        "question": "Quelles sont les dates des campagnes d'intégration 2022 annoncées lors de la réunion du 3 janvier 2022 ?",
+        "expected_documents": ["1Fx6hkwnMyEqELbhTxmVUuvKH9r_2CEi6"],
+        "answer_snippets": [["24 janvier au 4 février 2022"]],
+    },
+    {
+        "question": "Contre quelle entreprise le CETEN a-t-il un procès en cours, évoqué lors de la réunion du BDE du 3 janvier 2022 ?",
+        "expected_documents": ["1Fx6hkwnMyEqELbhTxmVUuvKH9r_2CEi6"],
+        "answer_snippets": [["GOLDEN Voyages", "WEI and GO"]],
+    },
+    {
+        "question": "Quel délai la secrétaire du BDE 2022 annonce-t-elle pour l'envoi des comptes-rendus ?",
+        "expected_documents": ["1Fx6hkwnMyEqELbhTxmVUuvKH9r_2CEi6"],
+        "answer_snippets": [["48h"]],
+    },
     # --- AGO du 25/01/2022 (1El47-pyPFL27hO2pdCX_XXWWfl03mIeC) ---
-    {"question": "Qui a présidé l'Assemblée Générale Ordinaire du 25 janvier 2022 ?", "expected_documents": ["1El47-pyPFL27hO2pdCX_XXWWfl03mIeC"], "answer_snippets": [["Julien TEISSIER"]]},
-    {"question": "À quel pourcentage le bilan moral 2021 a-t-il été accepté lors de l'AGO du 25 janvier 2022 ?", "expected_documents": ["1El47-pyPFL27hO2pdCX_XXWWfl03mIeC"], "answer_snippets": [["91%"]]},
-    {"question": "Quel pourcentage de votes favorables a obtenu le bilan moral 2021 à l'Assemblée Générale Ordinaire du 25 janvier 2022 ?", "expected_documents": ["1El47-pyPFL27hO2pdCX_XXWWfl03mIeC"], "answer_snippets": [["91%"]]},
-    {"question": "À quel pourcentage le bilan financier 2021 a-t-il été accepté lors de l'AGO du 25 janvier 2022 ?", "expected_documents": ["1El47-pyPFL27hO2pdCX_XXWWfl03mIeC"], "answer_snippets": [["93%"]]},
-    {"question": "Combien de membres étaient présents ou représentés à l'AGO du 25 janvier 2022 ?", "expected_documents": ["1El47-pyPFL27hO2pdCX_XXWWfl03mIeC"], "answer_snippets": [["au nombre de 44"]]},
-    {"question": "Qui a présenté le bilan financier 2021 lors de l'AGO du 25 janvier 2022 ?", "expected_documents": ["1El47-pyPFL27hO2pdCX_XXWWfl03mIeC"], "answer_snippets": [["Tom CABARAT"]]},
-
+    {
+        "question": "Qui a présidé l'Assemblée Générale Ordinaire du 25 janvier 2022 ?",
+        "expected_documents": ["1El47-pyPFL27hO2pdCX_XXWWfl03mIeC"],
+        "answer_snippets": [["Julien TEISSIER"]],
+    },
+    {
+        "question": "À quel pourcentage le bilan moral 2021 a-t-il été accepté lors de l'AGO du 25 janvier 2022 ?",
+        "expected_documents": ["1El47-pyPFL27hO2pdCX_XXWWfl03mIeC"],
+        "answer_snippets": [["91%"]],
+    },
+    {
+        "question": "Quel pourcentage de votes favorables a obtenu le bilan moral 2021 à l'Assemblée Générale Ordinaire du 25 janvier 2022 ?",
+        "expected_documents": ["1El47-pyPFL27hO2pdCX_XXWWfl03mIeC"],
+        "answer_snippets": [["91%"]],
+    },
+    {
+        "question": "À quel pourcentage le bilan financier 2021 a-t-il été accepté lors de l'AGO du 25 janvier 2022 ?",
+        "expected_documents": ["1El47-pyPFL27hO2pdCX_XXWWfl03mIeC"],
+        "answer_snippets": [["93%"]],
+    },
+    {
+        "question": "Combien de membres étaient présents ou représentés à l'AGO du 25 janvier 2022 ?",
+        "expected_documents": ["1El47-pyPFL27hO2pdCX_XXWWfl03mIeC"],
+        "answer_snippets": [["au nombre de 44"]],
+    },
+    {
+        "question": "Qui a présenté le bilan financier 2021 lors de l'AGO du 25 janvier 2022 ?",
+        "expected_documents": ["1El47-pyPFL27hO2pdCX_XXWWfl03mIeC"],
+        "answer_snippets": [["Tom CABARAT"]],
+    },
     # --- AGE du 11/01/2022 (1Fa0mwG-UqhqsdzO4ohIS2N_YvPg94c0Z) ---
-    {"question": "Combien de membres étaient présents ou représentés à l'Assemblée Générale Extraordinaire du 11 janvier 2022 ?", "expected_documents": ["1Fa0mwG-UqhqsdzO4ohIS2N_YvPg94c0Z"], "answer_snippets": [["au nombre de 102"]]},
-    {"question": "Combien de personnes avaient le droit de vote à l'AGE du 11 janvier 2022 ?", "expected_documents": ["1Fa0mwG-UqhqsdzO4ohIS2N_YvPg94c0Z"], "answer_snippets": [["au nombre de 102"]]},
-    {"question": "À quel pourcentage la modification de l'article 10.4.2 sur la composition du bureau a-t-elle été adoptée lors de l'AGE du 11 janvier 2022 ?", "expected_documents": ["1Fa0mwG-UqhqsdzO4ohIS2N_YvPg94c0Z"], "answer_snippets": [["92,1%"]]},
-    {"question": "Quel était le taux d'approbation de la modification sur les modalités des élections du bureau des élèves à l'AGE du 11 janvier 2022 ?", "expected_documents": ["1Fa0mwG-UqhqsdzO4ohIS2N_YvPg94c0Z"], "answer_snippets": [["89,2%"]]},
-
+    {
+        "question": "Combien de membres étaient présents ou représentés à l'Assemblée Générale Extraordinaire du 11 janvier 2022 ?",
+        "expected_documents": ["1Fa0mwG-UqhqsdzO4ohIS2N_YvPg94c0Z"],
+        "answer_snippets": [["au nombre de 102"]],
+    },
+    {
+        "question": "Combien de personnes avaient le droit de vote à l'AGE du 11 janvier 2022 ?",
+        "expected_documents": ["1Fa0mwG-UqhqsdzO4ohIS2N_YvPg94c0Z"],
+        "answer_snippets": [["au nombre de 102"]],
+    },
+    {
+        "question": "À quel pourcentage la modification de l'article 10.4.2 sur la composition du bureau a-t-elle été adoptée lors de l'AGE du 11 janvier 2022 ?",
+        "expected_documents": ["1Fa0mwG-UqhqsdzO4ohIS2N_YvPg94c0Z"],
+        "answer_snippets": [["92,1%"]],
+    },
+    {
+        "question": "Quel était le taux d'approbation de la modification sur les modalités des élections du bureau des élèves à l'AGE du 11 janvier 2022 ?",
+        "expected_documents": ["1Fa0mwG-UqhqsdzO4ohIS2N_YvPg94c0Z"],
+        "answer_snippets": [["89,2%"]],
+    },
     # --- Réunion Ouverte BDE n°01 du 23/01/2024 (1XlvCqSEe77B7k8fYqWBe0g4pWknvbmSY) — OCR corrompu (accents), snippets vérifiés par grep ---
-    {"question": "Quel jour aura lieu la soirée de désintégration selon la réunion ouverte BDE n°1 du 23 janvier 2024 ?", "expected_documents": ["1XlvCqSEe77B7k8fYqWBe0g4pWknvbmSY"], "answer_snippets": [["mercredi 31 janvier"]]},
-    {"question": "Quel est le montant du chèque de caution demandé aux non-adhérents CETEN pour la désintégration 2024 ?", "expected_documents": ["1XlvCqSEe77B7k8fYqWBe0g4pWknvbmSY"], "answer_snippets": [["200€"]]},
-    {"question": "Quel montant de caution est demandé à un non-adhérent CETEN pour participer à la désintégration 2024 ?", "expected_documents": ["1XlvCqSEe77B7k8fYqWBe0g4pWknvbmSY"], "answer_snippets": [["200€"]]},
-    {"question": "Qui est président du club Typst'n créé lors de la réunion ouverte BDE n°1 du 23 janvier 2024 ?", "expected_documents": ["1XlvCqSEe77B7k8fYqWBe0g4pWknvbmSY"], "answer_snippets": [["VESSE"]]},
-    {"question": "Le club Ni'TN'do a-t-il été accepté ou rejeté lors de sa création à la réunion ouverte BDE n°1 ?", "expected_documents": ["1XlvCqSEe77B7k8fYqWBe0g4pWknvbmSY"], "answer_snippets": [["Ni’TN’do"]]},
-    {"question": "Pourquoi la soirée blindtest a-t-elle été reportée d'après la réunion ouverte BDE n°1 du 23 janvier 2024 ?", "expected_documents": ["1XlvCqSEe77B7k8fYqWBe0g4pWknvbmSY"], "answer_snippets": [["vendredi 19 janvier"]]},
-
+    {
+        "question": "Quel jour aura lieu la soirée de désintégration selon la réunion ouverte BDE n°1 du 23 janvier 2024 ?",
+        "expected_documents": ["1XlvCqSEe77B7k8fYqWBe0g4pWknvbmSY"],
+        "answer_snippets": [["mercredi 31 janvier"]],
+    },
+    {
+        "question": "Quel est le montant du chèque de caution demandé aux non-adhérents CETEN pour la désintégration 2024 ?",
+        "expected_documents": ["1XlvCqSEe77B7k8fYqWBe0g4pWknvbmSY"],
+        "answer_snippets": [["200€"]],
+    },
+    {
+        "question": "Quel montant de caution est demandé à un non-adhérent CETEN pour participer à la désintégration 2024 ?",
+        "expected_documents": ["1XlvCqSEe77B7k8fYqWBe0g4pWknvbmSY"],
+        "answer_snippets": [["200€"]],
+    },
+    {
+        "question": "Qui est président du club Typst'n créé lors de la réunion ouverte BDE n°1 du 23 janvier 2024 ?",
+        "expected_documents": ["1XlvCqSEe77B7k8fYqWBe0g4pWknvbmSY"],
+        "answer_snippets": [["VESSE"]],
+    },
+    {
+        "question": "Le club Ni'TN'do a-t-il été accepté ou rejeté lors de sa création à la réunion ouverte BDE n°1 ?",
+        "expected_documents": ["1XlvCqSEe77B7k8fYqWBe0g4pWknvbmSY"],
+        "answer_snippets": [["Ni’TN’do"]],
+    },
+    {
+        "question": "Pourquoi la soirée blindtest a-t-elle été reportée d'après la réunion ouverte BDE n°1 du 23 janvier 2024 ?",
+        "expected_documents": ["1XlvCqSEe77B7k8fYqWBe0g4pWknvbmSY"],
+        "answer_snippets": [["vendredi 19 janvier"]],
+    },
     # --- Réunion Ouverte BDE n°02 du 30/01/2024 (1yetct2L4YDYjngMNRF6u83MYmK-PNWUO) — OCR corrompu ---
-    {"question": "Où a eu lieu la soirée de désintégration 2024 d'après la réunion ouverte BDE n°2 ?", "expected_documents": ["1yetct2L4YDYjngMNRF6u83MYmK-PNWUO"], "answer_snippets": [["Carri`ere", "Max´eville"]]},
-    {"question": "Qui est président du club Degus'TN d'après la réunion ouverte BDE n°2 du 30 janvier 2024 ?", "expected_documents": ["1yetct2L4YDYjngMNRF6u83MYmK-PNWUO"], "answer_snippets": [["Hippolyte COSSERAT"]]},
-    {"question": "Qui dirige le club Degus'TN après sa reprise en janvier 2024 ?", "expected_documents": ["1yetct2L4YDYjngMNRF6u83MYmK-PNWUO"], "answer_snippets": [["Hippolyte COSSERAT"]]},
-    {"question": "Quel club a été dissous lors de la réunion ouverte BDE n°2 du 30 janvier 2024 ?", "expected_documents": ["1yetct2L4YDYjngMNRF6u83MYmK-PNWUO"], "answer_snippets": [["Chaussette Soli’TN"]]},
-    {"question": "Quelle liste a été élue pour reprendre le club intégration selon la réunion ouverte BDE n°2 ?", "expected_documents": ["1yetct2L4YDYjngMNRF6u83MYmK-PNWUO"], "answer_snippets": [["N’int´e’ndo Bleue"]]},
-    {"question": "Quel club de listes d'intégration a repris l'organisation de la désintégration en 2024 ?", "expected_documents": ["1yetct2L4YDYjngMNRF6u83MYmK-PNWUO"], "answer_snippets": [["N’int´e’ndo Bleue"]]},
-
+    {
+        "question": "Où a eu lieu la soirée de désintégration 2024 d'après la réunion ouverte BDE n°2 ?",
+        "expected_documents": ["1yetct2L4YDYjngMNRF6u83MYmK-PNWUO"],
+        "answer_snippets": [["Carri`ere", "Max´eville"]],
+    },
+    {
+        "question": "Qui est président du club Degus'TN d'après la réunion ouverte BDE n°2 du 30 janvier 2024 ?",
+        "expected_documents": ["1yetct2L4YDYjngMNRF6u83MYmK-PNWUO"],
+        "answer_snippets": [["Hippolyte COSSERAT"]],
+    },
+    {
+        "question": "Qui dirige le club Degus'TN après sa reprise en janvier 2024 ?",
+        "expected_documents": ["1yetct2L4YDYjngMNRF6u83MYmK-PNWUO"],
+        "answer_snippets": [["Hippolyte COSSERAT"]],
+    },
+    {
+        "question": "Quel club a été dissous lors de la réunion ouverte BDE n°2 du 30 janvier 2024 ?",
+        "expected_documents": ["1yetct2L4YDYjngMNRF6u83MYmK-PNWUO"],
+        "answer_snippets": [["Chaussette Soli’TN"]],
+    },
+    {
+        "question": "Quelle liste a été élue pour reprendre le club intégration selon la réunion ouverte BDE n°2 ?",
+        "expected_documents": ["1yetct2L4YDYjngMNRF6u83MYmK-PNWUO"],
+        "answer_snippets": [["N’int´e’ndo Bleue"]],
+    },
+    {
+        "question": "Quel club de listes d'intégration a repris l'organisation de la désintégration en 2024 ?",
+        "expected_documents": ["1yetct2L4YDYjngMNRF6u83MYmK-PNWUO"],
+        "answer_snippets": [["N’int´e’ndo Bleue"]],
+    },
     # --- Réunion Ouverte BDE n°03 du 13/02/2024 (1BqtdD-nbi8dr4zk2Ho0aBhpL0BQuR_8M) — OCR corrompu ---
-    {"question": "Pour quelle date les budgets prévisionnels annuels des clubs doivent-ils être envoyés d'après la réunion ouverte BDE n°3 du 13 février 2024 ?", "expected_documents": ["1BqtdD-nbi8dr4zk2Ho0aBhpL0BQuR_8M"], "answer_snippets": [["15 f´evrier"]]},
-    {"question": "Avant quelle heure les clubs doivent-ils envoyer leur budget prévisionnel selon la réunion ouverte BDE n°3 ?", "expected_documents": ["1BqtdD-nbi8dr4zk2Ho0aBhpL0BQuR_8M"], "answer_snippets": [["15 f´evrier"]]},
-    {"question": "Quels clubs sont exemptés de budget prévisionnel annuel selon la réunion ouverte BDE n°3 ?", "expected_documents": ["1BqtdD-nbi8dr4zk2Ho0aBhpL0BQuR_8M"], "answer_snippets": [["Gala, Voyage, Int´e"]]},
-    {"question": "Qu'est-ce que le Vaultwarden mis en place pour les clubs, selon la réunion ouverte BDE n°3 du 13 février 2024 ?", "expected_documents": ["1BqtdD-nbi8dr4zk2Ho0aBhpL0BQuR_8M"], "answer_snippets": [["Vaultwarden"]]},
-    {"question": "Quand a eu lieu le premier événement du club Brasserie d'après la réunion ouverte BDE n°3 ?", "expected_documents": ["1BqtdD-nbi8dr4zk2Ho0aBhpL0BQuR_8M"], "answer_snippets": [["13 f´evrier"]]},
-    {"question": "Quel événement du club Brasserie a eu lieu le 13 février 2024 en début de soirée ?", "expected_documents": ["1BqtdD-nbi8dr4zk2Ho0aBhpL0BQuR_8M"], "answer_snippets": [["13 f´evrier"]]},
-    {"question": "Qui préside la proposition de club 'Bibi and Smoothie' finalement élue lors de la réunion ouverte BDE n°3 du 13 février 2024 ?", "expected_documents": ["1BqtdD-nbi8dr4zk2Ho0aBhpL0BQuR_8M"], "answer_snippets": [["Mathieu BREIT"]]},
-    {"question": "Quand ont lieu les journées portes ouvertes de Telecom Nancy mentionnées lors de la réunion ouverte BDE n°3 ?", "expected_documents": ["1BqtdD-nbi8dr4zk2Ho0aBhpL0BQuR_8M"], "answer_snippets": [["17 f´evrier"]]},
-
+    {
+        "question": "Pour quelle date les budgets prévisionnels annuels des clubs doivent-ils être envoyés d'après la réunion ouverte BDE n°3 du 13 février 2024 ?",
+        "expected_documents": ["1BqtdD-nbi8dr4zk2Ho0aBhpL0BQuR_8M"],
+        "answer_snippets": [["15 f´evrier"]],
+    },
+    {
+        "question": "Avant quelle heure les clubs doivent-ils envoyer leur budget prévisionnel selon la réunion ouverte BDE n°3 ?",
+        "expected_documents": ["1BqtdD-nbi8dr4zk2Ho0aBhpL0BQuR_8M"],
+        "answer_snippets": [["15 f´evrier"]],
+    },
+    {
+        "question": "Quels clubs sont exemptés de budget prévisionnel annuel selon la réunion ouverte BDE n°3 ?",
+        "expected_documents": ["1BqtdD-nbi8dr4zk2Ho0aBhpL0BQuR_8M"],
+        "answer_snippets": [["Gala, Voyage, Int´e"]],
+    },
+    {
+        "question": "Qu'est-ce que le Vaultwarden mis en place pour les clubs, selon la réunion ouverte BDE n°3 du 13 février 2024 ?",
+        "expected_documents": ["1BqtdD-nbi8dr4zk2Ho0aBhpL0BQuR_8M"],
+        "answer_snippets": [["Vaultwarden"]],
+    },
+    {
+        "question": "Quand a eu lieu le premier événement du club Brasserie d'après la réunion ouverte BDE n°3 ?",
+        "expected_documents": ["1BqtdD-nbi8dr4zk2Ho0aBhpL0BQuR_8M"],
+        "answer_snippets": [["13 f´evrier"]],
+    },
+    {
+        "question": "Quel événement du club Brasserie a eu lieu le 13 février 2024 en début de soirée ?",
+        "expected_documents": ["1BqtdD-nbi8dr4zk2Ho0aBhpL0BQuR_8M"],
+        "answer_snippets": [["13 f´evrier"]],
+    },
+    {
+        "question": "Qui préside la proposition de club 'Bibi and Smoothie' finalement élue lors de la réunion ouverte BDE n°3 du 13 février 2024 ?",
+        "expected_documents": ["1BqtdD-nbi8dr4zk2Ho0aBhpL0BQuR_8M"],
+        "answer_snippets": [["Mathieu BREIT"]],
+    },
+    {
+        "question": "Quand ont lieu les journées portes ouvertes de Telecom Nancy mentionnées lors de la réunion ouverte BDE n°3 ?",
+        "expected_documents": ["1BqtdD-nbi8dr4zk2Ho0aBhpL0BQuR_8M"],
+        "answer_snippets": [["17 f´evrier"]],
+    },
     # --- Festival de Canards, mai 2022 (1ve8jJIoZCahmL64sTxv6zLXLbIdAHrMY) ---
-    {"question": "Quel club a remporté le TéléCésar du meilleur nom lors de la cérémonie fictive décrite dans le Festival de Canards de mai 2022 ?", "expected_documents": ["1ve8jJIoZCahmL64sTxv6zLXLbIdAHrMY"], "answer_snippets": [["HackInTn"]]},
-    {"question": "Quel club de TELECOM Nancy a remporté le prix fictif du meilleur nom dans l'édition de mai 2022 du journal ?", "expected_documents": ["1ve8jJIoZCahmL64sTxv6zLXLbIdAHrMY"], "answer_snippets": [["HackInTn"]]},
-    {"question": "Quel club a remporté le TéléCésar du meilleur logo dans le Festival de Canards de mai 2022 ?", "expected_documents": ["1ve8jJIoZCahmL64sTxv6zLXLbIdAHrMY"], "answer_snippets": [["club Voyage"]]},
-    {"question": "Quel club a remporté le TéléCésar du meilleur espoir dans le Festival de Canards de mai 2022 ?", "expected_documents": ["1ve8jJIoZCahmL64sTxv6zLXLbIdAHrMY"], "answer_snippets": [["Créa’TN"]]},
-    {"question": "Qui a remporté le TéléCésar du meilleur logo temporaire dans le Festival de Canards ?", "expected_documents": ["1ve8jJIoZCahmL64sTxv6zLXLbIdAHrMY"], "answer_snippets": [["Art’emis"]]},
-    {"question": "Quels ingrédients sont nécessaires pour la recette des Lembas publiée dans le Festival de Canards de mai 2022 ?", "expected_documents": ["1ve8jJIoZCahmL64sTxv6zLXLbIdAHrMY"], "answer_snippets": [["farine"], ["poudre d’amande"]]},
-
+    {
+        "question": "Quel club a remporté le TéléCésar du meilleur nom lors de la cérémonie fictive décrite dans le Festival de Canards de mai 2022 ?",
+        "expected_documents": ["1ve8jJIoZCahmL64sTxv6zLXLbIdAHrMY"],
+        "answer_snippets": [["HackInTn"]],
+    },
+    {
+        "question": "Quel club de TELECOM Nancy a remporté le prix fictif du meilleur nom dans l'édition de mai 2022 du journal ?",
+        "expected_documents": ["1ve8jJIoZCahmL64sTxv6zLXLbIdAHrMY"],
+        "answer_snippets": [["HackInTn"]],
+    },
+    {
+        "question": "Quel club a remporté le TéléCésar du meilleur logo dans le Festival de Canards de mai 2022 ?",
+        "expected_documents": ["1ve8jJIoZCahmL64sTxv6zLXLbIdAHrMY"],
+        "answer_snippets": [["club Voyage"]],
+    },
+    {
+        "question": "Quel club a remporté le TéléCésar du meilleur espoir dans le Festival de Canards de mai 2022 ?",
+        "expected_documents": ["1ve8jJIoZCahmL64sTxv6zLXLbIdAHrMY"],
+        "answer_snippets": [["Créa’TN"]],
+    },
+    {
+        "question": "Qui a remporté le TéléCésar du meilleur logo temporaire dans le Festival de Canards ?",
+        "expected_documents": ["1ve8jJIoZCahmL64sTxv6zLXLbIdAHrMY"],
+        "answer_snippets": [["Art’emis"]],
+    },
+    {
+        "question": "Quels ingrédients sont nécessaires pour la recette des Lembas publiée dans le Festival de Canards de mai 2022 ?",
+        "expected_documents": ["1ve8jJIoZCahmL64sTxv6zLXLbIdAHrMY"],
+        "answer_snippets": [["farine"], ["poudre d’amande"]],
+    },
     # --- Interview de Marc Tomczak (13CYrBeKHH0SVSrWDuBNzcH7yyc8x-99B) ---
-    {"question": "En quelle année Marc Tomczak a-t-il commencé sa carrière d'enseignant-chercheur à Telecom Nancy ?", "expected_documents": ["13CYrBeKHH0SVSrWDuBNzcH7yyc8x-99B"], "answer_snippets": [["en 1990"]]},
-    {"question": "Depuis quelle année Marc Tomczak enseigne-t-il à l'école ?", "expected_documents": ["13CYrBeKHH0SVSrWDuBNzcH7yyc8x-99B"], "answer_snippets": [["en 1990"]]},
-    {"question": "En quelle année l'école a-t-elle déménagé dans son bâtiment actuel d'après l'interview de Marc Tomczak ?", "expected_documents": ["13CYrBeKHH0SVSrWDuBNzcH7yyc8x-99B"], "answer_snippets": [["en 2007"]]},
-    {"question": "Quelle est la passion de Marc Tomczak qu'il évoque à plusieurs reprises dans son interview ?", "expected_documents": ["13CYrBeKHH0SVSrWDuBNzcH7yyc8x-99B"], "answer_snippets": [["mycologie"]]},
-    {"question": "Qui, d'après son interview, a inventé les points CIPA à Telecom Nancy ?", "expected_documents": ["13CYrBeKHH0SVSrWDuBNzcH7yyc8x-99B"], "answer_snippets": [["inventé les points CIPA"]]},
-
+    {
+        "question": "En quelle année Marc Tomczak a-t-il commencé sa carrière d'enseignant-chercheur à Telecom Nancy ?",
+        "expected_documents": ["13CYrBeKHH0SVSrWDuBNzcH7yyc8x-99B"],
+        "answer_snippets": [["en 1990"]],
+    },
+    {
+        "question": "Depuis quelle année Marc Tomczak enseigne-t-il à l'école ?",
+        "expected_documents": ["13CYrBeKHH0SVSrWDuBNzcH7yyc8x-99B"],
+        "answer_snippets": [["en 1990"]],
+    },
+    {
+        "question": "En quelle année l'école a-t-elle déménagé dans son bâtiment actuel d'après l'interview de Marc Tomczak ?",
+        "expected_documents": ["13CYrBeKHH0SVSrWDuBNzcH7yyc8x-99B"],
+        "answer_snippets": [["en 2007"]],
+    },
+    {
+        "question": "Quelle est la passion de Marc Tomczak qu'il évoque à plusieurs reprises dans son interview ?",
+        "expected_documents": ["13CYrBeKHH0SVSrWDuBNzcH7yyc8x-99B"],
+        "answer_snippets": [["mycologie"]],
+    },
+    {
+        "question": "Qui, d'après son interview, a inventé les points CIPA à Telecom Nancy ?",
+        "expected_documents": ["13CYrBeKHH0SVSrWDuBNzcH7yyc8x-99B"],
+        "answer_snippets": [["inventé les points CIPA"]],
+    },
     # --- Multi-documents : deux comptes-rendus de la même réunion du 10/01/2022 ---
     # (1h80-iKn60PL1bXphFZ2JjJmT_spYWZDc = version « fake CR » humoristique,
     #  1Eyo-9BB5bGrhdrQkEgg_1Bt9xCzW9RET = version officielle avec tableaux de vote)
     # — labels corrigés : ils étaient inversés dans une version précédente de ce commentaire.
-    {"question": "Quels clubs ont été dissous lors de la réunion du Bureau des Élèves du 10 janvier 2022 ?", "expected_documents": ["1h80-iKn60PL1bXphFZ2JjJmT_spYWZDc", "1Eyo-9BB5bGrhdrQkEgg_1Bt9xCzW9RET"], "answer_snippets": [["Conférences"], ["Fantasy League"]]},
-    {"question": "Où aura lieu la soirée de désintégration annoncée lors de la réunion du BDE du 10 janvier 2022 ?", "expected_documents": ["1h80-iKn60PL1bXphFZ2JjJmT_spYWZDc", "1Eyo-9BB5bGrhdrQkEgg_1Bt9xCzW9RET"], "answer_snippets": [["Fort Pélissier"]]},
-    {"question": "Quel a été le taux de participation à la passation des clubs annoncé lors de la réunion du BDE du 10 janvier 2022 ?", "expected_documents": ["1h80-iKn60PL1bXphFZ2JjJmT_spYWZDc", "1Eyo-9BB5bGrhdrQkEgg_1Bt9xCzW9RET"], "answer_snippets": [["32.48%"]]},
-
+    {
+        "question": "Quels clubs ont été dissous lors de la réunion du Bureau des Élèves du 10 janvier 2022 ?",
+        "expected_documents": [
+            "1h80-iKn60PL1bXphFZ2JjJmT_spYWZDc",
+            "1Eyo-9BB5bGrhdrQkEgg_1Bt9xCzW9RET",
+        ],
+        "answer_snippets": [["Conférences"], ["Fantasy League"]],
+    },
+    {
+        "question": "Où aura lieu la soirée de désintégration annoncée lors de la réunion du BDE du 10 janvier 2022 ?",
+        "expected_documents": [
+            "1h80-iKn60PL1bXphFZ2JjJmT_spYWZDc",
+            "1Eyo-9BB5bGrhdrQkEgg_1Bt9xCzW9RET",
+        ],
+        "answer_snippets": [["Fort Pélissier"]],
+    },
+    {
+        "question": "Quel a été le taux de participation à la passation des clubs annoncé lors de la réunion du BDE du 10 janvier 2022 ?",
+        "expected_documents": [
+            "1h80-iKn60PL1bXphFZ2JjJmT_spYWZDc",
+            "1Eyo-9BB5bGrhdrQkEgg_1Bt9xCzW9RET",
+        ],
+        "answer_snippets": [["32.48%"]],
+    },
     # --- Hors périmètre (rien dans le corpus ne doit répondre à ces questions) ---
-    {"question": "Quel est le prix d'un repas à la cafétéria de Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Combien coûte l'abonnement internet du campus ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Quel est le numéro de téléphone du secrétariat de Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Quels sont les horaires d'ouverture de la bibliothèque de Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Qui est l'actuel directeur de Telecom Nancy en 2026 ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Quel est le taux de réussite au diplôme d'ingénieur de Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Quelle est la recette du couscous du club Marché de TELECOM ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Quel jour de la semaine a lieu le cours de mathématiques discrètes ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Quel est le montant des frais de scolarité annuels à Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Combien d'élèves ingénieurs sont diplômés chaque année à Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
-
+    {
+        "question": "Quel est le prix d'un repas à la cafétéria de Telecom Nancy ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Combien coûte l'abonnement internet du campus ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Quel est le numéro de téléphone du secrétariat de Telecom Nancy ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Quels sont les horaires d'ouverture de la bibliothèque de Telecom Nancy ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Qui est l'actuel directeur de Telecom Nancy en 2026 ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Quel est le taux de réussite au diplôme d'ingénieur de Telecom Nancy ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Quelle est la recette du couscous du club Marché de TELECOM ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Quel jour de la semaine a lieu le cours de mathématiques discrètes ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Quel est le montant des frais de scolarité annuels à Telecom Nancy ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Combien d'élèves ingénieurs sont diplômés chaque année à Telecom Nancy ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
     # --- CR BDE du 01/02/2016 (1e3DpNOs6YPw3lyWHeZpqHNyrD8fYd2g2) — élargit la couverture aux docs anciens ---
-    {"question": "Qui était président du Bureau des Élèves lors de la réunion du 1er février 2016 ?", "expected_documents": ["1e3DpNOs6YPw3lyWHeZpqHNyrD8fYd2g2"], "answer_snippets": [["Guillaume HABEN"]]},
-    {"question": "Qui était secrétaire du BDE à la réunion du 1er février 2016 ?", "expected_documents": ["1e3DpNOs6YPw3lyWHeZpqHNyrD8fYd2g2"], "answer_snippets": [["Yoni LEVY"]]},
-    {"question": "Quel a été le résultat du vote pour la recréation du club Ten24 lors de la réunion du BDE du 1er février 2016 ?", "expected_documents": ["1e3DpNOs6YPw3lyWHeZpqHNyrD8fYd2g2"], "answer_snippets": [["Le club est donc créé"]]},
-    {"question": "De quelle marque Youri est-il devenu ambassadeur d'après le compte-rendu du BDE du 1er février 2016 ?", "expected_documents": ["1e3DpNOs6YPw3lyWHeZpqHNyrD8fYd2g2"], "answer_snippets": [["Lipton"]]},
-    {"question": "Combien de réponses le sondage sur le changement de logo a-t-il recueillies d'après le compte-rendu du BDE du 1er février 2016 ?", "expected_documents": ["1e3DpNOs6YPw3lyWHeZpqHNyrD8fYd2g2"], "answer_snippets": [["132 réponses"]]},
-    {"question": "En quelle année le club Ten24 a-t-il été recréé après une première dissolution, selon les archives du BDE ?", "expected_documents": ["1e3DpNOs6YPw3lyWHeZpqHNyrD8fYd2g2"], "answer_snippets": [["Le club est donc créé"]]},
-
+    {
+        "question": "Qui était président du Bureau des Élèves lors de la réunion du 1er février 2016 ?",
+        "expected_documents": ["1e3DpNOs6YPw3lyWHeZpqHNyrD8fYd2g2"],
+        "answer_snippets": [["Guillaume HABEN"]],
+    },
+    {
+        "question": "Qui était secrétaire du BDE à la réunion du 1er février 2016 ?",
+        "expected_documents": ["1e3DpNOs6YPw3lyWHeZpqHNyrD8fYd2g2"],
+        "answer_snippets": [["Yoni LEVY"]],
+    },
+    {
+        "question": "Quel a été le résultat du vote pour la recréation du club Ten24 lors de la réunion du BDE du 1er février 2016 ?",
+        "expected_documents": ["1e3DpNOs6YPw3lyWHeZpqHNyrD8fYd2g2"],
+        "answer_snippets": [["Le club est donc créé"]],
+    },
+    {
+        "question": "De quelle marque Youri est-il devenu ambassadeur d'après le compte-rendu du BDE du 1er février 2016 ?",
+        "expected_documents": ["1e3DpNOs6YPw3lyWHeZpqHNyrD8fYd2g2"],
+        "answer_snippets": [["Lipton"]],
+    },
+    {
+        "question": "Combien de réponses le sondage sur le changement de logo a-t-il recueillies d'après le compte-rendu du BDE du 1er février 2016 ?",
+        "expected_documents": ["1e3DpNOs6YPw3lyWHeZpqHNyrD8fYd2g2"],
+        "answer_snippets": [["132 réponses"]],
+    },
+    {
+        "question": "En quelle année le club Ten24 a-t-il été recréé après une première dissolution, selon les archives du BDE ?",
+        "expected_documents": ["1e3DpNOs6YPw3lyWHeZpqHNyrD8fYd2g2"],
+        "answer_snippets": [["Le club est donc créé"]],
+    },
     # --- CR BDE du 01/02/2018 (1OdQLE0XRxcSzatMxMRpRDp_DRBryLZu-) ---
-    {"question": "Quels clubs ont été regroupés au sein du BDA d'après le compte-rendu du BDE du 1er février 2018 ?", "expected_documents": ["1OdQLE0XRxcSzatMxMRpRDp_DRBryLZu-"], "answer_snippets": [["Chorale, Jonglerie, Télécom to Live, Cinéma et Musique"]]},
-    {"question": "Quels 5 clubs artistiques ont fusionné pour former le BDA de Telecom Nancy ?", "expected_documents": ["1OdQLE0XRxcSzatMxMRpRDp_DRBryLZu-"], "answer_snippets": [["Chorale, Jonglerie, Télécom to Live, Cinéma et Musique"]]},
-    {"question": "Qui est devenue présidente du BDA selon le compte-rendu du BDE du 1er février 2018 ?", "expected_documents": ["1OdQLE0XRxcSzatMxMRpRDp_DRBryLZu-"], "answer_snippets": [["Valentine ROULETTE"]]},
-    {"question": "Qui a été élu président du club Telecome Cooking selon la réunion du BDE du 1er février 2018 ?", "expected_documents": ["1OdQLE0XRxcSzatMxMRpRDp_DRBryLZu-"], "answer_snippets": [["Julien ZHAN"]]},
-    {"question": "Qui préside le Club Jeux d'après le compte-rendu du BDE du 1er février 2018 ?", "expected_documents": ["1OdQLE0XRxcSzatMxMRpRDp_DRBryLZu-"], "answer_snippets": [["Benoit SCHULER"]]},
-    {"question": "Quel jour débutent les campagnes d'intégration selon le compte-rendu du BDE du 1er février 2018 ?", "expected_documents": ["1OdQLE0XRxcSzatMxMRpRDp_DRBryLZu-"], "answer_snippets": [["mercredi 7 février"]]},
-
+    {
+        "question": "Quels clubs ont été regroupés au sein du BDA d'après le compte-rendu du BDE du 1er février 2018 ?",
+        "expected_documents": ["1OdQLE0XRxcSzatMxMRpRDp_DRBryLZu-"],
+        "answer_snippets": [["Chorale, Jonglerie, Télécom to Live, Cinéma et Musique"]],
+    },
+    {
+        "question": "Quels 5 clubs artistiques ont fusionné pour former le BDA de Telecom Nancy ?",
+        "expected_documents": ["1OdQLE0XRxcSzatMxMRpRDp_DRBryLZu-"],
+        "answer_snippets": [["Chorale, Jonglerie, Télécom to Live, Cinéma et Musique"]],
+    },
+    {
+        "question": "Qui est devenue présidente du BDA selon le compte-rendu du BDE du 1er février 2018 ?",
+        "expected_documents": ["1OdQLE0XRxcSzatMxMRpRDp_DRBryLZu-"],
+        "answer_snippets": [["Valentine ROULETTE"]],
+    },
+    {
+        "question": "Qui a été élu président du club Telecome Cooking selon la réunion du BDE du 1er février 2018 ?",
+        "expected_documents": ["1OdQLE0XRxcSzatMxMRpRDp_DRBryLZu-"],
+        "answer_snippets": [["Julien ZHAN"]],
+    },
+    {
+        "question": "Qui préside le Club Jeux d'après le compte-rendu du BDE du 1er février 2018 ?",
+        "expected_documents": ["1OdQLE0XRxcSzatMxMRpRDp_DRBryLZu-"],
+        "answer_snippets": [["Benoit SCHULER"]],
+    },
+    {
+        "question": "Quel jour débutent les campagnes d'intégration selon le compte-rendu du BDE du 1er février 2018 ?",
+        "expected_documents": ["1OdQLE0XRxcSzatMxMRpRDp_DRBryLZu-"],
+        "answer_snippets": [["mercredi 7 février"]],
+    },
     # --- AGO du 21/01/2025 (169VCit-Etci6Qtt-mA8GG7c2TVr7cjyd) ---
-    {"question": "Qui a présidé l'Assemblée Générale Ordinaire du 21 janvier 2025 ?", "expected_documents": ["169VCit-Etci6Qtt-mA8GG7c2TVr7cjyd"], "answer_snippets": [["Killian Thuillier", "Killian THUILLIER"]]},
-    {"question": "Qui dirigeait le BDE juste avant l'arrivée de Raphaël Roullet, d'après l'AGO du 21 janvier 2025 ?", "expected_documents": ["169VCit-Etci6Qtt-mA8GG7c2TVr7cjyd"], "answer_snippets": [["Killian Thuillier", "Killian THUILLIER"]]},
-    {"question": "Qui a été désigné secrétaire de séance à l'AGO du 21 janvier 2025 ?", "expected_documents": ["169VCit-Etci6Qtt-mA8GG7c2TVr7cjyd"], "answer_snippets": [["Baptiste SIBELLAS"]]},
-    {"question": "À quel pourcentage le bilan moral 2024 a-t-il été accepté lors de l'AGO du 21 janvier 2025 ?", "expected_documents": ["169VCit-Etci6Qtt-mA8GG7c2TVr7cjyd"], "answer_snippets": [["89, 16%"]]},
-    {"question": "Quel pourcentage de votes favorables a recueilli le bilan financier 2024 à l'assemblée générale de janvier 2025 ?", "expected_documents": ["169VCit-Etci6Qtt-mA8GG7c2TVr7cjyd"], "answer_snippets": [["85, 54%"]]},
-    {"question": "Qui devient président du BDE 2025 d'après l'Assemblée Générale Ordinaire du 21 janvier 2025 ?", "expected_documents": ["169VCit-Etci6Qtt-mA8GG7c2TVr7cjyd"], "answer_snippets": [["Raphaël ROULLET"]]},
-    {"question": "Combien de membres étaient présents ou représentés à l'AGO du 21 janvier 2025 ?", "expected_documents": ["169VCit-Etci6Qtt-mA8GG7c2TVr7cjyd"], "answer_snippets": [["au nombre de 83"]]},
-
+    {
+        "question": "Qui a présidé l'Assemblée Générale Ordinaire du 21 janvier 2025 ?",
+        "expected_documents": ["169VCit-Etci6Qtt-mA8GG7c2TVr7cjyd"],
+        "answer_snippets": [["Killian Thuillier", "Killian THUILLIER"]],
+    },
+    {
+        "question": "Qui dirigeait le BDE juste avant l'arrivée de Raphaël Roullet, d'après l'AGO du 21 janvier 2025 ?",
+        "expected_documents": ["169VCit-Etci6Qtt-mA8GG7c2TVr7cjyd"],
+        "answer_snippets": [["Killian Thuillier", "Killian THUILLIER"]],
+    },
+    {
+        "question": "Qui a été désigné secrétaire de séance à l'AGO du 21 janvier 2025 ?",
+        "expected_documents": ["169VCit-Etci6Qtt-mA8GG7c2TVr7cjyd"],
+        "answer_snippets": [["Baptiste SIBELLAS"]],
+    },
+    {
+        "question": "À quel pourcentage le bilan moral 2024 a-t-il été accepté lors de l'AGO du 21 janvier 2025 ?",
+        "expected_documents": ["169VCit-Etci6Qtt-mA8GG7c2TVr7cjyd"],
+        "answer_snippets": [["89, 16%"]],
+    },
+    {
+        "question": "Quel pourcentage de votes favorables a recueilli le bilan financier 2024 à l'assemblée générale de janvier 2025 ?",
+        "expected_documents": ["169VCit-Etci6Qtt-mA8GG7c2TVr7cjyd"],
+        "answer_snippets": [["85, 54%"]],
+    },
+    {
+        "question": "Qui devient président du BDE 2025 d'après l'Assemblée Générale Ordinaire du 21 janvier 2025 ?",
+        "expected_documents": ["169VCit-Etci6Qtt-mA8GG7c2TVr7cjyd"],
+        "answer_snippets": [["Raphaël ROULLET"]],
+    },
+    {
+        "question": "Combien de membres étaient présents ou représentés à l'AGO du 21 janvier 2025 ?",
+        "expected_documents": ["169VCit-Etci6Qtt-mA8GG7c2TVr7cjyd"],
+        "answer_snippets": [["au nombre de 83"]],
+    },
     # --- Réunion Ouverte BDE n°1 du 04/02/2025 (1FzdeZaGZYIXe0AbeOES0PlbbHKxAU7uk) ---
-    {"question": "Quelle liste d'intégration a été élue lors de la réunion ouverte BDE n°1 du 4 février 2025 ?", "expected_documents": ["1FzdeZaGZYIXe0AbeOES0PlbbHKxAU7uk"], "answer_snippets": [["Empire Inté’Galactique"]]},
-    {"question": "Avec quel pourcentage des voix l'Empire Inté'Galactique a-t-il été élu selon la réunion ouverte BDE n°1 du 4 février 2025 ?", "expected_documents": ["1FzdeZaGZYIXe0AbeOES0PlbbHKxAU7uk"], "answer_snippets": [["56.67%"]]},
-    {"question": "Quelle liste a perdu l'élection intégration face à l'Empire Inté'Galactique en février 2025 ?", "expected_documents": ["1FzdeZaGZYIXe0AbeOES0PlbbHKxAU7uk"], "answer_snippets": [["Inte’mporel"]]},
-    {"question": "Le club 'Bacon Burger TN' a-t-il été accepté lors de sa création à la réunion ouverte BDE n°1 du 4 février 2025 ?", "expected_documents": ["1FzdeZaGZYIXe0AbeOES0PlbbHKxAU7uk"], "answer_snippets": [["la charolaise"]]},
-
+    {
+        "question": "Quelle liste d'intégration a été élue lors de la réunion ouverte BDE n°1 du 4 février 2025 ?",
+        "expected_documents": ["1FzdeZaGZYIXe0AbeOES0PlbbHKxAU7uk"],
+        "answer_snippets": [["Empire Inté’Galactique"]],
+    },
+    {
+        "question": "Avec quel pourcentage des voix l'Empire Inté'Galactique a-t-il été élu selon la réunion ouverte BDE n°1 du 4 février 2025 ?",
+        "expected_documents": ["1FzdeZaGZYIXe0AbeOES0PlbbHKxAU7uk"],
+        "answer_snippets": [["56.67%"]],
+    },
+    {
+        "question": "Quelle liste a perdu l'élection intégration face à l'Empire Inté'Galactique en février 2025 ?",
+        "expected_documents": ["1FzdeZaGZYIXe0AbeOES0PlbbHKxAU7uk"],
+        "answer_snippets": [["Inte’mporel"]],
+    },
+    {
+        "question": "Le club 'Bacon Burger TN' a-t-il été accepté lors de sa création à la réunion ouverte BDE n°1 du 4 février 2025 ?",
+        "expected_documents": ["1FzdeZaGZYIXe0AbeOES0PlbbHKxAU7uk"],
+        "answer_snippets": [["la charolaise"]],
+    },
     # --- Réunion Ouverte BDE n°2 du 11/02/2025 (1s16O-CvOLd-P1PsTiqPGsWjgRMZ68e3F) ---
-    {"question": "Quel club a proposé de vendre des croquettes pour humains lors de sa création à la réunion ouverte BDE n°2 du 11 février 2025 ?", "expected_documents": ["1s16O-CvOLd-P1PsTiqPGsWjgRMZ68e3F"], "answer_snippets": [["Croquet'TN"]]},
-    {"question": "Le club Croquet'TN a-t-il été accepté lors de la réunion ouverte BDE n°2 du 11 février 2025 ?", "expected_documents": ["1s16O-CvOLd-P1PsTiqPGsWjgRMZ68e3F"], "answer_snippets": [["blind test de croquettes"]]},
-    {"question": "Quel est le nom du club proposé par Maxence Osawa-Bourbon lors de la réunion ouverte BDE n°2 du 11 février 2025 ?", "expected_documents": ["1s16O-CvOLd-P1PsTiqPGsWjgRMZ68e3F"], "answer_snippets": [["Bacon Burger Club"]]},
-
+    {
+        "question": "Quel club a proposé de vendre des croquettes pour humains lors de sa création à la réunion ouverte BDE n°2 du 11 février 2025 ?",
+        "expected_documents": ["1s16O-CvOLd-P1PsTiqPGsWjgRMZ68e3F"],
+        "answer_snippets": [["Croquet'TN"]],
+    },
+    {
+        "question": "Le club Croquet'TN a-t-il été accepté lors de la réunion ouverte BDE n°2 du 11 février 2025 ?",
+        "expected_documents": ["1s16O-CvOLd-P1PsTiqPGsWjgRMZ68e3F"],
+        "answer_snippets": [["blind test de croquettes"]],
+    },
+    {
+        "question": "Quel est le nom du club proposé par Maxence Osawa-Bourbon lors de la réunion ouverte BDE n°2 du 11 février 2025 ?",
+        "expected_documents": ["1s16O-CvOLd-P1PsTiqPGsWjgRMZ68e3F"],
+        "answer_snippets": [["Bacon Burger Club"]],
+    },
     # --- Multi-documents : le TN'Event 2025 est annoncé dans la RO n°1 (bénéficiaire) ---
     # et son résultat chiffré n'apparaît que dans la RO n°2 (montant récolté) : une
     # réponse complète nécessite réellement les deux documents, contrairement aux
     # questions "même réunion, deux versions" plus haut.
-    {"question": "Quelle association a bénéficié des dons du TN'Event 2025 et quel montant a été récolté ?", "expected_documents": ["1FzdeZaGZYIXe0AbeOES0PlbbHKxAU7uk", "1s16O-CvOLd-P1PsTiqPGsWjgRMZ68e3F"], "answer_snippets": [["AEIM"], ["7766,79"]]},
-
+    {
+        "question": "Quelle association a bénéficié des dons du TN'Event 2025 et quel montant a été récolté ?",
+        "expected_documents": [
+            "1FzdeZaGZYIXe0AbeOES0PlbbHKxAU7uk",
+            "1s16O-CvOLd-P1PsTiqPGsWjgRMZ68e3F",
+        ],
+        "answer_snippets": [["AEIM"], ["7766,79"]],
+    },
     # --- Réunion Ouverte BDE n°14 du 26/05/2026 (12grcvbrk2mzOpOSVNEr0VdzA2x6p3v3h) ---
     # C'est le document le PLUS RÉCENT de tout le corpus (404 docs). Jusqu'à
     # v3, ce benchmark ne modélisait aucune fraîcheur (contrairement à
@@ -380,23 +748,65 @@ RETRIEVAL_DATASET = [
     # importés en tête de fichier), donc cette question redevient un test
     # légitime de la capacité réelle du système à privilégier le document
     # récent — plus un angle mort connu et accepté.
-    {"question": "Qui est le président du BDE d'après le compte-rendu le plus récent disponible dans les archives ?", "expected_documents": ["12grcvbrk2mzOpOSVNEr0VdzA2x6p3v3h"], "answer_snippets": [["NOBILE Tobias"]]},
-    {"question": "Quel club a été dissous lors de la réunion ouverte BDE n°14 du 26 mai 2026 ?", "expected_documents": ["12grcvbrk2mzOpOSVNEr0VdzA2x6p3v3h"], "answer_snippets": [["les bonnes miches"]]},
-    {"question": "Qui est présidente du club Equi'TN créé lors de la réunion ouverte BDE n°14 du 26 mai 2026 ?", "expected_documents": ["12grcvbrk2mzOpOSVNEr0VdzA2x6p3v3h"], "answer_snippets": [["PEYNON Eléa"]]},
-    {"question": "Le club 'Canada TN' a-t-il été élu lors de la réunion ouverte BDE n°14 du 26 mai 2026 ?", "expected_documents": ["12grcvbrk2mzOpOSVNEr0VdzA2x6p3v3h"], "answer_snippets": [["n'est pas élu"]]},
-    {"question": "Pourquoi le tournoi 4 nations du 29 mai a-t-il été annulé selon la réunion ouverte BDE n°14 ?", "expected_documents": ["12grcvbrk2mzOpOSVNEr0VdzA2x6p3v3h"], "answer_snippets": [["assez de personnes qui se sont manifestées"]]},
-
+    {
+        "question": "Qui est le président du BDE d'après le compte-rendu le plus récent disponible dans les archives ?",
+        "expected_documents": ["12grcvbrk2mzOpOSVNEr0VdzA2x6p3v3h"],
+        "answer_snippets": [["NOBILE Tobias"]],
+    },
+    {
+        "question": "Quel club a été dissous lors de la réunion ouverte BDE n°14 du 26 mai 2026 ?",
+        "expected_documents": ["12grcvbrk2mzOpOSVNEr0VdzA2x6p3v3h"],
+        "answer_snippets": [["les bonnes miches"]],
+    },
+    {
+        "question": "Qui est présidente du club Equi'TN créé lors de la réunion ouverte BDE n°14 du 26 mai 2026 ?",
+        "expected_documents": ["12grcvbrk2mzOpOSVNEr0VdzA2x6p3v3h"],
+        "answer_snippets": [["PEYNON Eléa"]],
+    },
+    {
+        "question": "Le club 'Canada TN' a-t-il été élu lors de la réunion ouverte BDE n°14 du 26 mai 2026 ?",
+        "expected_documents": ["12grcvbrk2mzOpOSVNEr0VdzA2x6p3v3h"],
+        "answer_snippets": [["n'est pas élu"]],
+    },
+    {
+        "question": "Pourquoi le tournoi 4 nations du 29 mai a-t-il été annulé selon la réunion ouverte BDE n°14 ?",
+        "expected_documents": ["12grcvbrk2mzOpOSVNEr0VdzA2x6p3v3h"],
+        "answer_snippets": [["assez de personnes qui se sont manifestées"]],
+    },
     # --- Hors périmètre, version difficile : vocabulaire plausible (clubs/vie
     # associative) mais sujets absents de tout ce qui a été lu dans le corpus,
     # contrairement aux hors-périmètre "faciles" ci-dessus (frais de scolarité,
     # bibliothèque) qui n'ont aucun recouvrement lexical avec le domaine ---
-    {"question": "Quel est le nom du président du club de plongée sous-marine de Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Quel budget a été voté pour un club d'astronomie lors d'une réunion du BDE ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Qui est le trésorier du club de photographie du CETEN ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Quand a eu lieu la dernière réunion du club de robotique de Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Quel est le montant de la bourse au mérite versée par le BDE aux meilleurs étudiants ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Quelle association étudiante gère les stages en entreprise à Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
-
+    {
+        "question": "Quel est le nom du président du club de plongée sous-marine de Telecom Nancy ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Quel budget a été voté pour un club d'astronomie lors d'une réunion du BDE ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Qui est le trésorier du club de photographie du CETEN ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Quand a eu lieu la dernière réunion du club de robotique de Telecom Nancy ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Quel est le montant de la bourse au mérite versée par le BDE aux meilleurs étudiants ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Quelle association étudiante gère les stages en entreprise à Telecom Nancy ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
     # --- Hors périmètre, extension v4 : le v3 n'avait que 16 questions
     # hors-périmètre (16% du dataset), ce qui rend avg_score_hors_perimetre
     # extrêmement bruité (chaque question pèse 6,25 points sur cette
@@ -407,41 +817,177 @@ RETRIEVAL_DATASET = [
     # échecs, babyfoot, voile, couture, escalade... tous vérifiés présents
     # et donc explicitement évités ici).
     # -- Faciles : infrastructure/administratif, aucun recouvrement lexical avec le corpus (comptes-rendus BDE) --
-    {"question": "Quel est le tarif de la carte multi-services de Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Où se trouve le parking vélo de l'école ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Quel logiciel de messagerie interne utilise l'administration de Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Quel est le montant de la caution pour un badge d'accès perdu ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Quel bus dessert le campus de Telecom Nancy depuis la gare ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Quel est le prix d'une place de parking étudiant à l'année ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Quel est le montant de la bourse CROUS moyenne versée aux élèves de Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Quels sont les horaires d'ouverture du secrétariat pédagogique ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Quel est le débit du réseau wifi du campus de Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Quel est le nom du fournisseur de restauration de la cafétéria ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Combien de jours de congés maladie un stagiaire peut-il poser ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Quelle est la surface totale du campus de Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Quel est le nom du logiciel de gestion des notes utilisé par l'administration ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Où se trouve la laverie du campus ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Où se trouve la salle de méditation du campus ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Combien de places compte la salle de coworking de l'école ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Quelle assurance responsabilité civile est recommandée aux stagiaires de Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Quel est le tarif étudiant de l'abonnement PASS Nancy ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Quel est le numéro d'urgence à contacter en cas d'incident sur le campus ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Quelle mutuelle étudiante l'école recommande-t-elle ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Combien de places compte le local à vélos couvert du campus ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Combien de distributeurs de boissons sont installés dans le bâtiment principal ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Quelles salles de Telecom Nancy sont climatisées ?", "expected_documents": [], "answer_snippets": []},
+    {
+        "question": "Quel est le tarif de la carte multi-services de Telecom Nancy ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Où se trouve le parking vélo de l'école ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Quel logiciel de messagerie interne utilise l'administration de Telecom Nancy ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Quel est le montant de la caution pour un badge d'accès perdu ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Quel bus dessert le campus de Telecom Nancy depuis la gare ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Quel est le prix d'une place de parking étudiant à l'année ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Quel est le montant de la bourse CROUS moyenne versée aux élèves de Telecom Nancy ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Quels sont les horaires d'ouverture du secrétariat pédagogique ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Quel est le débit du réseau wifi du campus de Telecom Nancy ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Quel est le nom du fournisseur de restauration de la cafétéria ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Combien de jours de congés maladie un stagiaire peut-il poser ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Quelle est la surface totale du campus de Telecom Nancy ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Quel est le nom du logiciel de gestion des notes utilisé par l'administration ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Où se trouve la laverie du campus ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Où se trouve la salle de méditation du campus ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Combien de places compte la salle de coworking de l'école ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Quelle assurance responsabilité civile est recommandée aux stagiaires de Telecom Nancy ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Quel est le tarif étudiant de l'abonnement PASS Nancy ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Quel est le numéro d'urgence à contacter en cas d'incident sur le campus ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Quelle mutuelle étudiante l'école recommande-t-elle ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Combien de places compte le local à vélos couvert du campus ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Combien de distributeurs de boissons sont installés dans le bâtiment principal ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Quelles salles de Telecom Nancy sont climatisées ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
     # -- Difficiles : vocabulaire plausible (clubs/vie associative) mais entités vérifiées absentes du corpus --
-    {"question": "Qui dirige le club d'apiculture de Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Qui a été élu président du club randonnée lors d'une réunion ouverte du BDE ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Quelle liste a remporté l'élection du bureau du club international ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Combien de bénévoles le club environnement a-t-il mobilisés pour un nettoyage de campus ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Combien de membres compte le club de musique électronique de Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Quel montant a été récolté lors d'une vente de gâteaux organisée par un club ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Quel club a réalisé une fresque de street art dans les locaux de Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Qui préside le club de poterie de Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Quel budget a été voté pour le club de philatélie lors d'une réunion du BDE ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Quand a eu lieu la dernière réunion du club de généalogie de Telecom Nancy ?", "expected_documents": [], "answer_snippets": []},
-    {"question": "Qui est trésorier du club d'aquariophilie du CETEN ?", "expected_documents": [], "answer_snippets": []},
+    {
+        "question": "Qui dirige le club d'apiculture de Telecom Nancy ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Qui a été élu président du club randonnée lors d'une réunion ouverte du BDE ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Quelle liste a remporté l'élection du bureau du club international ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Combien de bénévoles le club environnement a-t-il mobilisés pour un nettoyage de campus ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Combien de membres compte le club de musique électronique de Telecom Nancy ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Quel montant a été récolté lors d'une vente de gâteaux organisée par un club ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Quel club a réalisé une fresque de street art dans les locaux de Telecom Nancy ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Qui préside le club de poterie de Telecom Nancy ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Quel budget a été voté pour le club de philatélie lors d'une réunion du BDE ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Quand a eu lieu la dernière réunion du club de généalogie de Telecom Nancy ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
+    {
+        "question": "Qui est trésorier du club d'aquariophilie du CETEN ?",
+        "expected_documents": [],
+        "answer_snippets": [],
+    },
 ]
 
 # Ordre des questions mélangé UNE SEULE FOIS pour toute l'étude (seed fixe),
@@ -455,6 +1001,7 @@ RETRIEVAL_DATASET = [
 _QUESTION_ORDER_SEED = 42
 QUESTION_ORDER = list(range(len(RETRIEVAL_DATASET)))
 random.Random(_QUESTION_ORDER_SEED).shuffle(QUESTION_ORDER)
+
 
 # ==========================================
 # 2. RETRIEVER EN MÉMOIRE
@@ -482,12 +1029,14 @@ class LocalBenchmarkRetriever:
             # sinon le premier chunk de chaque doc contient "---\ntitle: ...\n---"
             # brut, ce que la prod ne fait jamais.
             meta, body = _parse_frontmatter(raw)
-            self.documents.append({
-                "id": file.stem,
-                "content": body,
-                "title": meta.get("title", file.stem),
-                "date": meta.get("date", ""),
-            })
+            self.documents.append(
+                {
+                    "id": file.stem,
+                    "content": body,
+                    "title": meta.get("title", file.stem),
+                    "date": meta.get("date", ""),
+                }
+            )
 
     def _load_or_compute_chunks(self, chunk_size: int, overlap_tokens: int) -> list:
         cache_key = (chunk_size, overlap_tokens)
@@ -498,9 +1047,18 @@ class LocalBenchmarkRetriever:
 
         chunks = []
         for doc in self.documents:
-            text_chunks = get_hybrid_chunks(doc["content"], chunk_size=chunk_size, chunk_overlap=overlap_tokens)
+            text_chunks = get_hybrid_chunks(
+                doc["content"], chunk_size=chunk_size, chunk_overlap=overlap_tokens
+            )
             for c in text_chunks:
-                chunks.append({"source": doc["id"], "text": c, "date": doc["date"], "title": doc["title"]})
+                chunks.append(
+                    {
+                        "source": doc["id"],
+                        "text": c,
+                        "date": doc["date"],
+                        "title": doc["title"],
+                    }
+                )
 
         def _write(f):
             pickle.dump(chunks, f)
@@ -508,19 +1066,32 @@ class LocalBenchmarkRetriever:
         _atomic_write(disk_path, _write)
         return chunks
 
-    def _load_or_compute_embeddings(self, chunks: list, model_name: str, model: SentenceTransformer, cache_key: tuple) -> np.ndarray:
+    def _load_or_compute_embeddings(
+        self,
+        chunks: list,
+        model_name: str,
+        model: SentenceTransformer,
+        cache_key: tuple,
+    ) -> np.ndarray:
         disk_path = _disk_cache_path("embeddings", cache_key, "npy")
         if disk_path.exists():
             return np.load(disk_path)
 
         if not chunks:
-            emb = np.zeros((0, model.get_sentence_embedding_dimension()), dtype=np.float32)
+            emb = np.zeros(
+                (0, model.get_sentence_embedding_dimension()), dtype=np.float32
+            )
         else:
             # Même préfixage qu'en prod (date/titre + "passage: " pour les
             # modèles e5) : voir _passage_text, sinon la comparaison entre
             # modèles n'est pas fidèle à ce qui tourne réellement en prod.
-            texts = [_passage_text(c["text"], model_name, c["date"], c["title"]) for c in chunks]
-            logger.info(f"Encodage de {len(texts)} chunks avec {model_name} (chunk_size={cache_key[0]}, overlap={cache_key[1]})...")
+            texts = [
+                _passage_text(c["text"], model_name, c["date"], c["title"])
+                for c in chunks
+            ]
+            logger.info(
+                f"Encodage de {len(texts)} chunks avec {model_name} (chunk_size={cache_key[0]}, overlap={cache_key[1]})..."
+            )
             emb = model.encode(
                 texts,
                 normalize_embeddings=True,
@@ -543,7 +1114,9 @@ class LocalBenchmarkRetriever:
         if cache_key_chunks not in self._chunks_cache:
             if len(self._chunks_cache) >= self._MAX_CHUNKS_IN_MEMORY:
                 self._chunks_cache.popitem(last=False)
-            self._chunks_cache[cache_key_chunks] = self._load_or_compute_chunks(chunk_size, overlap_tokens)
+            self._chunks_cache[cache_key_chunks] = self._load_or_compute_chunks(
+                chunk_size, overlap_tokens
+            )
         else:
             self._chunks_cache.move_to_end(cache_key_chunks)
 
@@ -556,17 +1129,25 @@ class LocalBenchmarkRetriever:
         if cache_key_embeddings not in self._embeddings_cache:
             if len(self._embeddings_cache) >= self._MAX_EMBEDDINGS_IN_MEMORY:
                 self._embeddings_cache.popitem(last=False)
-            self._embeddings_cache[cache_key_embeddings] = self._load_or_compute_embeddings(
-                self.chunks, model_name, self.model, cache_key_embeddings
+            self._embeddings_cache[cache_key_embeddings] = (
+                self._load_or_compute_embeddings(
+                    self.chunks, model_name, self.model, cache_key_embeddings
+                )
             )
         else:
             self._embeddings_cache.move_to_end(cache_key_embeddings)
 
         self.embeddings = self._embeddings_cache[cache_key_embeddings]
-            
+
     _query_cache = OrderedDict()
-    
-    def search(self, query: str, top_k: int, similarity_threshold: float = 0.0, use_reranker: bool = False):
+
+    def search(
+        self,
+        query: str,
+        top_k: int,
+        similarity_threshold: float = 0.0,
+        use_reranker: bool = False,
+    ):
         if len(self.chunks) == 0:
             return []
 
@@ -576,14 +1157,18 @@ class LocalBenchmarkRetriever:
         if q_key not in self._query_cache:
             if len(self._query_cache) > 200:
                 self._query_cache.popitem(last=False)
-            self._query_cache[q_key] = self.model.encode([query_text], normalize_embeddings=True)[0]
+            self._query_cache[q_key] = self.model.encode(
+                [query_text], normalize_embeddings=True
+            )[0]
         else:
             self._query_cache.move_to_end(q_key)
 
         q_emb = self._query_cache[q_key]
         scores = np.dot(self.embeddings, q_emb)
 
-        valid_indices = [i for i, score in enumerate(scores) if score >= similarity_threshold]
+        valid_indices = [
+            i for i, score in enumerate(scores) if score >= similarity_threshold
+        ]
         if not valid_indices:
             return []
 
@@ -606,7 +1191,10 @@ class LocalBenchmarkRetriever:
         # comme celui réellement déployé.
         hybrid_ranked = sorted(
             pool_indices,
-            key=lambda idx: FRESHNESS_ALPHA * scores[idx] + (1 - FRESHNESS_ALPHA) * _freshness_score(self.chunks[idx]["date"]),
+            key=lambda idx: (
+                FRESHNESS_ALPHA * scores[idx]
+                + (1 - FRESHNESS_ALPHA) * _freshness_score(self.chunks[idx]["date"])
+            ),
             reverse=True,
         )
 
@@ -618,7 +1206,12 @@ class LocalBenchmarkRetriever:
             if shortlist:
                 pairs = [(query, self.chunks[idx]["text"]) for idx in shortlist]
                 rerank_scores = _get_reranker_model().predict(pairs)
-                shortlist = [idx for _, idx in sorted(zip(rerank_scores, shortlist), key=lambda x: x[0], reverse=True)]
+                shortlist = [
+                    idx
+                    for _, idx in sorted(
+                        zip(rerank_scores, shortlist), key=lambda x: x[0], reverse=True
+                    )
+                ]
             final_indices = shortlist[:top_k]
         else:
             final_indices = hybrid_ranked[:top_k]
@@ -634,6 +1227,7 @@ class LocalBenchmarkRetriever:
             {"source": self.chunks[idx]["source"], "text": self.chunks[idx]["text"]}
             for idx in final_indices
         ]
+
 
 # ==========================================
 # 3. FONCTION OBJECTIF
@@ -701,10 +1295,14 @@ def _constraints_func(trial):
 # les variantes de poids loguées en diagnostic ci-dessous, pour permettre une
 # ré-analyse a posteriori sans tout relancer si ce choix se révèle discutable.
 SCORE_WEIGHTS = {
-    "v4": (0.55, 0.15, 0.30),          # optimisé par Optuna à partir de v4
-    "v3_legacy": (0.40, 0.30, 0.30),   # ancien poids v3, diagnostic (comparaison historique)
-    "equal": (1 / 3, 1 / 3, 1 / 3),    # diagnostic : poids naïf égal
-    "mrr_only": (1.0, 0.0, 0.0),       # diagnostic : et si on ignorait recall/precision ?
+    "v4": (0.55, 0.15, 0.30),  # optimisé par Optuna à partir de v4
+    "v3_legacy": (
+        0.40,
+        0.30,
+        0.30,
+    ),  # ancien poids v3, diagnostic (comparaison historique)
+    "equal": (1 / 3, 1 / 3, 1 / 3),  # diagnostic : poids naïf égal
+    "mrr_only": (1.0, 0.0, 0.0),  # diagnostic : et si on ignorait recall/precision ?
 }
 
 
@@ -741,7 +1339,9 @@ def objective(trial, retriever):
     # recouvrement, chunks quasi dupliqués — calcul gaspillé, nDCG/MRR biaisés
     # par des quasi-doublons). 0.3 ajouté : avec chunk_size=800, ça donne
     # overlap_tokens=240, exactement la config de prod (mdtoqdrant.py).
-    overlap_ratio = trial.suggest_categorical("overlap_ratio", [0.0, 0.15, 0.25, 0.3, 0.4])
+    overlap_ratio = trial.suggest_categorical(
+        "overlap_ratio", [0.0, 0.15, 0.25, 0.3, 0.4]
+    )
     overlap_tokens = int(chunk_size * overlap_ratio)
     # e5-large et arctic-l ajoutés (v5) pour élargir la comparaison au-delà de
     # miniLM/e5-small/e5-base/bge-m3 (v3 a montré que le modèle explique 90%
@@ -761,7 +1361,8 @@ def objective(trial, retriever):
     # jina-embeddings-v3 envisagé puis écarté : licence CC-BY-NC-4.0 (usage
     # commercial restreint) ET même besoin de trust_remote_code que gte-multi.
     embedding_model = trial.suggest_categorical(
-        "embedding_model", ["miniLM", "e5-small", "e5-base", "e5-large", "bge-m3", "arctic-l"]
+        "embedding_model",
+        ["miniLM", "e5-small", "e5-base", "e5-large", "bge-m3", "arctic-l"],
     )
     # 2 et 4 ajoutés pour affiner autour de l'optimum trouvé en v3 (top_k=3
     # gagnant, top_k=1 et top_k=10 nettement pires) sans élargir la grille au-delà.
@@ -802,7 +1403,13 @@ def objective(trial, retriever):
     # avg_*_doc_level dans les user_attrs, mais elles ne comptent plus dans
     # ce qu'Optuna maximise : trouver le bon document sans le bon passage
     # dedans ne sert à rien pour la génération).
-    trial_scores, mrr_scores, ndcg_scores, recall_scores, precision_scores = [], [], [], [], []
+    trial_scores, mrr_scores, ndcg_scores, recall_scores, precision_scores = (
+        [],
+        [],
+        [],
+        [],
+        [],
+    )
     doc_mrr_scores, doc_recall_scores = [], []
     in_scope_running = []  # signal de pruning : reflète l'objectif réellement optimisé (in-scope), pas le blend v3
     per_question_log = []
@@ -815,10 +1422,15 @@ def objective(trial, retriever):
         answer_snippets = item.get("answer_snippets", [])
 
         retrieved = retriever.search(
-            question, top_k=top_k, similarity_threshold=similarity_threshold, use_reranker=use_reranker
+            question,
+            top_k=top_k,
+            similarity_threshold=similarity_threshold,
+            use_reranker=use_reranker,
         )
 
-        mrr, ndcg, recall, precision = _chunk_metrics(retrieved, answer_snippets, expected_docs)
+        mrr, ndcg, recall, precision = _chunk_metrics(
+            retrieved, answer_snippets, expected_docs
+        )
 
         # Diagnostic document-level (non optimisé) : dédup en préservant l'ordre.
         # Uniquement pour les questions in-scope — pour le hors-périmètre,
@@ -839,7 +1451,9 @@ def objective(trial, retriever):
                 if src in expected_docs:
                     doc_mrr = 1.0 / rank
                     break
-            doc_recall = len(expected_docs.intersection(retrieved_sources_unique)) / len(expected_docs)
+            doc_recall = len(
+                expected_docs.intersection(retrieved_sources_unique)
+            ) / len(expected_docs)
             doc_mrr_scores.append(doc_mrr)
             doc_recall_scores.append(doc_recall)
 
@@ -858,19 +1472,21 @@ def objective(trial, retriever):
         precision_scores.append(precision)
         if expected_docs:
             in_scope_running.append(score)
-        per_question_log.append({
-            "dataset_index": dataset_idx,
-            "question": question,
-            "expected_documents": sorted(expected_docs),
-            "retrieved_sources": [r["source"] for r in retrieved],
-            "mrr": mrr,
-            "ndcg": ndcg,
-            "recall": recall,
-            "precision": precision,
-            "score": score,
-            "doc_mrr": doc_mrr,
-            "doc_recall": doc_recall,
-        })
+        per_question_log.append(
+            {
+                "dataset_index": dataset_idx,
+                "question": question,
+                "expected_documents": sorted(expected_docs),
+                "retrieved_sources": [r["source"] for r in retrieved],
+                "mrr": mrr,
+                "ndcg": ndcg,
+                "recall": recall,
+                "precision": precision,
+                "score": score,
+                "doc_mrr": doc_mrr,
+                "doc_recall": doc_recall,
+            }
+        )
 
         # Pruning précoce : piloté par l'in-scope UNIQUEMENT (l'objectif
         # réellement optimisé en v4, voir HORS_PERIMETRE_MIN_SCORE plus haut).
@@ -878,7 +1494,9 @@ def objective(trial, retriever):
         # alors que le hors-périmètre n'est même plus dans le score final ici
         # — le garder aurait pu faire élaguer trop tôt un trial qui démarre
         # sur une série de questions hors-périmètre ratées dans l'ordre fixe.
-        partial_score = sum(in_scope_running) / len(in_scope_running) if in_scope_running else 0.0
+        partial_score = (
+            sum(in_scope_running) / len(in_scope_running) if in_scope_running else 0.0
+        )
         trial.report(partial_score, i)
         if trial.should_prune():
             pruned = True
@@ -891,8 +1509,16 @@ def objective(trial, retriever):
     # capacité à NE RIEN retourner, les autres la capacité à retrouver le bon
     # PASSAGE (pas juste le bon document).
     evaluated_items = [RETRIEVAL_DATASET[idx] for idx in QUESTION_ORDER[:n]]
-    hors_perimetre_scores = [s for s, item in zip(trial_scores, evaluated_items) if not item.get("expected_documents")]
-    avg_hors_perimetre = sum(hors_perimetre_scores) / len(hors_perimetre_scores) if hors_perimetre_scores else 0.0
+    hors_perimetre_scores = [
+        s
+        for s, item in zip(trial_scores, evaluated_items)
+        if not item.get("expected_documents")
+    ]
+    avg_hors_perimetre = (
+        sum(hors_perimetre_scores) / len(hors_perimetre_scores)
+        if hors_perimetre_scores
+        else 0.0
+    )
 
     # Structure unique regroupant TOUTES les métriques par-question in-scope,
     # groupées par document (ou combo de documents pour les 4 questions
@@ -909,35 +1535,54 @@ def objective(trial, retriever):
     # du poids "v4" qui est retournée à Optuna (voir `return` plus bas) ;
     # toutes les autres variantes ci-dessous sont des diagnostics.
     in_scope_by_doc = {}
-    for item, mrr_v, ndcg_v, recall_v, precision_v in zip(evaluated_items, mrr_scores, ndcg_scores, recall_scores, precision_scores):
+    for item, mrr_v, ndcg_v, recall_v, precision_v in zip(
+        evaluated_items, mrr_scores, ndcg_scores, recall_scores, precision_scores
+    ):
         docs = item.get("expected_documents")
         if not docs:
             continue
         key = tuple(sorted(docs))
-        in_scope_by_doc.setdefault(key, []).append({
-            "mrr": mrr_v, "ndcg": ndcg_v, "recall": recall_v, "precision": precision_v,
-        })
+        in_scope_by_doc.setdefault(key, []).append(
+            {
+                "mrr": mrr_v,
+                "ndcg": ndcg_v,
+                "recall": recall_v,
+                "precision": precision_v,
+            }
+        )
     num_docs_in_scope_evaluated = len(in_scope_by_doc)
 
     def _by_doc(field):
         return {k: [r[field] for r in v] for k, v in in_scope_by_doc.items()}
 
     avg_mrr_in_scope_micro, avg_mrr_in_scope_macro = _micro_macro_mean(_by_doc("mrr"))
-    avg_ndcg_in_scope_micro, avg_ndcg_in_scope_macro = _micro_macro_mean(_by_doc("ndcg"))
-    avg_recall_in_scope_micro, avg_recall_in_scope_macro = _micro_macro_mean(_by_doc("recall"))
-    avg_precision_in_scope_micro, avg_precision_in_scope_macro = _micro_macro_mean(_by_doc("precision"))
+    avg_ndcg_in_scope_micro, avg_ndcg_in_scope_macro = _micro_macro_mean(
+        _by_doc("ndcg")
+    )
+    avg_recall_in_scope_micro, avg_recall_in_scope_macro = _micro_macro_mean(
+        _by_doc("recall")
+    )
+    avg_precision_in_scope_micro, avg_precision_in_scope_macro = _micro_macro_mean(
+        _by_doc("precision")
+    )
 
     # Doc-level (a-t-on retrouvé le bon DOCUMENT, dédupliqué, indépendamment
     # du chunk précis) : diagnostic non optimisé, scopé in-scope uniquement
     # (voir la boucle plus haut, doc_mrr_scores/doc_recall_scores ne sont
     # remplies que pour les questions in-scope désormais).
     doc_level_by_doc = {}
-    in_scope_items_ordered = [item for item in evaluated_items if item.get("expected_documents")]
+    in_scope_items_ordered = [
+        item for item in evaluated_items if item.get("expected_documents")
+    ]
     for item, dm, dr in zip(in_scope_items_ordered, doc_mrr_scores, doc_recall_scores):
         key = tuple(sorted(item["expected_documents"]))
         doc_level_by_doc.setdefault(key, []).append({"doc_mrr": dm, "doc_recall": dr})
-    avg_doc_mrr_micro, avg_doc_mrr_macro = _micro_macro_mean({k: [r["doc_mrr"] for r in v] for k, v in doc_level_by_doc.items()})
-    avg_doc_recall_micro, avg_doc_recall_macro = _micro_macro_mean({k: [r["doc_recall"] for r in v] for k, v in doc_level_by_doc.items()})
+    avg_doc_mrr_micro, avg_doc_mrr_macro = _micro_macro_mean(
+        {k: [r["doc_mrr"] for r in v] for k, v in doc_level_by_doc.items()}
+    )
+    avg_doc_recall_micro, avg_doc_recall_macro = _micro_macro_mean(
+        {k: [r["doc_recall"] for r in v] for k, v in doc_level_by_doc.items()}
+    )
 
     # Variantes de score composite : la SEULE optimisée par Optuna est
     # "v4"/macro (voir `return`) ; les autres (v3_legacy, equal, mrr_only, et
@@ -949,7 +1594,10 @@ def objective(trial, retriever):
     score_variants = {}
     for variant_name, weights in SCORE_WEIGHTS.items():
         values_by_doc = {
-            k: [_weighted_score(r["mrr"], r["recall"], r["precision"], weights) for r in v]
+            k: [
+                _weighted_score(r["mrr"], r["recall"], r["precision"], weights)
+                for r in v
+            ]
             for k, v in in_scope_by_doc.items()
         }
         micro, macro = _micro_macro_mean(values_by_doc)
@@ -961,7 +1609,10 @@ def objective(trial, retriever):
     # en diagnostic pour comparaison historique directe avec les 257 trials
     # de l'étude v3 — c'est ce score qui s'est révélé anti-corrélé avec le
     # filtrage hors-périmètre (corr=-0.22) et n'est plus optimisé depuis v4.
-    v3_replica_scores = [_weighted_score(m, r, p, SCORE_WEIGHTS["v3_legacy"]) for m, r, p in zip(mrr_scores, recall_scores, precision_scores)]
+    v3_replica_scores = [
+        _weighted_score(m, r, p, SCORE_WEIGHTS["v3_legacy"])
+        for m, r, p in zip(mrr_scores, recall_scores, precision_scores)
+    ]
     avg_score_v3_replica = sum(v3_replica_scores) / n if n else 0.0
 
     # Variance : une moyenne unique cache si un trial est régulièrement moyen
@@ -969,9 +1620,16 @@ def objective(trial, retriever):
     # le score "v4" par-question, in-scope uniquement (mélanger le
     # hors-périmètre binaire 0/1 comme le faisait v3 aurait à nouveau
     # contaminé cette mesure de dispersion).
-    in_scope_v4_scores = [r["mrr"] * SCORE_WEIGHTS["v4"][0] + r["recall"] * SCORE_WEIGHTS["v4"][1] + r["precision"] * SCORE_WEIGHTS["v4"][2]
-                           for v in in_scope_by_doc.values() for r in v]
-    score_std = statistics.pstdev(in_scope_v4_scores) if len(in_scope_v4_scores) > 1 else 0.0
+    in_scope_v4_scores = [
+        r["mrr"] * SCORE_WEIGHTS["v4"][0]
+        + r["recall"] * SCORE_WEIGHTS["v4"][1]
+        + r["precision"] * SCORE_WEIGHTS["v4"][2]
+        for v in in_scope_by_doc.values()
+        for r in v
+    ]
+    score_std = (
+        statistics.pstdev(in_scope_v4_scores) if len(in_scope_v4_scores) > 1 else 0.0
+    )
     score_min = min(in_scope_v4_scores) if in_scope_v4_scores else 0.0
     score_max = max(in_scope_v4_scores) if in_scope_v4_scores else 0.0
 
@@ -1016,7 +1674,9 @@ def objective(trial, retriever):
         "score_max": score_max,
         # -- Contexte / coût --
         "num_chunks": len(retriever.chunks),
-        "embedding_dim": int(retriever.embeddings.shape[1]) if len(retriever.embeddings) else 0,
+        "embedding_dim": int(retriever.embeddings.shape[1])
+        if len(retriever.embeddings)
+        else 0,
         "num_questions_evaluated": n,
         "num_docs_in_scope_evaluated": num_docs_in_scope_evaluated,
         "pruned_early": pruned,
@@ -1034,6 +1694,7 @@ def objective(trial, retriever):
         raise optuna.exceptions.TrialPruned()
 
     return avg_score_in_scope_macro
+
 
 # ==========================================
 # 4. MAIN
@@ -1054,25 +1715,29 @@ def main():
         )
     )
     parser.add_argument(
-        "--n-trials", type=int, default=300,
+        "--n-trials",
+        type=int,
+        default=300,
         help="Nombre de NOUVEAUX trials à lancer dans cet appel (par défaut 300). "
-             "S'ajoute aux trials déjà présents dans la base.",
+        "S'ajoute aux trials déjà présents dans la base.",
     )
     parser.add_argument(
-        "--study-name", type=str, default="retrieval_only_v5",
+        "--study-name",
+        type=str,
+        default="retrieval_only_v5",
         help="Nom de l'étude Optuna (change de nom pour repartir d'une base vierge). "
-             "v4 avait changé le sens du score optimisé (in-scope macro sous "
-             "contrainte hors-périmètre, voir HORS_PERIMETRE_MIN_SCORE) mais sa "
-             "base sqlite contenait des trials avec embedding_model='gte-multi' "
-             "(modèle retiré depuis, voir _get_embedding_model) : Optuna refuse "
-             "de sampler sur une étude dont l'historique référence une valeur "
-             "catégorielle qui n'existe plus dans la distribution actuelle "
-             "(ValueError 'gte-multi' not in (...) — le run plantait à chaque "
-             "relance). v5 repart d'une base vierge pour ce même motif ; le "
-             "cache disque (temp/optuna_cache/) reste valide et partagé entre "
-             "toutes les études, aucun calcul déjà fait n'est perdu. Les trials "
-             "v1/v2/v3/v4 restent dans la même base sqlite mais leurs valeurs "
-             "ne sont pas comparables à celles de v5.",
+        "v4 avait changé le sens du score optimisé (in-scope macro sous "
+        "contrainte hors-périmètre, voir HORS_PERIMETRE_MIN_SCORE) mais sa "
+        "base sqlite contenait des trials avec embedding_model='gte-multi' "
+        "(modèle retiré depuis, voir _get_embedding_model) : Optuna refuse "
+        "de sampler sur une étude dont l'historique référence une valeur "
+        "catégorielle qui n'existe plus dans la distribution actuelle "
+        "(ValueError 'gte-multi' not in (...) — le run plantait à chaque "
+        "relance). v5 repart d'une base vierge pour ce même motif ; le "
+        "cache disque (temp/optuna_cache/) reste valide et partagé entre "
+        "toutes les études, aucun calcul déjà fait n'est perdu. Les trials "
+        "v1/v2/v3/v4 restent dans la même base sqlite mais leurs valeurs "
+        "ne sont pas comparables à celles de v5.",
     )
     args = parser.parse_args()
 
@@ -1094,7 +1759,9 @@ def main():
     # l'objectif retourné par objective() — avg_score_in_scope_macro). Voir
     # HORS_PERIMETRE_MIN_SCORE et _constraints_func plus haut pour le
     # pourquoi de ce choix face au score composite unique de v3.
-    sampler = optuna.samplers.TPESampler(constraints_func=_constraints_func, n_startup_trials=10)
+    sampler = optuna.samplers.TPESampler(
+        constraints_func=_constraints_func, n_startup_trials=10
+    )
     study = optuna.create_study(
         storage=db_url,
         direction="maximize",
@@ -1106,29 +1773,41 @@ def main():
         # avg_score_hors_perimetre statistiquement moins bruité (chaque
         # question pesait 6,25 points sur cette sous-métrique avec 16
         # questions ; 2 points avec 50).
-        pruner=optuna.pruners.MedianPruner(n_startup_trials=10, n_warmup_steps=20)
+        pruner=optuna.pruners.MedianPruner(n_startup_trials=10, n_warmup_steps=20),
     )
     n_done_before = len(study.trials)
-    logger.info(f"Étude '{args.study_name}' : {n_done_before} trial(s) déjà en base, {args.n_trials} de plus demandés.")
+    logger.info(
+        f"Étude '{args.study_name}' : {n_done_before} trial(s) déjà en base, {args.n_trials} de plus demandés."
+    )
 
     try:
         logger.info(f"Lancement de l'étude (0 appel API LLM) dans : {db_url}")
-        study.optimize(lambda trial: objective(trial, retriever), n_trials=args.n_trials)
+        study.optimize(
+            lambda trial: objective(trial, retriever), n_trials=args.n_trials
+        )
     except KeyboardInterrupt:
         logger.warning(
             "Arrêt manuel : %d trial(s) complet(s) déjà sauvegardés en base. "
             "Relance la même commande pour reprendre.",
-            len([t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]),
+            len(
+                [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
+            ),
         )
 
-    complete_trials = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
+    complete_trials = [
+        t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE
+    ]
     # study.best_trial ne filtre PAS par faisabilité pour une étude
     # mono-objectif contrainte (limitation connue d'Optuna) : il faut exclure
     # nous-mêmes les trials qui violent HORS_PERIMETRE_MIN_SCORE avant de
     # choisir un "meilleur" trial, sinon on retomberait exactement dans le
     # travers de v3 (un trial avec un bon in-scope mais un hors-périmètre
     # non-filtré serait à nouveau élu "meilleur").
-    feasible_trials = [t for t in complete_trials if t.user_attrs.get("hors_perimetre_constraint_satisfied")]
+    feasible_trials = [
+        t
+        for t in complete_trials
+        if t.user_attrs.get("hors_perimetre_constraint_satisfied")
+    ]
     logger.info(
         f"{len(complete_trials)} trial(s) complet(s), dont {len(feasible_trials)} respectant la "
         f"contrainte hors-périmètre (>= {HORS_PERIMETRE_MIN_SCORE:.0%}) et "
@@ -1137,7 +1816,9 @@ def main():
 
     if feasible_trials:
         best_trial = max(feasible_trials, key=lambda t: t.value)
-        logger.info(f"Meilleur score in-scope (macro, sous contrainte hors-périmètre) : {best_trial.value:.4f}")
+        logger.info(
+            f"Meilleur score in-scope (macro, sous contrainte hors-périmètre) : {best_trial.value:.4f}"
+        )
         for key, value in best_trial.params.items():
             logger.info(f"  - {key}: {value}")
         for key, value in best_trial.user_attrs.items():
@@ -1151,12 +1832,19 @@ def main():
         # indiscernables du meilleur (à moins d'un écart-type), et le nombre
         # de configs (chunk_size, overlap, modèle, top_k) distinctes qu'il
         # contient.
-        best_se = best_trial.user_attrs.get("score_std", 0.0) / math.sqrt(max(best_trial.user_attrs.get("num_questions_evaluated", 1), 1))
-        plateau = [t for t in feasible_trials if (best_trial.value - t.value) <= best_se]
+        best_se = best_trial.user_attrs.get("score_std", 0.0) / math.sqrt(
+            max(best_trial.user_attrs.get("num_questions_evaluated", 1), 1)
+        )
+        plateau = [
+            t for t in feasible_trials if (best_trial.value - t.value) <= best_se
+        ]
         distinct_configs = {
             (
-                t.params.get("chunk_size"), t.params.get("overlap_ratio"), t.params.get("embedding_model"),
-                t.params.get("top_k"), t.params.get("use_reranker"),
+                t.params.get("chunk_size"),
+                t.params.get("overlap_ratio"),
+                t.params.get("embedding_model"),
+                t.params.get("top_k"),
+                t.params.get("use_reranker"),
             )
             for t in plateau
         }
@@ -1178,6 +1866,7 @@ def main():
             logger.info(f"Détail par question et par trial dans : {TRIAL_LOG_PATH}")
         except ValueError:
             pass
+
 
 if __name__ == "__main__":
     main()
