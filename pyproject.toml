@@ -27,6 +27,8 @@ dependencies = [
     "psycopg2-binary>=2.9",
     "flask-migrate>=4.1.0",
     "httpx>=0.28.1",
+    "rapidfuzz>=3.14.5",
+    "trafilatura>=2.2.0",
 ]
 
 [dependency-groups]
@@ -36,7 +38,6 @@ dev = [
     "optuna>=4.9.0",
     "pip-audit>=2.10.0",
     "pytest>=9.0.3",
-    "rapidfuzz>=3.14.5",
     "ruff>=0.15.16",
     "ty>=0.0.46",
     "zensical>=0.0.45",

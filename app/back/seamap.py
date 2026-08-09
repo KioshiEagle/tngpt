@@ -10,7 +10,6 @@ et non une syntaxe de diagramme à réparer. Le dessin appartient au navigateur.
 import json
 import logging
 import re
-import unicodedata
 from collections.abc import Iterator
 from datetime import UTC, datetime
 
@@ -20,6 +19,7 @@ from groq.types.chat import ChatCompletionChunk, ChatCompletionToolParam
 from .generate import CallSpec, GenerateRequest, generate_answer
 from .groqpool import acquire
 from .retrieval import search
+from .textnorm import strip_accents
 from .types import GroqParams, MapClub, MapPayload, SearchResult
 
 logger = logging.getLogger(__name__)
@@ -38,20 +38,9 @@ _MAP_PATTERNS = re.compile(
 )
 
 
-# Les ligatures n'ont aucune décomposition Unicode, canonique ou non : sans ce
-# repliage explicite, « Œnologie » ne rencontrerait jamais le motif « oeno ».
-_LIGATURES = str.maketrans({"œ": "oe", "Œ": "OE", "æ": "ae", "Æ": "AE"})
-
-
-def _strip_accents(text: str) -> str:
-    """Retire diacritiques et ligatures, pour comparer « Œnologie » et « oenologie »."""
-    decomposed = unicodedata.normalize("NFD", text.translate(_LIGATURES))
-    return "".join(c for c in decomposed if unicodedata.category(c) != "Mn")
-
-
 def wants_map(question: str) -> bool:
     """Indique si la question demande une carte des clubs plutôt qu'une réponse."""
-    return bool(_MAP_PATTERNS.search(_strip_accents(question)))
+    return bool(_MAP_PATTERNS.search(strip_accents(question)))
 
 
 # --- Retrieval multi-requêtes -------------------------------------------------
@@ -156,7 +145,7 @@ def _resolve_icone(propose: object, nom: str, tutelle: str) -> str:
     """
     if isinstance(propose, str) and propose.strip().lower() in ICONES:
         return propose.strip().lower()
-    cible = _strip_accents(f"{nom} {tutelle}")
+    cible = strip_accents(f"{nom} {tutelle}")
     for motif, icone in _ICONE_MOTS:
         if motif.search(cible):
             return icone
@@ -254,7 +243,7 @@ def _resolve_logo(nom: str) -> str:
     bureau hériteraient du logo de leur association mère et la carte n'afficherait
     plus qu'une poignée de symboles répétés.
     """
-    cible = _strip_accents(nom)
+    cible = strip_accents(nom)
     for motif, logo in _LOGO_MOTS:
         if motif.search(cible):
             return logo

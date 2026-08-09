@@ -16,6 +16,8 @@ DOC_MISSING = "missing"  # connu du catalogue, absent de Qdrant (désynchronisé
 
 DOC_ORIGIN_DRIVE = "drive"  # ingéré par la pipeline Google Drive
 DOC_ORIGIN_UPLOAD = "upload"  # déposé depuis le panel admin
+DOC_ORIGIN_MAIL = "mail"  # mail de liste déposé depuis le panel admin
+DOC_ORIGIN_WEB = "web"  # page crawlée sur le site de l'école
 
 # États de modération d'un utilisateur.
 USER_ACTIVE = "active"  # usage normal
@@ -301,3 +303,177 @@ class GroqKey(db.Model):
     def __repr__(self) -> str:
         """Représentation lisible de la clé."""
         return f"GroqKey {self.masked} ({'active' if self.active else 'inactive'})"
+
+
+# --- Vie associative ----------------------------------------------------------
+#
+# Le RAG échoue sur les questions dont la réponse tient dans un seul document
+# parmi ~400 (« qui est trésorier de TNS ») : le retrieval sémantique ramène des
+# chunks du bon thème mais rate l'unique compte-rendu qui porte le nom. Ces
+# quatre tables tiennent la même information sous forme relationnelle, et
+# `app/back/clubs.py` l'injecte dans le contexte avant l'appel au modèle.
+#
+# Les identifiants sont fixés à la main (`autoincrement=False`), pas alloués par
+# une séquence Postgres : ce sont des énumérations stables, pas des lignes
+# créées à la volée.
+
+
+class Asso(db.Model):
+    """Association mère de TELECOM Nancy (CETEN, BDE, BDA, BDS, TNS, Humani'TN)."""
+
+    __tablename__ = "assos"
+
+    asso_id = db.Column(db.Integer, primary_key=True, autoincrement=False)
+    asso_name = db.Column(db.String(100), nullable=False, unique=True)
+    # Mêmes rôles que sur `Club` : clé courte de reconnaissance dans une
+    # question, et présentation reprise de la plaquette.
+    slug = db.Column(db.String(40), nullable=True, index=True)
+    description = db.Column(db.Text, nullable=True)
+    # Autres appellations, séparées par « | » : le nom d'usage diffère souvent du
+    # nom officiel (« Abso » pour Abso'Ludique). Une colonne plutôt qu'une table :
+    # le catalogue entier tient en mémoire à chaque question, une jointure
+    # n'apporterait rien et la saisie à la main reste sur une seule ligne.
+    aliases = db.Column(db.Text, nullable=True)
+
+    clubs = db.relationship("Club", back_populates="asso")
+    bureau = db.relationship(
+        "AssoRole", back_populates="asso", cascade="all, delete-orphan"
+    )
+
+    def __repr__(self) -> str:
+        """Représentation lisible de l'association."""
+        return f"Asso {self.asso_id} — {self.asso_name}"
+
+
+class Role(db.Model):
+    """Poste au sein d'un bureau (Président, Trésorier, Secrétaire...)."""
+
+    __tablename__ = "roles"
+
+    role_id = db.Column(db.Integer, primary_key=True, autoincrement=False)
+    role_name = db.Column(db.String(80), nullable=False, unique=True)
+
+    def __repr__(self) -> str:
+        """Représentation lisible du rôle."""
+        return f"Role {self.role_id} — {self.role_name}"
+
+
+class Club(db.Model):
+    """Un club de l'école, rattaché à son association mère."""
+
+    __tablename__ = "clubs"
+
+    club_id = db.Column(db.Integer, primary_key=True, autoincrement=False)
+    club_name = db.Column(db.String(120), nullable=False)
+    # Clé courte servant à reconnaître le club dans une question (« tns »), là où
+    # `club_name` porte la forme développée. C'est aussi le slug du logo quand le
+    # club en a un dans la plaquette (voir `seamap.LOGOS`).
+    slug = db.Column(db.String(40), nullable=True, index=True)
+    # Présentation du club, reprise de la plaquette alpha. Sert à répondre aux
+    # « c'est quoi X ? » sans passer par les archives. NULL pour les clubs que la
+    # plaquette ne décrit pas : mieux vaut aucune description qu'une inventée.
+    description = db.Column(db.Text, nullable=True)
+    # Catégorie du club au sens du CETEN : Loisirs, Événementiel ou Services.
+    type_club = db.Column(db.String(20), nullable=True)
+    contact_email = db.Column(db.String(150), nullable=True)
+    # Format libre (« 01/10/24 » comme « 16/09/2025 ») : stockée telle quelle,
+    # même parti pris que `Document.doc_date`, plutôt que de risquer une
+    # interprétation jour/mois sur des saisies hétérogènes.
+    date_creation = db.Column(db.String(10), nullable=True)
+    # Autres appellations, séparées par « | » : le nom d'usage diffère souvent du
+    # nom officiel (« Abso » pour Abso'Ludique). Une colonne plutôt qu'une table :
+    # le catalogue entier tient en mémoire à chaque question, une jointure
+    # n'apporterait rien et la saisie à la main reste sur une seule ligne.
+    aliases = db.Column(db.Text, nullable=True)
+    asso_id = db.Column(db.Integer, db.ForeignKey("assos.asso_id"), nullable=False)
+
+    asso = db.relationship("Asso", back_populates="clubs")
+    bureau = db.relationship(
+        "ClubRole", back_populates="club", cascade="all, delete-orphan"
+    )
+
+    def __repr__(self) -> str:
+        """Représentation lisible du club."""
+        return f"Club {self.club_id} — {self.club_name}"
+
+
+class ClubRole(db.Model):
+    """Qui occupe quel poste, dans quel club, sur quel mandat.
+
+    Clé primaire technique, et non (role_id, club_id, mandat) : un même poste
+    peut avoir plusieurs titulaires — Anim'Est a deux présidents, le CETEN deux
+    responsables communication. Seule la répétition exacte d'une personne sur un
+    même poste est interdite, par la contrainte d'unicité.
+
+    `mandat` est obligatoire : sans lui la table ne décrirait que le bureau
+    courant, alors que les archives — et les questions des utilisateurs —
+    remontent à 2016 (« qui était président du BDE en 2022 »).
+    """
+
+    __tablename__ = "club_roles"
+
+    club_role_id = db.Column(db.Integer, primary_key=True)
+    role_id = db.Column(db.Integer, db.ForeignKey("roles.role_id"), nullable=False)
+    club_id = db.Column(
+        db.Integer, db.ForeignKey("clubs.club_id"), nullable=False, index=True
+    )
+    # Saison au format « 2025-2026 » : l'ordre lexicographique est l'ordre
+    # chronologique, le mandat courant d'un club est donc son max().
+    mandat = db.Column(db.String(9), nullable=False)
+    # Nom et prénom dans la forme des archives (« NOM Prénom »).
+    personne = db.Column(db.String(150), nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "role_id",
+            "club_id",
+            "mandat",
+            "personne",
+            name="uq_club_roles_poste_personne",
+        ),
+    )
+
+    role = db.relationship("Role")
+    club = db.relationship("Club", back_populates="bureau")
+
+    def __repr__(self) -> str:
+        """Représentation lisible de la ligne de bureau."""
+        return f"ClubRole {self.club_id}/{self.role_id} {self.mandat} — {self.personne}"
+
+
+class AssoRole(db.Model):
+    """Qui occupe quel poste, dans quelle association, sur quel mandat.
+
+    Jumelle de `ClubRole`, sur une table distincte : une association n'est pas
+    un club. Les mélanger obligeait à inscrire CETEN, le BDS ou TNS dans
+    `clubs`, ce qui produisait des fiches absurdes (« CETEN rattaché à CETEN »)
+    et laissait le modèle croire qu'une association était un club parmi
+    quarante.
+    """
+
+    __tablename__ = "asso_roles"
+
+    asso_role_id = db.Column(db.Integer, primary_key=True)
+    role_id = db.Column(db.Integer, db.ForeignKey("roles.role_id"), nullable=False)
+    asso_id = db.Column(
+        db.Integer, db.ForeignKey("assos.asso_id"), nullable=False, index=True
+    )
+    mandat = db.Column(db.String(9), nullable=False)
+    personne = db.Column(db.String(150), nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "role_id",
+            "asso_id",
+            "mandat",
+            "personne",
+            name="uq_asso_roles_poste_personne",
+        ),
+    )
+
+    role = db.relationship("Role")
+    asso = db.relationship("Asso", back_populates="bureau")
+
+    def __repr__(self) -> str:
+        """Représentation lisible de la ligne de bureau."""
+        return f"AssoRole {self.asso_id}/{self.role_id} {self.mandat} — {self.personne}"

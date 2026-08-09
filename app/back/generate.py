@@ -42,16 +42,41 @@ _PROMPT_TEMPLATE = (
     "- N'invente jamais d'informations ou de noms de personnes.\n"
     "- Si la réponse factuelle ne figure pas explicitement dans le contexte fourni, "
     "réponds : 'je sais pas, je trouve pas dans mes archives'\n"
+    "- Exception à la règle précédente : un nom mal orthographié n'est pas un nom "
+    "absent. Si le contexte contient une entité que la question vise "
+    "manifestement malgré une graphie approximative, c'est une réponse trouvée — "
+    "réponds avec, en la nommant correctement. Ne réponds 'je sais pas' que si "
+    "rien de proche ne figure au contexte.\n"
     "- Privilégie les réponses très courtes (3-4 lignes max).\n"
     "- Ne commence pas tes phrases par une lettre majuscule.\n"
     "- Ne cite pas la source, sauf si on te le demande explicitement.\n"
     "- En cas de doute entre plusieurs archives, préfère la plus récente.\n\n"
     "Sources officielles :\n"
+    "- Un bloc « FICHE OFFICIELLE » en tête du contexte vient de la base de données "
+    "de l'école : il fait autorité et prime sur toute archive, même plus récente. "
+    "S'il répond à la question, réponds avec, sans chercher ailleurs. Un poste peut "
+    "y avoir plusieurs titulaires : cite-les alors tous.\n"
+    "- Chaque fiche annonce ce qu'elle décrit. TELECOM Nancy compte cinq "
+    "associations (CETEN, BDS, TNS, Humani'TN, Anim'Est) et une quarantaine de "
+    "clubs, qui sont deux choses différentes : n'appelle jamais « club » ce que la "
+    "fiche présente comme une association.\n"
+    "- Un bloc « ANNUAIRE DE LA VIE ASSOCIATIVE » remplace la fiche quand le nom "
+    "employé dans la question n'a pas été retrouvé tel quel. Cherches-y l'entité "
+    "visée, même sous une autre appellation, et réponds avec sa ligne. Ne conclus "
+    "à l'absence que si rien dans l'annuaire ne peut correspondre.\n"
     "- Les Réunions Ouvertes (RO) sont la référence pour les postes officiels du BDE. "
     "Dans un RO, la section 'Membres du bureau présents' "
     "liste les membres du bureau BDE "
     "(format 'NOM Prénom - Fonction'). Les sections suivantes dans le même document "
     "concernent les clubs votés en réunion, pas le bureau BDE.\n"
+    "- Un document dont le titre commence par « Mail » est une annonce de diffusion, "
+    "datée du jour de son envoi (`mailtomd` construit ce titre : les deux ne peuvent "
+    "pas diverger sans rendre cette règle muette). Ses repères de temps "
+    "(« aujourd'hui », « ce soir », « demain », « mardi prochain ») se comptent depuis "
+    "cette date d'envoi, jamais depuis aujourd'hui. Un événement qu'il annonce est "
+    "passé : parles-en au passé et situe-le par sa date réelle. Et un mail annonce une "
+    "intention, pas un fait accompli — il prouve que l'événement a été annoncé, pas "
+    "qu'il a eu lieu.\n"
     "- Les comptes-rendus informels (FCR, signés par un prénom seul ou auteur inconnu) "
     "utilisent des pseudonymes — ignore-les pour tout poste officiel.\n\n"
     "Date d'aujourd'hui : {today}\n"
@@ -79,6 +104,10 @@ class GenerateRequest:
     history: list[HistoryMessage] = field(default_factory=list)
     top_k: int = 5
     user_name: str | None = None
+    # Fiches des clubs cités, tirées du SQL par `clubs.lookup_context` et placées
+    # devant les archives. Vide par défaut : les appelants qui ne les remplissent
+    # pas (bancs Optuna, carte des mers) gardent exactement l'ancien prompt.
+    fiches: str = ""
 
 
 # Signature d'un constructeur de prompt : (contexte, question, user_name) -> prompt.
@@ -273,7 +302,10 @@ def _stream_with_retries(
     max_retries = 3
 
     for attempt in range(max_retries):
-        context = _build_context(current_results)
+        # Les fiches passent devant les archives et survivent au repli 413, qui
+        # ne rogne que `current_results` : c'est la partie courte du contexte,
+        # et la seule qui fasse autorité.
+        context = req.fiches + _build_context(current_results)
         prompt = spec.build(context, req.question, user_name=req.user_name)
         try:
             completion = client.chat.completions.create(
