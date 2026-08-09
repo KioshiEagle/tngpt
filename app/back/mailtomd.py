@@ -22,7 +22,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from email import policy
 from email.message import EmailMessage
-from email.utils import parsedate_to_datetime
+from email.utils import parseaddr, parsedate_to_datetime
 from pathlib import Path
 
 from .clubs import NATURE_ASSO, NATURE_CLUB, Entite, match_entites, normalize
@@ -181,7 +181,7 @@ def _expediteur(brut: str) -> str:
     (`prenom.nom@`) et donne la même forme pour tous. On ne retombe sur le nom
     affiché que pour les boîtes fonctionnelles, qui n'ont pas cette forme.
     """
-    nom_affiche, adresse = email.utils.parseaddr(brut)
+    nom_affiche, adresse = parseaddr(brut)
     found = _ADRESSE_ECOLE.match(adresse)
     if found is None:
         return " ".join(nom_affiche.split()) or adresse
