@@ -59,7 +59,12 @@ les questions dont la réponse n'est pas dans le corpus.
 | e5-large | 3 | 0,5341 | 2 | 512 | oui |
 | miniLM | 13 | 0,3883 | 2 | 800 | oui |
 
-Le reranker gagne chez les six modèles, sans exception.
+Le reranker gagne chez les six modèles, sans exception. **C'est le seul résultat
+du banc qui ait été mis en production** : voir `app/back/reranking.py`, qui
+reclasse une short-list de 20 via `@cf/baai/bge-reranker-base`. Le banc jouait un
+CrossEncoder local `BAAI/bge-reranker-v2-m3` ; la version servie par l'API est
+plus légère, donc le gain mesuré ici est un plafond. Mesuré sur le corpus réel,
+le reclassement coûte entre 0,04 et 0,7 seconde par question.
 
 ## À lire avec précaution
 
@@ -76,8 +81,9 @@ Le reranker gagne chez les six modèles, sans exception.
     - **bge-m3 n'a été tiré que 4 fois sur 236** essais exploitables. Son 0,5469
       est le meilleur de quatre tirages, pas un optimum : la comparaison avec les
       194 essais d'arctic-l n'est pas équitable.
-    - Le **reranker** mesuré ici est un `CrossEncoder` local, absent du service
-      déployé.
+    - Le **reranker** mesuré ici est un `CrossEncoder` local. Il a été réimplémenté
+      via l'API (`@cf/baai/bge-reranker-base`), dans une version plus légère qui
+      n'a pas été mesurée au banc.
 
     Une campagne v6 restreinte à bge-m3 serait nécessaire pour régler
     `chunk_size`, `top_k` et le seuil sur la configuration réellement en service.
