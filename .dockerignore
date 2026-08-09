@@ -11,4 +11,6 @@ node_modules
 *.csv
 data/
 docs/
+# Bancs Optuna : code mort qui importe sentence-transformers, inutile en prod.
+app/back/optuna*.py
 .DS_Store
