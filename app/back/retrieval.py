@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from qdrant_client import QdrantClient
 
 from .embedding import embed_query
+from .reranking import rerank
 from .types import SearchResult
 
 load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
@@ -55,9 +56,19 @@ def _freshness_score(date_str: str) -> float:
 
 
 def search(
-    query: str, top_k: int = 5, collection_name: str = "documents"
+    query: str,
+    top_k: int = 5,
+    collection_name: str = "documents",
+    *,
+    rerank_results: bool = True,
 ) -> list[SearchResult]:
-    """Recherche hybride (sémantique + fraîcheur) dans Qdrant."""
+    """Recherche hybride (sémantique + fraîcheur) dans Qdrant, puis reclassement.
+
+    `rerank_results=False` rend l'ordre hybride seul. La carte au trésor s'en
+    sert : elle enchaîne une dizaine de recherches pour couvrir tous les clubs,
+    y reclasser chacune ferait autant d'appels API pour un résultat qu'elle
+    déduplique et retrie ensuite de toute façon.
+    """
     query_vector = embed_query(query)
     response = get_client().query_points(
         collection_name=collection_name,
@@ -87,6 +98,8 @@ def search(
         )
 
     results.sort(key=lambda x: x["score"], reverse=True)
+    if rerank_results:
+        return rerank(query, results, top_k)
     return results[:top_k]
 
 
