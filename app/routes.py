@@ -51,6 +51,19 @@ def _get_owned_conversation(conversation_id: int) -> Conversation:
     return conversation
 
 
+def _resolve_conversation(
+    conversation_id: int | None, user_id: int, user_message: str
+) -> Conversation:
+    """Récupère la conversation visée, ou en ouvre une nouvelle sur ce message."""
+    if conversation_id is not None:
+        return _get_owned_conversation(conversation_id)
+    conversation = Conversation(
+        user_id=user_id, title=_make_title(user_message), messages=[]
+    )
+    db.session.add(conversation)
+    return conversation
+
+
 @bp.route("/chat", methods=["POST"])
 @login_required
 @limiter.limit(chat_rate_limit)
@@ -88,14 +101,9 @@ def chat() -> Response | tuple[Response, int]:
     user_name = current_user.user_firstname
     user_id = current_user.user_id
 
-    conversation_id = data.get("conversation_id")
-    if conversation_id is not None:
-        conversation = _get_owned_conversation(conversation_id)
-    else:
-        conversation = Conversation(
-            user_id=user_id, title=_make_title(user_message), messages=[]
-        )
-        db.session.add(conversation)
+    conversation = _resolve_conversation(
+        data.get("conversation_id"), user_id, user_message
+    )
 
     # L'historique d'enrichissement vient de la base, pas du client : une
     # conversation a désormais une source de vérité côté serveur.
@@ -149,13 +157,17 @@ def chat() -> Response | tuple[Response, int]:
     def _stream() -> Iterator[str]:
         raw_text = ""
         try:
-            for chunk in generate_answer(req, results, client=client):
+            # Un seul appel à Groq, dont on accumule le texte au passage pour le
+            # persister ensuite. La carte au trésor et le chat sont deux
+            # générateurs alternatifs, jamais successifs.
+            stream = (
+                generate_map(req, results, client=client)
+                if is_map
+                else generate_answer(req, results, client=client)
+            )
+            for chunk in stream:
                 raw_text += chunk
                 yield chunk
-            if is_map:
-                yield from generate_map(req, results, client=client)
-            else:
-                yield from generate_answer(req, results, client=client)
         except Exception as e:  # noqa: BLE001
             yield f"Erreur : {e!s}"
         finally:
