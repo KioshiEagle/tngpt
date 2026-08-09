@@ -83,6 +83,21 @@ def _nettoyer_titre(brut: str | None, url: str) -> str:
     return segments[-1].replace("-", " ") if segments else url
 
 
+def _doublon_connu(url: str) -> bool:
+    """Écarte les URLs qui redoublent une page déjà listée sous une autre forme.
+
+    Le sitemap WordPress liste deux fois chaque contenu : sous son permalien
+    propre et sous sa forme brute (`/?p=11279`, `/?page_id=311`). Toutes ces
+    formes brutes ont un chemin vide et se réduisaient au même `source_id`, donc
+    au même document, chacune écrasant la précédente.
+
+    Les traductions `?lang=en` posaient le même problème en pire : partageant le
+    chemin de leur original, elles écrasaient la version française — dans une
+    base interrogée en français.
+    """
+    return bool(urlparse(url).query)
+
+
 def lire(url: str, html: str) -> Page | None:
     """Extrait le contenu principal d'une page. None si rien d'exploitable.
 
@@ -219,7 +234,7 @@ def crawl(
     client = httpx.Client(
         timeout=_TIMEOUT, follow_redirects=True, headers={"User-Agent": _USER_AGENT}
     )
-    urls = lister_urls(client, sitemap)[:limite]
+    urls = [u for u in lister_urls(client, sitemap) if not _doublon_connu(u)][:limite]
     stats = {"total": len(urls), "converties": 0, "ignorees": 0, "echecs": 0}
 
     for rang, url in enumerate(urls, start=1):
