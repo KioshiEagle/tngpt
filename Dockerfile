@@ -2,10 +2,10 @@ FROM ghcr.io/astral-sh/uv:0.11.19-python3.13-trixie
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y \
-    libgl1 \
-    libglib2.0-0 \
-    && rm -rf /var/lib/apt/lists/*
+# Plus aucune dépendance système : libgl1 et libglib2.0-0 servaient à l'inférence
+# locale (commit df03ee6, « Docker image using only CPU for inference »). Tout
+# tourne désormais sur API — Groq pour la génération, Workers AI pour les
+# embeddings — et PyMuPDF embarque ses propres binaires.
 
 COPY pyproject.toml uv.lock ./
 

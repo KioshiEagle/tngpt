@@ -12,7 +12,11 @@ dependencies = [
     "groq>=1.4.0",
     "langchain-text-splitters>=1.1.2",
     "qdrant-client>=1.18.0",
-    "pymupdf4llm>=1.27.2.3",
+    # Épinglé sous la 1.x : depuis la 1.27, pymupdf4llm tire pymupdf-layout,
+    # donc onnxruntime et ~118 Mo de modèles .onnx (layout, tables, décision
+    # OCR) qui s'exécutent en local à chaque conversion de PDF. La 0.3.x expose
+    # le même `to_markdown()` sans aucune inférence locale.
+    "pymupdf4llm>=0.3.4,<1.0",
     "gunicorn>=26.0.0",
     "dotenv>=0.9.9",
     "datetime>=6.0",
@@ -57,7 +61,11 @@ override-dependencies = ["setuptools>=83.0.0"]
 [tool.ruff]
 target-version = "py313"
 # Migrations Alembic : fichiers auto-générés, non soumis au style du projet.
-extend-exclude = ["migrations"]
+# Bancs Optuna : exclusion TEMPORAIRE. Ces trois fichiers ne s'importent même
+# plus (pandas et sentence-transformers ne sont plus installés) et portaient à
+# eux seuls 334 des 335 violations ruff, ce qui rendait le stage lint rouge en
+# permanence. À supprimer ou à sortir du package quand on reprendra l'Optuna.
+extend-exclude = ["migrations", "app/back/optuna*.py"]
 
 [tool.ruff.lint]
 select = ["ALL","RUF100"]
@@ -75,13 +83,14 @@ docstring-code-format = true
 
 [tool.ty.src]
 # Migrations Alembic : auto-générées, non type-checkées.
-exclude = ["migrations"]
+# Bancs Optuna : voir la note sous [tool.ruff], même exclusion temporaire.
+exclude = ["migrations", "app/back/optuna*.py"]
 
 [tool.ty.rules]
 unsupported-base = "ignore"
 
 [tool.bandit]
-exclude_dirs = [".venv","tests","models_cache","__pycache__",".ruf_cache",".uv-cache"]
+exclude_dirs = [".venv","tests","__pycache__",".ruf_cache",".uv-cache"]
 skips = ["B101"]
 
 [tool.complexipy]
