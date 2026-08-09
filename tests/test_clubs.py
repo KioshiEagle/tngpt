@@ -7,6 +7,7 @@ fonctions pures du module sont couvertes.
 import pytest
 
 from app.back.clubs import (
+    MAX_CANDIDATS,
     NATURE_ASSO,
     NATURE_CLUB,
     Entite,
@@ -18,6 +19,7 @@ from app.back.clubs import (
     format_fiches,
     match_annee,
     match_entites,
+    match_flou,
     match_roles,
     normalize,
     select_mandat,
@@ -364,12 +366,53 @@ def test_format_annuaire_liste_tout_avec_la_nature() -> None:
     rendu = format_annuaire([asso, _TNS], bureaux)
     assert "ANNUAIRE DE LA VIE ASSOCIATIVE" in rendu
     assert "- BDS (asso)" in rendu
+    # La description accompagne l'entrée : c'est elle qui permet de répondre à
+    # « que fait ce club » sans que la reconnaissance ait su l'identifier.
+    assert "TNS est la junior-entreprise de l'école." in rendu
     # Bureau courant seulement : MARTIN Paul est le président 2024-2025.
-    assert (
-        "- Telecom Nancy Services (club) — Président : NOBILE Tobias ; "
-        "Trésorier : DUPONT Marie" in rendu
-    )
+    assert "Bureau : Président : NOBILE Tobias ; Trésorier : DUPONT Marie" in rendu
     assert "MARTIN Paul" not in rendu
+
+
+# --- Rattrapage approximatif ---------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("question", "attendu"),
+    [
+        # Fautes de frappe et graphies qu'aucune liste d'alias n'avait prévues.
+        ("le club baroudeur", "Les Baroudeurs"),
+        ("qui préside les barroudeurs ?", "Les Baroudeurs"),
+        ("c'est quoi telecom nancy service ?", "Telecom Nancy Services"),
+        ("qui préside animst ?", "Anim'Est"),
+        ("le club chokbar", "Chok'Bar"),
+    ],
+)
+def test_match_flou_rattrape_les_graphies_imprevues(
+    question: str, attendu: str
+) -> None:
+    """Le filet sous la reconnaissance exacte retrouve un nom malmené."""
+    trouves = [e.nom for e in match_flou(question, _CATALOGUE)]
+    assert attendu in trouves
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "c'est quoi le WEI ?",
+        "quelles sont les salles libres ?",
+        "je cherche un stage",
+    ],
+)
+def test_match_flou_ne_propose_rien_hors_sujet(question: str) -> None:
+    """Une question sans club ne doit pas faire remonter de piste au hasard."""
+    assert match_flou(question, _CATALOGUE) == []
+
+
+def test_match_flou_plafonne_les_candidats() -> None:
+    """On propose quelques pistes, pas un classement de tout le catalogue."""
+    trouves = match_flou("tn", _CATALOGUE, seuil=0)
+    assert len(trouves) <= MAX_CANDIDATS
 
 
 def test_format_annuaire_vide() -> None:

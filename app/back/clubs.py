@@ -26,8 +26,10 @@ elles sont ainsi testables sans base ni application Flask.
 
 import logging
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
+
+from rapidfuzz import fuzz, process
 
 from .models import Asso, AssoRole, Club, ClubRole, Role, db
 from .textnorm import strip_accents
@@ -152,13 +154,26 @@ def _blank(haystack: str, pattern: re.Pattern[str]) -> tuple[str, bool]:
     return blanked, True
 
 
+# Ce qui peut séparer deux morceaux d'un nom, y compris rien du tout. Un même
+# club s'écrit « Créa'TN », « Créa TN » ou « CréaTN » selon qui tape, et le slug
+# ne retient aucun séparateur : les trois doivent se rencontrer.
+_LIAISON = r"[\s'.\-]*"
+
+
 def _word(needle: str) -> re.Pattern[str]:
     r"""Compile un motif exigeant des frontières de mot autour du terme.
 
-    `\b` ne convient pas : les noms de clubs se terminent volontiers par une
-    apostrophe ou un point, qui ne sont pas des caractères de mot.
+    `\b` ne convient pas en bordure : les noms de clubs se terminent volontiers
+    par une apostrophe ou un point, qui ne sont pas des caractères de mot.
+
+    À l'intérieur, les séparateurs sont rendus facultatifs. Seules les positions
+    où le nom officiel en comporte déjà un sont relâchées, ce qui laisse « bar »
+    strict tout en faisant coïncider « créa tn » et « creatn ».
     """
-    return re.compile(rf"(?<!\w){re.escape(needle)}(?!\w)")
+    morceaux = [re.escape(m) for m in re.split(r"[^0-9a-z]+", needle) if m]
+    if not morceaux:
+        return re.compile(r"(?!x)x")  # ne matche jamais
+    return re.compile(rf"(?<!\w){_LIAISON.join(morceaux)}(?!\w)")
 
 
 def match_entites(question: str, catalogue: Sequence[Entite]) -> list[Entite]:
@@ -278,6 +293,76 @@ def match_roles(question: str, roles: Sequence[RoleEntry]) -> list[RoleEntry]:
     return sorted(found.values(), key=lambda role: role.role_id)
 
 
+# --- Rattrapage approximatif ---------------------------------------------------
+
+# Seuil de ressemblance, volontairement bas : ce qui sort d'ici n'est pas
+# affirmé au modèle mais proposé comme piste, il vaut donc mieux trois
+# candidats dont deux à écarter qu'un nom manqué.
+SEUIL_FLOU = 80
+MAX_CANDIDATS = 3
+# En deçà, un fragment est trop court pour que la ressemblance veuille dire
+# quelque chose : « bar » ressemble à « car », « gala » à « cala ».
+_MIN_FRAGMENT = 4
+# Nombre de mots consécutifs comparés : « telecom nancy services » en fait trois.
+_NGRAM_MAX = 3
+
+
+def match_flou(
+    question: str, catalogue: Sequence[Entite], seuil: int = SEUIL_FLOU
+) -> list[Entite]:
+    """Entités dont le nom ressemble à un fragment de la question.
+
+    Filet placé sous la reconnaissance exacte, pour les graphies qu'aucune liste
+    d'alias n'avait prévues : fautes de frappe, séparateurs inattendus, formes
+    tronquées. On compare chaque suite de un à trois mots de la question à tous
+    les noms connus.
+
+    Le résultat est une liste de pistes, pas une identification : l'appelant les
+    présente au modèle comme telles. C'est ce qui permet de descendre le seuil
+    sans risquer d'affirmer un nom faux.
+    """
+    formes = _formes_connues(catalogue)
+    if not formes:
+        return []
+
+    meilleurs: dict[tuple[str, int], tuple[float, Entite]] = {}
+    for fragment in _fragments(normalize(question).split()):
+        for forme, score, _ in process.extract(
+            fragment,
+            formes.keys(),
+            scorer=fuzz.ratio,
+            score_cutoff=seuil,
+            limit=MAX_CANDIDATS,
+        ):
+            entite = formes[forme]
+            connu = meilleurs.get(entite.cle)
+            if connu is None or score > connu[0]:
+                meilleurs[entite.cle] = (score, entite)
+
+    classes = sorted(meilleurs.values(), key=lambda paire: -paire[0])
+    return [entite for _, entite in classes[:MAX_CANDIDATS]]
+
+
+def _formes_connues(catalogue: Sequence[Entite]) -> dict[str, Entite]:
+    """Toutes les graphies connues d'une entité, indexées par forme normalisée."""
+    formes: dict[str, Entite] = {}
+    for entite in catalogue:
+        for brut in (entite.nom, entite.slug, *entite.aliases):
+            forme = normalize(brut)
+            if len(forme) >= _MIN_FRAGMENT:
+                formes.setdefault(forme, entite)
+    return formes
+
+
+def _fragments(mots: Sequence[str]) -> Iterator[str]:
+    """Suites de un à trois mots consécutifs, assez longues pour être comparées."""
+    for taille in range(1, _NGRAM_MAX + 1):
+        for depart in range(len(mots) - taille + 1):
+            fragment = " ".join(mots[depart : depart + taille])
+            if len(fragment) >= _MIN_FRAGMENT:
+                yield fragment
+
+
 _ANNEE = re.compile(r"(?<!\d)(20\d{2})(?!\d)")
 
 
@@ -358,26 +443,74 @@ _ENTETE_ANNUAIRE = (
     "nom, puis réponds avec ses données. Si aucune ne correspond, dis-le."
 )
 
+_ENTETE_PROCHES = (
+    "NOMS PROCHES — base de données de l'école, fait autorité.\n"
+    "Le nom employé dans la question ne correspond exactement à aucune entité. "
+    "Voici les plus ressemblantes. Si l'une est manifestement celle qu'on vise, "
+    "réponds avec ses données en la nommant correctement ; sinon dis que tu ne "
+    "connais pas ce nom. Ne choisis pas au hasard."
+)
 
-def format_annuaire(entites: Sequence[Entite], bureaux: Bureaux) -> str:
-    """Annuaire complet : une ligne par entité, avec son bureau courant.
 
-    Une seule ligne par club plutôt qu'une par poste : à quarante-cinq entités,
-    la différence de volume est celle qui fait tenir le bloc dans le budget.
+# Longueur retenue d'une description dans l'annuaire. Les quarante descriptions
+# complètes pèsent 2000 tokens à elles seules, ce qui porterait le bloc à 3300 —
+# intenable face au prompt de chat et au tier à 8000 tokens/minute. La première
+# phrase suffit à dire ce que fait un club.
+_ABREGE = 130
+
+
+def _abrege(texte: str) -> str:
+    """Coupe une description à la première phrase, sans casser un mot."""
+    if len(texte) <= _ABREGE:
+        return texte
+    coupe = texte[:_ABREGE]
+    fin = coupe.rfind(". ")
+    if fin > _ABREGE // 3:
+        return coupe[: fin + 1]
+    return coupe[: coupe.rfind(" ")].rstrip(",;:") + "…"
+
+
+def format_annuaire(
+    entites: Sequence[Entite],
+    bureaux: Bureaux,
+    entete: str = _ENTETE_ANNUAIRE,
+    *,
+    abrege: bool = True,
+) -> str:
+    """Annuaire complet : une ligne par entité, avec sa description et son bureau.
+
+    Volontairement exhaustif. C'est ce qui permet à la reconnaissance de rater
+    sans conséquence : le modèle dispose alors de tout et retrouve lui-même
+    l'entité visée. Amputer ce bloc — des descriptions par exemple — rendrait de
+    nouveau la reconnaissance responsable de l'exactitude des réponses.
+
+    Une seule ligne par entité plutôt qu'une par poste : à quarante-cinq
+    entités, c'est ce qui fait tenir le bloc dans le budget de tokens.
     """
-    lignes = []
-    for entite in entites:
-        brutes = bureaux.get(entite.cle, [])
-        mandat = select_mandat({b[0] for b in brutes}, None)
-        postes = _grouper(brutes, mandat, set()) if mandat else ()
+    lignes = [_ligne_annuaire(entite, bureaux, abrege=abrege) for entite in entites]
+    if not lignes:
+        return ""
+    return f"{entete}\n" + "\n".join(lignes) + "\n\n"
+
+
+def _ligne_annuaire(entite: Entite, bureaux: Bureaux, *, abrege: bool) -> str:
+    """Une entrée d'annuaire : la nature, la description puis le bureau courant."""
+    marque = "asso" if entite.nature == NATURE_ASSO else "club"
+    ligne = f"- {entite.nom} ({marque})"
+
+    if entite.description:
+        desc = _abrege(entite.description) if abrege else entite.description
+        ligne += f" — {desc}"
+
+    brutes = bureaux.get(entite.cle, [])
+    mandat = select_mandat({b[0] for b in brutes}, None)
+    postes = _grouper(brutes, mandat, set()) if mandat else ()
+    if postes:
         detail = " ; ".join(
             f"{poste.role} : {', '.join(poste.personnes)}" for poste in postes
         )
-        marque = "asso" if entite.nature == NATURE_ASSO else "club"
-        lignes.append(f"- {entite.nom} ({marque})" + (f" — {detail}" if detail else ""))
-    if not lignes:
-        return ""
-    return f"{_ENTETE_ANNUAIRE}\n" + "\n".join(lignes) + "\n\n"
+        ligne += f" — Bureau : {detail}"
+    return ligne
 
 
 def veut_annuaire(question: str, roles_cites: Sequence[RoleEntry]) -> bool:
@@ -576,6 +709,18 @@ def lookup_context(question: str) -> str:
         # retrouver dans l'annuaire.
         if not veut_annuaire(question, match_roles(question, roles)):
             return ""
+        # Deuxième chance : quelques noms ressemblants, proposés comme pistes.
+        # Beaucoup moins coûteux que l'annuaire, et suffisant dès qu'il ne
+        # s'agit que d'une graphie inattendue ou d'une faute de frappe.
+        proches = match_flou(question, catalogue)
+        if proches:
+            logger.debug(
+                "Rien d'exact : %s proposé(s) par ressemblance.",
+                ", ".join(e.nom for e in proches),
+            )
+            return format_annuaire(
+                proches, _load_bureaux(proches), _ENTETE_PROCHES, abrege=False
+            )
         logger.debug("Aucune entité reconnue : repli sur l'annuaire complet.")
         return format_annuaire(catalogue, _load_bureaux(catalogue))
     if len(cites) > MAX_FICHES:
