@@ -16,6 +16,7 @@ question irait percuter. C'est le rôle de trafilatura.
 
 import logging
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
@@ -182,3 +183,75 @@ def convert_url(url: str, html: str, output_dir: Path) -> Path | None:
     md_path = output_dir / f"{page.source_id}.md"
     md_path.write_text(rendre(page), encoding="utf-8")
     return md_path
+
+
+SITEMAP_ECOLE = "https://telecomnancy.univ-lorraine.fr/sitemap_index.xml"
+
+# Le crawl s'annonce : un assistant qui aspire 431 pages doit être identifiable
+# par l'administrateur du site, et joignable s'il pose problème.
+_USER_AGENT = "TN-GPT/1.0 (assistant etudiant TELECOM Nancy)"
+# Le site est celui de l'école, pas une cible : une pause entre deux requêtes
+# évite de lui infliger une rafale pour un contenu qui bouge rarement.
+_PAUSE = 0.3
+_TIMEOUT = 30.0
+
+
+def crawl(
+    sitemap: str = SITEMAP_ECOLE,
+    limite: int | None = None,
+    *,
+    simulation: bool = False,
+) -> dict[str, int]:
+    """Crawle un sitemap, convertit chaque page et l'ingère dans Qdrant.
+
+    Les imports du catalogue sont faits ici et non en tête de module : `catalog`
+    importe déjà `webtomd`, l'inverse au niveau module fermerait le cycle.
+    """
+    from flask import current_app  # noqa: PLC0415
+
+    from .catalog import _ingest_worker  # noqa: PLC0415
+    from .models import DOC_INDEXING, DOC_ORIGIN_WEB, Document, db  # noqa: PLC0415
+
+    app = current_app._get_current_object()  # noqa: SLF001  # ty: ignore[unresolved-attribute]
+    depot = Path(app.config["UPLOAD_DIR"])
+    depot.mkdir(parents=True, exist_ok=True)
+
+    client = httpx.Client(
+        timeout=_TIMEOUT, follow_redirects=True, headers={"User-Agent": _USER_AGENT}
+    )
+    urls = lister_urls(client, sitemap)[:limite]
+    stats = {"total": len(urls), "converties": 0, "ignorees": 0, "echecs": 0}
+
+    for rang, url in enumerate(urls, start=1):
+        try:
+            html = client.get(url).text
+            md_path = convert_url(url, html, depot)
+        except (httpx.HTTPError, OSError):
+            logger.warning("Page injoignable : %s", url)
+            stats["echecs"] += 1
+            continue
+
+        if md_path is None:
+            stats["ignorees"] += 1
+            continue
+        stats["converties"] += 1
+
+        if simulation:
+            md_path.unlink(missing_ok=True)
+        else:
+            source_id = md_path.stem
+            document = db.session.get(Document, source_id) or Document(
+                source_id=source_id
+            )
+            db.session.add(document)
+            document.status = DOC_INDEXING
+            document.origin = DOC_ORIGIN_WEB
+            document.error = None
+            db.session.commit()
+            _ingest_worker(app, source_id, md_path)
+
+        if rang % 50 == 0:
+            logger.info("Crawl : %d/%d", rang, len(urls))
+        time.sleep(_PAUSE)
+
+    return stats

@@ -4,6 +4,7 @@ from flask.cli import with_appcontext
 
 from .back.models import User, db
 from .back.permissions import PERM_ADMIN, encode_perms, list_perm
+from .back.webtomd import SITEMAP_ECOLE, crawl
 
 
 def _get_user(email: str) -> User:
@@ -43,7 +44,30 @@ def revoke_admin(email: str) -> None:
     click.echo(f"{email} n'est plus administrateur.")
 
 
+@click.command("crawl-site")
+@click.option("--sitemap", default=SITEMAP_ECOLE, show_default=True)
+@click.option("--limite", type=int, default=None, help="S'arrêter après N pages.")
+@click.option(
+    "--simulation",
+    is_flag=True,
+    help="Convertir sans ingérer : ni embeddings payés, ni écriture dans Qdrant.",
+)
+@with_appcontext
+def crawl_site(sitemap: str, limite: int | None, *, simulation: bool) -> None:
+    """Crawle le site de l'école et ingère ses pages dans Qdrant.
+
+    Rejouable : le `source_id` d'une page dérive de son URL, donc un second
+    passage remplace les documents au lieu de les dupliquer.
+    """
+    stats = crawl(sitemap, limite=limite, simulation=simulation)
+    click.echo(
+        f"{stats['converties']} converties, {stats['ignorees']} ignorées "
+        f"(listing ou vides), {stats['echecs']} échecs, sur {stats['total']} URLs."
+    )
+
+
 def register_cli(app: Flask) -> None:
     """Enregistre les commandes CLI de l'application."""
     app.cli.add_command(make_admin)
     app.cli.add_command(revoke_admin)
+    app.cli.add_command(crawl_site)
