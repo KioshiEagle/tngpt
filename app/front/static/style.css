@@ -211,6 +211,25 @@ body {
 [data-theme="dark"] .conv-item:hover { background: rgba(255, 255, 255, 0.08); }
 [data-theme="dark"] .conv-item.active { background: rgba(255, 255, 255, 0.14); }
 
+.conv-row { position: relative; display: flex; align-items: center; }
+.conv-row .conv-item { flex: 1; min-width: 0; }
+.conv-del-btn {
+    position: absolute;
+    right: 6px;
+    opacity: 0;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 15px;
+    line-height: 1;
+    padding: 4px 6px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: 0.12s;
+}
+.conv-row:hover .conv-del-btn { opacity: 1; }
+.conv-del-btn:hover { color: var(--primary); background: var(--primary-light); }
+
 /* --- MAIN --- */
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
 
