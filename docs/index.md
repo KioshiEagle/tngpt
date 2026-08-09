@@ -16,4 +16,6 @@ TN-GPT est un assistant intelligent basé sur l'architecture RAG (Retrieval-Augm
 ## Navigation
 
 * [**Installation**](installation.md) : Découvrez comment installer et lancer TN-GPT localement.
+* [**Architecture**](architecture.md) : Le trajet d'une question, de l'ingestion à la réponse.
+* [**Rapports de benchmark**](rapports.md) : Les campagnes Optuna qui ont réglé le retrieval, et leurs limites.
 * [**Référence API**](api/) : Explorez le code source et l'architecture interne de notre solution.

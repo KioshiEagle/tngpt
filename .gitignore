@@ -23,6 +23,8 @@ app/back/temp/
 Plaquette-Alpha**
 docs/api/
 site/
+# site de documentation construit par zensical, artefact de CI
+public/
 
 # état local Flask : contient le SQLite de repli, jamais la vraie base
 instance/
@@ -37,3 +39,5 @@ Mails*/
 
 # NB : migrations/ doit être versionné — c'est lui qui construit le schéma
 # en déploiement (`flask db upgrade`). Ne pas l'ignorer.
+# NB : docs/rapports/ doit rester versionné — ce sont les rapports de benchmark
+# publiés par la doc, pas un artefact de build. `data/` ne les couvre plus.
