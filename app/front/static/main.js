@@ -462,12 +462,12 @@ document.addEventListener('DOMContentLoaded', () => {
             cancelPendingRender();
             if (textContainer) textContainer.classList.remove('streaming');
 
-            // Le retour à l'état « prêt » passe avant le rendu final. Placé
-            // après, la moindre exception de `renderAssistant` — marked absent,
-            // carte au trésor malformée — sautait `setStreaming(false)` et
-            // laissait le bouton bloqué sur « stop » : plus aucun message ne
-            // pouvait être envoyé, sans autre trace qu'une erreur en console.
-            if (rawText) conversationHistory.push({ role: 'assistant', content: rawText });
+            // Le retour à l'état « prêt » passe avant le rendu final : une
+            // exception de `renderAssistant` sauterait sinon `setStreaming`,
+            // et le bouton resterait bloqué sur « stop » — plus aucun message
+            // ne pourrait partir, sans autre trace qu'une erreur en console.
+            // L'historique n'est plus tenu ici : il vit en base depuis que
+            // `chat` le relit sur la conversation (voir routes.py).
             setStreaming(false);
             inp.focus();
 
