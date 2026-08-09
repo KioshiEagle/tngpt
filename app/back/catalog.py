@@ -7,7 +7,9 @@ from pathlib import Path
 
 from flask import Flask
 
+from .clubs import load_catalogue
 from .groqpool import acquire
+from .mailtomd import convert_file as convert_mail
 from .mdtoqdrant import VectorStore
 from .models import (
     DOC_FAILED,
@@ -33,12 +35,18 @@ _STALE_INGESTION = timedelta(minutes=30)
 _vector_store: VectorStore | None = None
 _vector_store_lock = threading.Lock()
 
+# Un dépôt groupé lance un thread par fichier. Sur deux cents mails, autant
+# d'ingestions simultanées noieraient Workers AI sous les 429 bien avant que son
+# backoff ne serve à quelque chose — et chaque échec coûte les embeddings déjà
+# calculés. Les threads restent créés d'un coup, mais n'avancent qu'à trois.
+_INGESTIONS = threading.BoundedSemaphore(3)
+
 
 def get_vector_store() -> VectorStore:
     """VectorStore partagé, créé à la première ingestion.
 
-    Instancié paresseusement : il charge un modèle d'embeddings, coûteux à la
-    fois en mémoire et en temps de démarrage, inutile tant qu'on n'ingère rien.
+    Instancié paresseusement : sa création ouvre une connexion Qdrant et crée
+    les index de payload, inutile tant qu'on n'ingère rien.
     """
     global _vector_store  # noqa: PLW0603
     with _vector_store_lock:
@@ -206,7 +214,7 @@ def _ingest_worker(app: Flask, source_id: str, stored_path: Path) -> None:
     Toute erreur est consignée sur le document (statut `failed` + message) au
     lieu de remonter : personne n'attend cette exception, le thread est détaché.
     """
-    with app.app_context():
+    with _INGESTIONS, app.app_context():
         document = db.session.get(Document, source_id)
         if document is None:
             logger.error("Ingestion de %s : document introuvable", source_id)
@@ -214,13 +222,20 @@ def _ingest_worker(app: Flask, source_id: str, stored_path: Path) -> None:
 
         try:
             markdown_path = stored_path
-            if stored_path.suffix.lower() == ".pdf":
+            suffix = stored_path.suffix.lower()
+            if suffix == ".pdf":
                 # Client d'une clé du pool : l'extraction de métadonnées d'un lot
                 # de PDF ne doit pas saturer une seule clé Groq.
                 client, _ = acquire()
                 markdown_path = DocumentProcessor().convert_file(
                     stored_path, stored_path.parent, client=client
                 )
+            elif suffix == ".eml":
+                # Aucun appel à Groq ici : clubs et résumé se lisent au motif,
+                # et un résumé inventé par un modèle serait plus nuisible
+                # qu'absent — le prompt interdit d'inventer.
+                catalogue, _ = load_catalogue()
+                markdown_path = convert_mail(stored_path, stored_path.parent, catalogue)
 
             result = get_vector_store().upload_file(markdown_path)
             if result is None:

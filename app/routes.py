@@ -12,9 +12,11 @@ from flask import (
 )
 from flask_login import current_user, login_required
 
+from .back.clubs import lookup_context
 from .back.generate import GenerateRequest, generate_answer, retrieve
 from .back.groqpool import acquire
 from .back.models import Conversation, db
+from .back.seamap import generate_map, retrieve_for_map, wants_map
 from .back.usage import log_retrieval, quota_status, seconds_until_reset
 from .extensions import chat_rate_limit, limiter
 
@@ -110,14 +112,27 @@ def chat() -> Response | tuple[Response, int]:
     # attribuer la question à cette clé dans le journal.
     client, groq_key_id = acquire()
 
+    # Une demande de carte des mers emprunte un chemin distinct : le TOP_K du
+    # chat ne suffit pas à énumérer les clubs à travers toutes les archives.
+    is_map = wants_map(user_message)
+
     # Recherche et journalisation avant le streaming : l'événement est ainsi
     # enregistré même si le client se déconnecte pendant la réponse, et on
     # n'écrit pas en base depuis un générateur dont le contexte se démonte.
-    results = retrieve(req)
+    results = retrieve_for_map(req) if is_map else retrieve(req)
+
+    # Fiches SQL des clubs cités, quand la question en nomme un. Résolues ici,
+    # dans le contexte de requête, et non dans le générateur : même raison que
+    # le retrieval ci-dessus, la session SQLAlchemy ne doit pas être sollicitée
+    # depuis un générateur dont le contexte se démonte. La carte a son propre
+    # prompt, sans emplacement pour les fiches.
+    if not is_map:
+        req.fiches = lookup_context(user_message)
+
     log_retrieval(
         user_id=user_id,
         question=user_message,
-        top_k=TOP_K,
+        top_k=len(results) if is_map else TOP_K,
         results=results,
         groq_key_id=groq_key_id,
     )
@@ -137,6 +152,10 @@ def chat() -> Response | tuple[Response, int]:
             for chunk in generate_answer(req, results, client=client):
                 raw_text += chunk
                 yield chunk
+            if is_map:
+                yield from generate_map(req, results, client=client)
+            else:
+                yield from generate_answer(req, results, client=client)
         except Exception as e:  # noqa: BLE001
             yield f"Erreur : {e!s}"
         finally:

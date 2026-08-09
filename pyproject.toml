@@ -12,13 +12,9 @@ dependencies = [
     "groq>=1.4.0",
     "langchain-text-splitters>=1.1.2",
     "qdrant-client>=1.18.0",
-    "sentence-transformers>=5.5.1",
-    "torch==2.12.0; sys_platform == 'darwin'",
-    "torch==2.12.0+cpu; sys_platform == 'linux'",
     "pymupdf4llm>=1.27.2.3",
     "gunicorn>=26.0.0",
     "dotenv>=0.9.9",
-    "torch>=2.12.0",
     "datetime>=6.0",
     "flask-limiter>=4.1.1",
     "flask-compress>=1.24",
@@ -30,6 +26,9 @@ dependencies = [
     "bcrypt>=5.0.0",
     "psycopg2-binary>=2.9",
     "flask-migrate>=4.1.0",
+    "httpx>=0.28.1",
+    "rapidfuzz>=3.14.5",
+    "trafilatura>=2.2.0",
 ]
 
 [dependency-groups]
@@ -37,22 +36,13 @@ dev = [
     "bandit>=1.9.4",
     "complexipy>=6.2.0",
     "mkdocstrings-python>=2.0.4",
+    "optuna>=4.9.0",
     "pip-audit>=2.10.0",
     "pytest>=9.0.3",
     "ruff>=0.15.16",
     "ty>=0.0.46",
     "zensical>=0.0.45",
 ]
-[[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
-explicit = true
-
-[tool.uv.sources]
-torch = [
-  { index = "pytorch-cpu", marker = "sys_platform == 'linux'" }
-]
-
 [tool.uv]
 # 🌟 CONFIGURATION BLINDÉE ICI : On sépare strictement les environnements requis
 environments = [

@@ -107,6 +107,19 @@ def too_many_requests(error: HTTPException) -> ResponseReturnValue:
     return error
 
 
+@app.template_global()
+def asset(filename: str) -> str:
+    """URL d'un fichier statique, suffixée de son horodatage de modification.
+
+    Sans cette empreinte, un navigateur continue de servir l'ancien main.js ou
+    l'ancien style.css après un déploiement : le front tourne alors sur une
+    version périmée sans que rien ne le signale.
+    """
+    path = Path(app.static_folder or "") / filename
+    stamp = int(path.stat().st_mtime) if path.is_file() else 0
+    return f"/static/{filename}?v={stamp}"
+
+
 app.register_blueprint(bp)
 app.register_blueprint(auth_bp)
 app.register_blueprint(admin_bp)
