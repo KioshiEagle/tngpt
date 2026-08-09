@@ -8,6 +8,7 @@ from flask.typing import ResponseReturnValue
 from flask_compress import Compress
 from flask_migrate import Migrate
 from werkzeug.exceptions import HTTPException
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.back.admin import admin_bp
 from app.back.auth import auth_bp
@@ -16,6 +17,8 @@ from app.back.permissions import login_manager
 from app.cli import register_cli
 from app.extensions import csrf, limiter
 from app.routes import bp
+
+
 
 load_dotenv()
 
@@ -30,6 +33,7 @@ app = Flask(
     template_folder="app/front/templates",
     static_folder="app/front/static",
 )
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "change-moi-en-prod")
 
 # Pas de repli sur SQLite : sans DATABASE_URL, l'app démarrerait sur une base
