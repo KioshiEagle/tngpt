@@ -303,6 +303,20 @@ def _decouper_tags(sujet: str) -> tuple[list[str], str]:
     return tags, sujet[found.end() :].strip()
 
 
+def _par_tag_de_liste(tags: Sequence[str], catalogue: Sequence[Entite]) -> list[Citee]:
+    """Entités tirées du seul tag de liste : `[CETEN]` émane du CETEN lui-même.
+
+    Rend une liste vide si aucun tag n'est un tag de liste, ce qui rend inutile
+    de tester `any(...)` avant l'appel.
+    """
+    return [
+        Citee(entite, "")
+        for tag in tags
+        if normalize(tag) in _TAGS_LISTE
+        for entite in match_entites(tag, catalogue)
+    ]
+
+
 def _entites(
     tags: Sequence[str], reste: str, catalogue: Sequence[Entite]
 ) -> list[Citee]:
@@ -327,13 +341,8 @@ def _entites(
     if not trouvees:
         trouvees = [Citee(entite, "") for entite in match_entites(reste, catalogue)]
 
-    if not trouvees and any(normalize(tag) in _TAGS_LISTE for tag in tags):
-        trouvees = [
-            Citee(entite, "")
-            for tag in tags
-            if normalize(tag) in _TAGS_LISTE
-            for entite in match_entites(tag, catalogue)
-        ]
+    if not trouvees:
+        trouvees = _par_tag_de_liste(tags, catalogue)
 
     uniques = {citee.entite.cle: citee for citee in trouvees}
     return list(uniques.values())[:_CLUBS_MAX]
