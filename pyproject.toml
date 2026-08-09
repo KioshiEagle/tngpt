@@ -90,7 +90,11 @@ exclude = ["migrations", "app/back/optuna*.py"]
 unsupported-base = "ignore"
 
 [tool.bandit]
-exclude_dirs = [".venv","tests","__pycache__",".ruf_cache",".uv-cache"]
+# Migrations Alembic : leurs 13 B608 sont du SQL littéral écrit à la main dans
+# des migrations de données, sans la moindre entrée utilisateur. Déjà hors de
+# ruff et de ty pour la même raison.
+# Bancs Optuna : voir la note sous [tool.ruff], même exclusion temporaire.
+exclude_dirs = [".venv","tests","__pycache__",".ruf_cache",".uv-cache","migrations","app/back/optuna_rag_benchmark.py","app/back/optuna_retrieval_benchmark.py","app/back/optuna3.py"]
 skips = ["B101"]
 
 [tool.complexipy]
