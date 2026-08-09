@@ -11,12 +11,14 @@ from flask import (
     stream_with_context,
 )
 from flask_login import current_user, login_required
+from groq import Groq
 
 from .back.clubs import lookup_context
 from .back.generate import GenerateRequest, generate_answer, retrieve
 from .back.groqpool import acquire
 from .back.models import Conversation, db
 from .back.seamap import generate_map, retrieve_for_map, wants_map
+from .back.types import SearchResult
 from .back.usage import log_retrieval, quota_status, seconds_until_reset
 from .extensions import chat_rate_limit, limiter
 
@@ -49,6 +51,51 @@ def _get_owned_conversation(conversation_id: int) -> Conversation:
     if conversation is None or conversation.user_id != current_user.user_id:
         abort(404)
     return conversation
+
+
+def _append_message(conversation_id: int, role: str, content: str) -> None:
+    """Ajoute un message à une conversation et commite, si elle existe encore."""
+    conversation = db.session.get(Conversation, conversation_id)
+    if conversation is None:
+        return
+    conversation.messages = [*conversation.messages, {"role": role, "content": content}]
+    db.session.commit()
+
+
+def _stream_answer(
+    req: GenerateRequest,
+    results: list[SearchResult],
+    client: Groq,
+    conversation_id: int,
+    *,
+    is_map: bool,
+) -> Iterator[str]:
+    """Streame la réponse Groq et persiste ce qui a été produit.
+
+    Sorti de `chat` pour que le contexte de requête ne soit pas capturé par une
+    fermeture : tout ce dont le générateur a besoin lui est passé en argument.
+    """
+    raw_text = ""
+    try:
+        # Un seul appel à Groq, dont on accumule le texte au passage pour le
+        # persister ensuite. La carte au trésor et le chat sont deux
+        # générateurs alternatifs, jamais successifs.
+        stream = (
+            generate_map(req, results, client=client)
+            if is_map
+            else generate_answer(req, results, client=client)
+        )
+        for chunk in stream:
+            raw_text += chunk
+            yield chunk
+    except Exception as e:  # noqa: BLE001
+        yield f"Erreur : {e!s}"
+    finally:
+        # Sauvegarde même une réponse partielle (arrêt manuel, erreur) :
+        # stream_with_context maintient le contexte de requête jusqu'ici,
+        # y compris quand le client se déconnecte (GeneratorExit).
+        if raw_text:
+            _append_message(conversation_id, "assistant", raw_text)
 
 
 def _resolve_conversation(
@@ -154,36 +201,8 @@ def chat() -> Response | tuple[Response, int]:
     db.session.commit()
     conversation_id = conversation.conversation_id
 
-    def _stream() -> Iterator[str]:
-        raw_text = ""
-        try:
-            # Un seul appel à Groq, dont on accumule le texte au passage pour le
-            # persister ensuite. La carte au trésor et le chat sont deux
-            # générateurs alternatifs, jamais successifs.
-            stream = (
-                generate_map(req, results, client=client)
-                if is_map
-                else generate_answer(req, results, client=client)
-            )
-            for chunk in stream:
-                raw_text += chunk
-                yield chunk
-        except Exception as e:  # noqa: BLE001
-            yield f"Erreur : {e!s}"
-        finally:
-            # Sauvegarde même une réponse partielle (arrêt manuel, erreur) :
-            # stream_with_context maintient le contexte de requête jusqu'ici,
-            # y compris quand le client se déconnecte (GeneratorExit).
-            if raw_text:
-                conv = db.session.get(Conversation, conversation_id)
-                if conv is not None:
-                    conv.messages = [
-                        *conv.messages,
-                        {"role": "assistant", "content": raw_text},
-                    ]
-                    db.session.commit()
-
-    response = Response(stream_with_context(_stream()), mimetype="text/plain")
+    flux = _stream_answer(req, results, client, conversation_id, is_map=is_map)
+    response = Response(stream_with_context(flux), mimetype="text/plain")
     response.headers["X-Conversation-Id"] = str(conversation_id)
     return response
 
