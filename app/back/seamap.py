@@ -68,10 +68,14 @@ def retrieve_for_map(req: GenerateRequest) -> list[SearchResult]:
     fraîcheur. Les résultats sont dédupliqués sur `point_id` en gardant le
     meilleur score, retriés, puis plafonnés à `MAP_MAX_CHUNKS` — garde-fou contre
     le 413 de Groq.
+
+    Le reranker est désactivé ici : la carte veut de la couverture, pas de la
+    précision, et il coûterait un appel API par requête pour un ordre que la
+    déduplication et le tri qui suivent recomposent entièrement.
     """
     seen: dict[str, SearchResult] = {}
     for query in (req.question, *_MAP_QUERIES):
-        for result in search(query, top_k=MAP_TOP_K):
+        for result in search(query, top_k=MAP_TOP_K, rerank_results=False):
             previous = seen.get(result["point_id"])
             if previous is None or result["score"] > previous["score"]:
                 seen[result["point_id"]] = result

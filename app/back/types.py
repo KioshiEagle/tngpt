@@ -1,4 +1,4 @@
-from typing import Literal, TypedDict
+from typing import Literal, NotRequired, TypedDict
 
 from groq.types.chat import ChatCompletionToolParam
 from groq.types.chat.chat_completion_named_tool_choice_param import (
@@ -15,6 +15,9 @@ class SearchResult(TypedDict):
     score: float
     semantic_score: float
     freshness_score: float
+    # Score du reranker Workers AI, absent quand le reclassement est désactivé
+    # ou n'a pas abouti — `score` reste alors le seul classement disponible.
+    rerank_score: NotRequired[float]
 
 
 class HistoryMessage(TypedDict):

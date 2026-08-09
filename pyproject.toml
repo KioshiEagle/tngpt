@@ -71,7 +71,10 @@ extend-exclude = ["migrations", "app/back/optuna*.py"]
 select = ["ALL","RUF100"]
 ignore = ["T201","S","D100","D104","D401","D203","D213","COM812","CPY001"]
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S101"]
+# S101 : `assert` est la façon d'écrire une assertion en pytest.
+# SLF001 : les tests éprouvent aussi les helpers privés d'un module, c'est leur
+# rôle — l'alternative serait de rendre publiques des fonctions internes.
+"tests/**/*.py" = ["S101", "SLF001"]
 [tool.ruff.lint.mccabe]
 max-complexity = 10
 
