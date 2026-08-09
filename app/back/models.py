@@ -16,6 +16,7 @@ DOC_MISSING = "missing"  # connu du catalogue, absent de Qdrant (désynchronisé
 
 DOC_ORIGIN_DRIVE = "drive"  # ingéré par la pipeline Google Drive
 DOC_ORIGIN_UPLOAD = "upload"  # déposé depuis le panel admin
+DOC_ORIGIN_MAIL = "mail"  # mail de liste déposé depuis le panel admin
 
 # États de modération d'un utilisateur.
 USER_ACTIVE = "active"  # usage normal
