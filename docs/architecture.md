@@ -30,6 +30,7 @@ flowchart TB
     subgraph logic["Logique métier — app/back"]
         Perms["permissions.py<br/>bitmask de droits"]
         Retrieval["retrieval.py<br/>recherche hybride"]
+        Rerank["reranking.py<br/>reclassement Workers AI"]
         Generate["generate.py<br/>prompt + réponse"]
         Usage["usage.py<br/>journal + quotas"]
         Catalog["catalog.py<br/>catalogue + ingestion"]
@@ -51,7 +52,7 @@ flowchart TB
         Groq["Groq · LLM<br/>qwen3 / llama"]
         OAuth["Google OAuth"]
         GDrive["Google Drive<br/>PDF sources"]
-        CF["Cloudflare Workers AI<br/>@cf/baai/bge-m3"]
+        CF["Cloudflare Workers AI<br/>@cf/baai/bge-m3<br/>@cf/baai/bge-reranker-base"]
     end
 
     Browser --> AuthBP & ChatBP & AdminBP
@@ -61,6 +62,7 @@ flowchart TB
     ChatBP --> Retrieval --> Generate
     Retrieval --> QD
     Retrieval --> CF
+    Retrieval --> Rerank --> CF
     ChatBP --> Usage --> PG
     Generate --> GroqPool --> Groq
     GroqPool --> PG
@@ -92,6 +94,7 @@ sequenceDiagram
     participant F as Flask /chat
     participant R as retrieval.py
     participant Q as Qdrant
+    participant W as Workers AI
     participant P as PostgreSQL
     participant G as pool Groq
     participant L as Groq (LLM)
@@ -100,6 +103,8 @@ sequenceDiagram
     F->>R: retrieve(question)
     R->>Q: query_points (vecteur bge-m3)
     Q-->>R: chunks pertinents
+    R->>W: rerank (short-list de 20)
+    W-->>R: classement, ou panne — l'ordre hybride tient lieu de repli
     F->>P: log_retrieval (queries + retrieval_events)
     F->>G: demande de génération
     G->>P: clé la moins chargée + incrément d'usage
