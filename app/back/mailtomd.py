@@ -104,6 +104,31 @@ _ADRESSE_ECOLE = re.compile(r"^([a-z]+)\.([a-z-]+)@", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
+class Citee:
+    """Une entité reconnue, et la forme sous laquelle le mail la nomme.
+
+    Les deux diffèrent souvent : un tag `[Abso]` pour Abso'Ludique, un
+    `[Inté'Galactique]` pour le club d'inté, qui se renomme chaque février. Le
+    Markdown porte les deux — le nom canonique fait le lien avec la base, la
+    forme du mail permet de retrouver l'entité dans le corps du message.
+
+    La formulation reste neutre parce que la base ne distingue pas un surnom
+    d'un nom révolu : les deux vivent dans la même colonne `aliases`. Écrire
+    « aujourd'hui X » serait juste pour Inté'Galactique et faux pour Abso.
+    """
+
+    entite: Entite
+    forme: str
+
+    @property
+    def rendu(self) -> str:
+        """Nom canonique, suivi de la forme du mail quand elle en diffère."""
+        if not self.forme or normalize(self.forme) == normalize(self.entite.nom):
+            return self.entite.nom
+        return f"{self.entite.nom} (désigné « {self.forme} » dans ce mail)"
+
+
+@dataclass(frozen=True)
 class Mail:
     """Un mail réduit à ce qui part dans le Markdown."""
 
@@ -111,7 +136,7 @@ class Mail:
     date: str
     expediteur: str
     liste: str
-    entites: tuple[Entite, ...]
+    entites: tuple[Citee, ...]
     resume: str
     fonction: str
     corps: str
@@ -125,14 +150,16 @@ class Mail:
         L'entité y figure aussi, faute de quoi les morceaux du corps — qui ne
         portent pas le bloc « Infos » — ne diraient pas de qui ils parlent.
         """
-        noms = [entite.nom for entite in self.entites[:2]]
+        noms = [citee.entite.nom for citee in self.entites[:2]]
         qui = ", ".join(noms) if noms else self.liste
         jour = _en_clair(self.date)
         return f"Mail {qui} du {jour} — {self.sujet}" if qui else self.sujet
 
     def nommees(self, nature: str) -> str:
-        """Noms des entités de la nature demandée, séparés par une virgule."""
-        return ", ".join(e.nom for e in self.entites if e.nature == nature)
+        """Entités de la nature demandée, rendues avec la forme du mail."""
+        return ", ".join(
+            citee.rendu for citee in self.entites if citee.entite.nature == nature
+        )
 
 
 def _en_clair(iso: str) -> str:
@@ -278,7 +305,7 @@ def _decouper_tags(sujet: str) -> tuple[list[str], str]:
 
 def _entites(
     tags: Sequence[str], reste: str, catalogue: Sequence[Entite]
-) -> list[Entite]:
+) -> list[Citee]:
     """Clubs et associations que le mail concerne, par ordre de fiabilité.
 
     Trois rangs : les tags qui nomment une entité, puis le texte du sujet
@@ -289,24 +316,26 @@ def _entites(
     volontairement écarté, ses résultats étant des pistes à soumettre au modèle,
     jamais une identification à inscrire dans un document qui fera ensuite foi.
     """
-    trouvees: list[Entite] = []
+    trouvees: list[Citee] = []
     for tag in tags:
         if normalize(tag) in _TAGS_HORS_CLUB:
             continue
-        trouvees.extend(match_entites(tag, catalogue))
+        trouvees.extend(Citee(entite, tag) for entite in match_entites(tag, catalogue))
 
+    # Sans tag exploitable, la forme d'origine n'est pas isolable dans la phrase :
+    # on ne rend alors que le nom canonique.
     if not trouvees:
-        trouvees = match_entites(reste, catalogue)
+        trouvees = [Citee(entite, "") for entite in match_entites(reste, catalogue)]
 
     if not trouvees and any(normalize(tag) in _TAGS_LISTE for tag in tags):
         trouvees = [
-            entite
+            Citee(entite, "")
             for tag in tags
             if normalize(tag) in _TAGS_LISTE
             for entite in match_entites(tag, catalogue)
         ]
 
-    uniques = {entite.cle: entite for entite in trouvees}
+    uniques = {citee.entite.cle: citee for citee in trouvees}
     return list(uniques.values())[:_CLUBS_MAX]
 
 
@@ -406,7 +435,7 @@ def convert_file(eml_path: Path, output_dir: Path, catalogue: Sequence[Entite]) 
         "EML -> MD : %s | %s | entites: %s",
         eml_path.name,
         mail.date,
-        ", ".join(e.nom for e in mail.entites) or "aucune",
+        ", ".join(c.entite.nom for c in mail.entites) or "aucune",
     )
 
     output_dir.mkdir(parents=True, exist_ok=True)
