@@ -220,13 +220,14 @@ class DocumentProcessor:
 
                 self.convert_file(pdf_path, Path(output_dir))
                 processed[pdf_path.stem] = current_hash
+                # Sauvegarde après chaque document : une interruption ne coûte
+                # que la conversion en cours, pas toute la boucle.
+                with log_file.open("w") as f:
+                    json.dump(processed, f)
 
             except (RuntimeError, ValueError, OSError) as e:
                 print(f"❌ Impossible de convertir {pdf_path.name} : {e!s}")
                 continue
-
-        with log_file.open("w") as f:
-            json.dump(processed, f)
 
 
 if __name__ == "__main__":

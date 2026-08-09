@@ -351,6 +351,10 @@ body {
     border-bottom-left-radius: 4px;
     white-space: normal;
 }
+/* Une réponse réduite à sa carte laisserait sinon une pastille vide au-dessus. */
+.msg.assistant .msg-text:empty {
+    display: none;
+}
 
 /* Markdown content inside assistant bubbles */
 .msg.assistant .msg-text p { margin-bottom: 0.5em; }
@@ -385,6 +389,133 @@ body {
     padding-left: 10px;
     color: var(--text-muted);
     margin: 0.4em 0;
+}
+
+/* Carte au trésor des clubs : un parchemin taché d'encre. Le cadre reste fixe
+   et c'est le calque intérieur qui défile, sinon la décoration partirait avec
+   la carte. Les variables sont héritées par le SVG, qui suit donc le thème
+   sans jamais être redessiné. */
+.treasure-map {
+    --parchment: #f3e2bd;
+    --map-ink: #6b4a24;
+    --map-edge: #c19a5e;
+    /* La mer est un lavis pâle, la terre un ocre franc : sans cet écart,
+       les côtes ne se lisent pas. */
+    --map-sea: #f6ead0;
+    --map-terre: #dbbe86;
+    --map-stain: rgba(140, 100, 55, 0.17);
+    position: relative;
+    margin: 0.9em 0;
+    padding: 14px;
+    overflow: hidden;
+    border: 1px solid var(--map-edge);
+    border-radius: 3px;
+    background-color: var(--parchment);
+    background-image:
+        radial-gradient(ellipse at 14% 20%, var(--map-stain), transparent 55%),
+        radial-gradient(ellipse at 86% 76%, var(--map-stain), transparent 52%),
+        radial-gradient(ellipse at 62% 6%, var(--map-stain), transparent 42%);
+    box-shadow:
+        inset 0 0 46px rgba(120, 85, 45, 0.34),
+        0 1px 3px rgba(0, 0, 0, 0.16);
+}
+[data-theme="dark"] .treasure-map {
+    --parchment: #3a2f21;
+    --map-ink: #c9a367;
+    --map-edge: #6b573a;
+    --map-sea: #2f2519;
+    --map-terre: #4f3f28;
+    --map-stain: rgba(0, 0, 0, 0.26);
+    box-shadow:
+        inset 0 0 46px rgba(0, 0, 0, 0.45),
+        0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* Une grande carte chasserait le reste de la conversation hors de l'écran :
+   elle défile dans son cadre au lieu d'étirer la bulle indéfiniment. */
+.treasure-map-canvas {
+    max-height: 70vh;
+    overflow: auto;
+    text-align: center;
+}
+.treasure-map-canvas .tm-svg {
+    max-width: none;
+    height: auto;
+    /* Une serif système : l'air d'une carte gravée, sans police à charger. */
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+    color: var(--map-ink);
+}
+
+.tm-mer { fill: var(--map-sea); }
+.tm-cote {
+    fill: none;
+    stroke: var(--map-ink);
+    stroke-width: 1;
+    opacity: 0.34;
+}
+.tm-terre {
+    fill: var(--map-terre);
+    stroke: var(--map-ink);
+    stroke-width: 1.6;
+}
+/* Les liaisons deviennent la route pointillée du trésor. */
+.tm-route,
+.tm-sentier {
+    fill: none;
+    stroke: var(--map-ink);
+    stroke-dasharray: 7 6;
+    stroke-linecap: round;
+}
+.tm-route { stroke-width: 1.8; opacity: 0.6; }
+.tm-sentier { stroke-width: 1.1; opacity: 0.45; }
+
+.tm-etiquette {
+    fill: var(--parchment);
+    stroke: var(--map-ink);
+    stroke-width: 0.8;
+    opacity: 0.95;
+}
+/* Pastille posée sous un logo de la plaquette : elle isole des couleurs
+   étrangères au parchemin et donne le même gabarit rond à tous les clubs. */
+.tm-medaillon {
+    fill: var(--map-sea);
+    stroke: var(--map-ink);
+    stroke-width: 1;
+    opacity: 0.92;
+}
+.tm-nom-club {
+    font-size: 12.5px;
+    fill: var(--map-ink);
+}
+.tm-nom-ile {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    fill: var(--map-ink);
+    opacity: 0.85;
+}
+.tm-titre {
+    font-size: 17px;
+    letter-spacing: 1px;
+    fill: var(--map-ink);
+}
+.tm-cardinal {
+    font-size: 13px;
+    font-weight: 700;
+    fill: var(--map-ink);
+}
+.tm-legende {
+    font-size: 11px;
+    font-style: italic;
+    fill: var(--map-ink);
+    opacity: 0.7;
+}
+
+.map-error {
+    margin-top: 8px;
+    font-size: 13px;
+    font-style: italic;
+    color: var(--text-muted);
 }
 
 /* Copy button */

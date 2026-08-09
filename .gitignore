@@ -12,6 +12,8 @@ core
 *cache
 .python-version
 *.db
+.claude
+data/
 
 # fichiers d'output
 processed_files.json
@@ -27,6 +29,11 @@ instance/
 
 # fichiers déposés dans le panel admin, en attente d'ingestion
 uploads/
+
+# exports de mails bruts : données personnelles (noms, adresses, pièces
+# jointes) de vraies personnes. Ne doivent jamais partir sur le remote.
+*.eml
+Mails*/
 
 # NB : migrations/ doit être versionné — c'est lui qui construit le schéma
 # en déploiement (`flask db upgrade`). Ne pas l'ignorer.

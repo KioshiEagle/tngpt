@@ -32,6 +32,7 @@ from .models import (
     DOC_INDEXED,
     DOC_INDEXING,
     DOC_MISSING,
+    DOC_ORIGIN_MAIL,
     DOC_ORIGIN_UPLOAD,
     USER_ACTIVE,
     USER_BANNED,
@@ -65,7 +66,10 @@ admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
 _HTTP_BAD_REQUEST = 400
 _PER_PAGE = 50
-_ALLOWED_SUFFIXES = {".pdf", ".md"}
+_ALLOWED_SUFFIXES = {".pdf", ".md", ".eml"}
+# L'origine se lit sur l'extension : un mail n'a ni le même contenu ni la même
+# autorité qu'un compte-rendu, et la colonne le donne à voir au catalogue.
+_ORIGINS = {".eml": DOC_ORIGIN_MAIL}
 _MAX_SOURCE_ID = 128
 _TOP_CHUNKS = 20
 _TOP_SOURCES = 10
@@ -184,7 +188,7 @@ def catalog_upload() -> tuple[Response, int]:
 
         document.title = document.title or source_id
         document.status = DOC_INDEXING
-        document.origin = DOC_ORIGIN_UPLOAD
+        document.origin = _ORIGINS.get(suffix, DOC_ORIGIN_UPLOAD)
         document.error = None
         document.ingested_by = current_user.user_id
         document.updated_at = datetime.now(UTC)
