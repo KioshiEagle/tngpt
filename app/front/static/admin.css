@@ -1,0 +1,722 @@
+/* Panel admin — s'appuie sur les variables de thème définies dans style.css */
+
+/* Teinte des barres de graphique. Distincte de --primary : le violet clair du
+   thème sombre (#a78bfa) convient au texte et aux boutons mais sort de la bande
+   de luminosité admise pour un aplat de données. Ces deux valeurs sont validées
+   contre leur surface respective (bande, chroma, contraste ≥ 3:1). */
+:root { --chart-bar: #6d28d9; }
+[data-theme="dark"] { --chart-bar: #8b5cf6; }
+
+/* style.css fige le body (height:100vh; overflow:hidden) pour le chat, qui est
+   une interface plein écran. Le panel, lui, a du contenu long : on garde le
+   body figé et on fait défiler la zone de contenu, la barre latérale restant
+   visible — comportement attendu d'un dashboard. */
+.admin-page {
+    display: flex;
+    height: 100vh;
+    margin: 0;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--text-main);
+    font-size: 16px;
+}
+
+/* --- Barre latérale --- */
+
+.admin-sidebar {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    width: 240px;
+    padding: 20px 14px;
+    overflow-y: auto;
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--border);
+}
+
+.admin-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px 18px;
+    color: var(--text-main);
+    font-size: 1rem;
+    text-decoration: none;
+}
+
+.admin-brand strong { color: var(--primary); }
+
+.admin-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.admin-nav-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 12px;
+    border-radius: 8px;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    text-decoration: none;
+}
+
+.admin-nav-item:hover:not(.is-disabled) {
+    background: var(--bg-input);
+    color: var(--text-main);
+}
+
+.admin-nav-item.is-active {
+    background: var(--primary-light);
+    color: var(--primary);
+    font-weight: 600;
+}
+
+.admin-nav-item.is-disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.admin-nav-item em {
+    font-size: 0.7rem;
+    font-style: normal;
+    opacity: 0.8;
+}
+
+.admin-sidebar-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: auto;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    font-size: 0.82rem;
+}
+
+.admin-whoami { color: var(--text-muted); }
+.admin-back { color: var(--primary); text-decoration: none; }
+
+/* --- Contenu --- */
+
+.admin-main {
+    flex: 1;
+    min-width: 0;
+    padding: 32px 36px;
+    overflow-y: auto;   /* c'est ici que le contenu long défile */
+}
+
+.admin-header { margin-bottom: 24px; }
+
+.admin-header h1 {
+    margin: 0;
+    font-size: 1.5rem;
+}
+
+.admin-subtitle {
+    margin: 6px 0 0;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+/* --- Messages flash --- */
+
+.admin-flashes {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.admin-flash {
+    padding: 11px 14px;
+    border: 1px solid var(--border);
+    border-left-width: 3px;
+    border-radius: 8px;
+    background: var(--bg-input);
+    font-size: 0.88rem;
+}
+
+.admin-flash--success { border-left-color: #16a34a; }
+.admin-flash--warning { border-left-color: #d97706; }
+
+/* --- Cartes de statistiques --- */
+
+.admin-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 14px;
+    margin-bottom: 22px;
+}
+
+.admin-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 18px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg-sidebar);
+}
+
+.admin-stat-value {
+    font-size: 1.9rem;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.admin-stat-label {
+    color: var(--text-muted);
+    font-size: 0.82rem;
+}
+
+/* --- Carte générique --- */
+
+.admin-card {
+    padding: 20px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg-sidebar);
+}
+
+.admin-card h2 {
+    margin: 0 0 8px;
+    font-size: 1rem;
+}
+
+.admin-note {
+    margin: 14px 0 0;
+    color: var(--text-muted);
+    font-size: 0.84rem;
+    line-height: 1.55;
+}
+
+.admin-note code {
+    padding: 2px 6px;
+    border-radius: 5px;
+    background: var(--bg-input);
+    font-size: 0.82rem;
+}
+
+/* --- Tableau --- */
+
+.admin-table-scroll { overflow-x: auto; }
+
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+}
+
+.admin-table th,
+.admin-table td {
+    padding: 12px 10px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+}
+
+.admin-table thead th {
+    color: var(--text-muted);
+    font-size: 0.76rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+
+.admin-table tbody tr:last-child td { border-bottom: none; }
+
+.admin-th-perm,
+.admin-td-perm { text-align: center; }
+
+.admin-td-action { text-align: right; }
+
+.admin-user {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.admin-avatar {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.admin-avatar--initials {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--primary-light);
+    color: var(--primary);
+    font-size: 0.72rem;
+    font-weight: 600;
+}
+
+.admin-user-text {
+    display: flex;
+    flex-direction: column;
+}
+
+.admin-user-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 500;
+}
+
+.admin-user-mail {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+}
+
+.admin-badge {
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--primary-light);
+    color: var(--primary);
+    font-size: 0.68rem;
+    font-weight: 600;
+}
+
+.admin-check {
+    width: 17px;
+    height: 17px;
+    accent-color: var(--primary);
+    cursor: pointer;
+}
+
+.admin-check:disabled { cursor: not-allowed; opacity: 0.65; }
+
+.admin-btn {
+    padding: 7px 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-input);
+    color: var(--text-main);
+    font-size: 0.82rem;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.admin-btn:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.admin-btn--primary {
+    border-color: var(--primary);
+    background: var(--primary);
+    color: #fff;
+}
+
+.admin-btn--primary:hover {
+    color: #fff;
+    opacity: 0.9;
+}
+
+.admin-btn--danger:hover {
+    border-color: #dc2626;
+    color: #dc2626;
+}
+
+.admin-link {
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--primary);
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+/* --- Zone de dépôt --- */
+
+.admin-drop {
+    margin-bottom: 16px;
+    padding: 26px 20px;
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    background: var(--bg-sidebar);
+    text-align: center;
+    transition: border-color 0.15s, background 0.15s;
+}
+
+.admin-drop.is-hover {
+    border-color: var(--primary);
+    background: var(--primary-light);
+}
+
+.admin-drop-title {
+    margin: 0 0 4px;
+    font-weight: 600;
+}
+
+.admin-drop .admin-note { margin-top: 0; }
+
+.admin-drop-list {
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.admin-drop-item {
+    display: inline-block;
+    margin: 3px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+}
+
+.admin-drop-item--pending { background: var(--bg-input); color: var(--text-muted); }
+.admin-drop-item--error   { background: #fee2e2; color: #991b1b; }
+
+[data-theme="dark"] .admin-drop-item--error { background: #7f1d1d; color: #fecaca; }
+
+.admin-error { cursor: help; }
+
+/* --- Barre d'outils : recherche + actions --- */
+
+.admin-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.admin-search {
+    display: flex;
+    gap: 8px;
+}
+
+.admin-search input {
+    width: min(340px, 60vw);
+    padding: 7px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-input);
+    color: var(--text-main);
+    font-size: 0.85rem;
+    font-family: inherit;
+}
+
+.admin-search input:focus {
+    outline: 2px solid var(--primary);
+    outline-offset: -1px;
+}
+
+/* --- Étiquettes et états --- */
+
+.admin-td-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.admin-tag {
+    padding: 2px 8px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+}
+
+.admin-status {
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 600;
+}
+
+/* Statuts : couleurs réservées (bon / attention / grave), jamais réutilisées
+   comme couleurs de série, et toujours doublées du libellé — jamais la couleur seule. */
+.admin-status--indexed  { background: #dcfce7; color: #166534; }
+.admin-status--indexing { background: #dbeafe; color: #1e40af; }
+.admin-status--missing  { background: #fef3c7; color: #92400e; }
+.admin-status--failed   { background: #fee2e2; color: #991b1b; }
+.admin-status--active   { background: #dcfce7; color: #166534; }
+.admin-status--limited  { background: #fef3c7; color: #92400e; }
+.admin-status--banned   { background: #fee2e2; color: #991b1b; }
+
+[data-theme="dark"] .admin-status--indexed  { background: #14532d; color: #bbf7d0; }
+[data-theme="dark"] .admin-status--indexing { background: #1e3a8a; color: #bfdbfe; }
+[data-theme="dark"] .admin-status--missing  { background: #78350f; color: #fde68a; }
+[data-theme="dark"] .admin-status--failed   { background: #7f1d1d; color: #fecaca; }
+[data-theme="dark"] .admin-status--active   { background: #14532d; color: #bbf7d0; }
+[data-theme="dark"] .admin-status--limited  { background: #78350f; color: #fde68a; }
+[data-theme="dark"] .admin-status--banned   { background: #7f1d1d; color: #fecaca; }
+
+.admin-cell-muted {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+.admin-moderate {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.admin-moderate input[type="text"] {
+    width: 160px;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-input);
+    color: var(--text-main);
+    font-size: 0.8rem;
+    font-family: inherit;
+}
+
+/* --- Quotas : mètre d'usage et formulaire --- */
+
+.admin-quota-usage {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 180px;
+}
+
+.admin-meter {
+    flex: 1;
+    max-width: 140px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--bg-input);
+    overflow: hidden;
+}
+
+.admin-meter-fill {
+    display: block;
+    height: 100%;
+    min-width: 2px;
+    border-radius: 999px;
+    background: var(--chart-bar);
+}
+
+.admin-meter-fill--full { background: #dc2626; }
+
+.admin-meter-label {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.admin-quota-form {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.admin-quota-form input[type="number"] {
+    width: 130px;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-input);
+    color: var(--text-main);
+    font-size: 0.8rem;
+    font-family: inherit;
+}
+
+/* --- Clés API --- */
+
+.admin-mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.admin-newkey {
+    border-color: var(--primary);
+}
+
+.admin-newkey-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.admin-newkey-row code {
+    flex: 1;
+    min-width: 240px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-input);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.85rem;
+    word-break: break-all;
+}
+
+.admin-key-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.admin-key-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+
+.admin-key-form select,
+.admin-key-form input {
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-input);
+    color: var(--text-main);
+    font-size: 0.85rem;
+    font-family: inherit;
+}
+
+.admin-key-form select { min-width: 240px; }
+
+.admin-actions-row {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+}
+
+.admin-empty {
+    padding: 28px 10px;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+.admin-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    margin-top: 16px;
+}
+
+.admin-pagination .admin-note { margin: 0; }
+
+/* --- Barchart horizontal (une seule série : une seule teinte, pas de légende) --- */
+
+.chart {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;            /* respiration entre aplats voisins */
+    margin: 16px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.chart-row {
+    display: grid;
+    grid-template-columns: minmax(0, 260px) 1fr;
+    align-items: center;
+    gap: 12px;
+    padding: 3px 0;
+}
+
+.chart-row:hover { background: var(--bg-input); }
+
+.chart-label {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.chart-label-title {
+    overflow: hidden;
+    color: var(--text-main);   /* l'encre reste de l'encre : jamais la couleur de la série */
+    font-size: 0.82rem;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.chart-label-sub {
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.chart-track {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.chart-bar {
+    height: 14px;                        /* mark fin */
+    min-width: 2px;
+    border-radius: 0 4px 4px 0;          /* extrémité arrondie, ancrée à la ligne de base */
+    background: var(--chart-bar);
+}
+
+.chart-value {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.admin-chart-lede { margin-top: 6px; }
+
+.admin-card--spaced { margin-top: 16px; }
+
+/* --- Sélecteur de fenêtre temporelle --- */
+
+.admin-windows {
+    display: flex;
+    gap: 4px;
+}
+
+.admin-window {
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    text-decoration: none;
+}
+
+.admin-window:hover { color: var(--text-main); }
+
+.admin-window.is-active {
+    border-color: var(--primary);
+    background: var(--primary-light);
+    color: var(--primary);
+    font-weight: 600;
+}
+
+@media (max-width: 720px) {
+    .chart-row { grid-template-columns: minmax(0, 130px) 1fr; }
+
+    /* En colonne, la barre latérale est empilée au-dessus du contenu : c'est la
+       page entière qui doit défiler, pas la seule zone de contenu. */
+    .admin-page {
+        flex-direction: column;
+        height: auto;
+        min-height: 100vh;
+        overflow-y: auto;
+    }
+
+    .admin-sidebar {
+        width: auto;
+        overflow-y: visible;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .admin-main {
+        padding: 20px 16px;
+        overflow-y: visible;
+    }
+}

@@ -1,46 +1,181 @@
-import os, uuid, json
+import hashlib
+import json
+import os
+import re
+import uuid
+from dataclasses import dataclass
 from pathlib import Path
+
 from qdrant_client import QdrantClient, models
-from sentence_transformers import SentenceTransformer
-from chunking import get_hybrid_chunks # Utilise bien le nom de ta fonction hybride
+
+from .chunking import get_hybrid_chunks
+from .embedding import embed_documents
+
+# Bumper cette version force la re-ingestion de tous les documents
+_CHUNK_VERSION = "v5-clean"
+
+
+def _file_hash(content: str) -> str:
+    """Hash du contenu incluant la version de chunking pour forcer la re-ingestion."""
+    return hashlib.sha256((content + _CHUNK_VERSION).encode()).hexdigest()
+
+
+def _parse_frontmatter(content: str) -> tuple[dict, str]:
+    """Parse le YAML frontmatter et retourne (metadata, body)."""
+    match = re.match(r"^---\n(.*?)\n---\n\n?", content, re.DOTALL)
+    if not match:
+        return {}, content
+    meta = {}
+    for line in match.group(1).splitlines():
+        if ":" in line:
+            key, _, value = line.partition(":")
+            meta[key.strip()] = value.strip().strip('"')
+    return meta, content[match.end() :]
+
+
+@dataclass
+class IngestResult:
+    """Métadonnées d'un document ingéré dans Qdrant."""
+
+    source_id: str
+    title: str
+    date: str
+    author: str
+    chunk_count: int
+    file_hash: str
+
 
 class VectorStore:
-    def __init__(self, url, api_key):
-        self.client = QdrantClient(url=url, api_key=api_key)
-        # Passage au modèle multilingue E5
-        self.model = SentenceTransformer('intfloat/multilingual-e5-small')
+    """Gestionnaire de la base vectorielle Qdrant."""
+
+    def __init__(self, url: str, api_key: str) -> None:
+        """Initialise la connexion à Qdrant et les index de payload."""
+        self.client = QdrantClient(url=url, api_key=api_key, timeout=60)
         self.collection = "documents"
+        self.client.create_payload_index(
+            collection_name=self.collection,
+            field_name="source",
+            field_schema=models.PayloadSchemaType.KEYWORD,
+        )
+        self.client.create_payload_index(
+            collection_name=self.collection,
+            field_name="date",
+            field_schema=models.PayloadSchemaType.KEYWORD,
+        )
 
-    def upload_directory(self, md_dir, log_file):
-        processed = set(json.load(open(log_file)) if os.path.exists(log_file) else [])
-        
+    def delete_source(self, source_id: str) -> None:
+        """Supprime de Qdrant tous les chunks d'un document source."""
+        self.client.delete(
+            collection_name=self.collection,
+            points_selector=models.FilterSelector(
+                filter=models.Filter(
+                    must=[
+                        models.FieldCondition(
+                            key="source",
+                            match=models.MatchValue(value=source_id),
+                        )
+                    ]
+                )
+            ),
+        )
+
+    def upload_file(self, md_path: Path) -> IngestResult | None:
+        """Ingère un fichier Markdown dans Qdrant et retourne ses métadonnées.
+
+        Chaque chunk est préfixé avec date et titre avant l'encodage pour
+        améliorer la qualité du matching sémantique ; le texte brut (sans préfixe)
+        est stocké dans le payload pour l'affichage. Les chunks existants du même
+        document sont supprimés d'abord : ré-ingérer remplace, ne duplique pas.
+
+        Retourne None si le document ne produit aucun chunk (fichier vide).
+        """
+        source_id = md_path.stem
+        with md_path.open(encoding="utf-8") as f:
+            content = f.read()
+
+        meta, body = _parse_frontmatter(content)
+        title = meta.get("title", source_id)
+        date = meta.get("date", "")
+        author = meta.get("author", "Inconnu")
+
+        print(f"📤 Ingestion sémantique : {title or source_id}")
+        chunks = get_hybrid_chunks(body, chunk_size=800, chunk_overlap=240)
+        if not chunks:
+            return None
+
+        self.delete_source(source_id)
+
+        date_prefix = f"[Date: {date}] " if date else ""
+        title_prefix = f"[Source: {title}] " if title else ""
+        prefixed_chunks = [f"{date_prefix}{title_prefix}{c}" for c in chunks]
+        embeddings = embed_documents(prefixed_chunks)
+
+        points = [
+            models.PointStruct(
+                id=str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{source_id}_{i}")),
+                vector=embedding,
+                payload={
+                    "text": text,
+                    "source": source_id,
+                    "title": title,
+                    "date": date,
+                    "author": author,
+                },
+            )
+            for i, (text, embedding) in enumerate(zip(chunks, embeddings, strict=False))
+        ]
+
+        batch_size = 50
+        for i in range(0, len(points), batch_size):
+            self.client.upsert(
+                collection_name=self.collection,
+                points=points[i : i + batch_size],
+            )
+
+        return IngestResult(
+            source_id=source_id,
+            title=title,
+            date=date,
+            author=author,
+            chunk_count=len(chunks),
+            file_hash=_file_hash(content),
+        )
+
+    def upload_directory(self, md_dir: Path, log_file: Path) -> None:
+        """Ingère les fichiers Markdown d'un dossier dans Qdrant.
+
+        Seuls les fichiers modifiés (hash différent) sont ré-ingérés.
+        """
+        raw = json.loads(Path(log_file).read_text()) if Path(log_file).exists() else {}
+        processed = dict.fromkeys(raw) if isinstance(raw, list) else raw
+
         for md_path in Path(md_dir).glob("*.md"):
-            drive_id = md_path.stem
-            if drive_id in processed: continue
-            
-            print(f"📤 Ingestion sémantique (E5) : {drive_id}")
-            with open(md_path, "r", encoding="utf-8") as f:
-                content = f.read()
+            source_id = md_path.stem
+            current_hash = _file_hash(md_path.read_text(encoding="utf-8"))
+            if processed.get(source_id) == current_hash:
+                print(f"⏭️  Déjà à jour : {source_id}")
+                continue
 
-            # Utilisation de ta méthode hybride validée par le benchmark
-            chunks = get_hybrid_chunks(content, chunk_size=800, chunk_overlap=240)
-            
-            if chunks:
-                # IMPORTANT : E5 demande le préfixe "passage: " pour l'indexation
-                prefixed_chunks = [f"passage: {c}" for c in chunks]
-                embs = self.model.encode(prefixed_chunks).tolist()
-                
-                points = [models.PointStruct(
-                    id=str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{drive_id}_{i}")),
-                    vector=emb, 
-                    payload={
-                        "text": txt, # Texte avec préfixe de contexte [Header]
-                        "source": drive_id 
-                    }
-                ) for i, (txt, emb) in enumerate(zip(chunks, embs))]
-                
-                self.client.upsert(collection_name=self.collection, points=points)
-                processed.add(drive_id)
-        
-        with open(log_file, "w") as f:
-            json.dump(list(processed), f)
+            result = self.upload_file(md_path)
+            if result is None:
+                continue
+
+            processed[source_id] = result.file_hash
+            # Sauvegarde après chaque document : une interruption ne coûte que
+            # le document en cours, pas les appels d'embedding déjà payés.
+            with Path(log_file).open("w") as f:
+                json.dump(processed, f)
+
+
+if __name__ == "__main__":
+    from dotenv import load_dotenv
+
+    BASE_DIR = Path(__file__).parent.resolve()
+    load_dotenv(BASE_DIR.parent.parent / ".env")
+
+    TEMP_MD = BASE_DIR / "temp/markdowns"
+    logfile = BASE_DIR / "processed_files.json"
+
+    vs = VectorStore(os.getenv("QDRANT_URL", ""), os.getenv("QDRANT_API_KEY", ""))
+    vs.upload_directory(TEMP_MD, logfile)
+    print("✅ MD -> Qdrant terminé.")

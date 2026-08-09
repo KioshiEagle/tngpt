@@ -1,0 +1,119 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Chunks{% endblock %}
+{% block heading %}Fréquence de retrieval{% endblock %}
+{% block subtitle %}Quels chunks reviennent le plus souvent — et lesquels gagneraient à être mis en cache.{% endblock %}
+
+{% block content %}
+
+    <div class="admin-toolbar">
+        <nav class="admin-windows" aria-label="Fenêtre temporelle">
+            {% for value, label in windows.items() %}
+                <a href="{{ url_for('admin.chunks_page', days=value) }}"
+                   class="admin-window {% if days == value %}is-active{% endif %}"
+                   {% if days == value %}aria-current="page"{% endif %}>{{ label }}</a>
+            {% endfor %}
+        </nav>
+    </div>
+
+    {% if total_events == 0 %}
+
+        <div class="admin-card">
+            <h2>Aucune donnée sur cette période</h2>
+            <p class="admin-note">
+                Le journal de retrieval se remplit à chaque question posée dans le chat.
+                Ces statistiques ne sont pas reconstituables rétroactivement : elles ne
+                couvrent que la période écoulée depuis la mise en place du journal.
+            </p>
+        </div>
+
+    {% else %}
+
+        <section class="admin-stats">
+            <article class="admin-stat">
+                <span class="admin-stat-value">{{ questions }}</span>
+                <span class="admin-stat-label">Questions posées</span>
+            </article>
+            <article class="admin-stat">
+                <span class="admin-stat-value">{{ total_events }}</span>
+                <span class="admin-stat-label">Chunks servis</span>
+            </article>
+            <article class="admin-stat">
+                <span class="admin-stat-value">{{ distinct_chunks }}</span>
+                <span class="admin-stat-label">Chunks distincts sollicités</span>
+            </article>
+            <article class="admin-stat">
+                <span class="admin-stat-value">{{ coverage }} %</span>
+                <span class="admin-stat-label">Couverture du top {{ top_n }}</span>
+            </article>
+            <article class="admin-stat">
+                <span class="admin-stat-value">{{ unanswered }}</span>
+                <span class="admin-stat-label">Questions sans contexte</span>
+            </article>
+        </section>
+
+        <section class="admin-card">
+            <h2>Top {{ top_n }} des chunks les plus retrouvés</h2>
+            <p class="admin-note admin-chart-lede">
+                Ces {{ top_chunks | length }} chunks absorbent <strong>{{ coverage }} %</strong>
+                des {{ total_events }} retrievals de la période. C'est ce pourcentage qui décide
+                de l'intérêt d'un cache : plus il est élevé, plus un cache de petite taille
+                accélérerait une grande part des requêtes.
+            </p>
+
+            <ol class="chart" role="list">
+                {% for row in top_chunks %}
+                    {% set pct = (100 * row.hits / max_hits) if max_hits else 0 %}
+                    <li class="chart-row"
+                        title="{{ row.hits }} retrieval(s) · score moyen {{ '%.3f' | format(row.avg_score or 0) }} · chunk {{ row.point_id }}">
+                        <span class="chart-label">
+                            <span class="chart-label-title">{{ row.title or "(sans titre)" }}</span>
+                            <span class="chart-label-sub">{{ row.point_id[:8] }}…</span>
+                        </span>
+                        <span class="chart-track">
+                            <span class="chart-bar" style="width: {{ pct }}%;"></span>
+                            <span class="chart-value">{{ row.hits }}</span>
+                        </span>
+                    </li>
+                {% endfor %}
+            </ol>
+        </section>
+
+        <section class="admin-card admin-card--spaced">
+            <h2>Documents les plus sollicités</h2>
+            <div class="admin-table-scroll">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>Document</th>
+                            <th class="admin-td-num">Chunks servis</th>
+                            <th class="admin-td-num">Part</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in top_sources %}
+                            <tr>
+                                <td>
+                                    <span class="admin-user-text">
+                                        <span class="admin-user-name">{{ row.title or "(sans titre)" }}</span>
+                                        <span class="admin-user-mail">{{ row.source_id or "—" }}</span>
+                                    </span>
+                                </td>
+                                <td class="admin-td-num">{{ row.hits }}</td>
+                                <td class="admin-td-num">{{ (100 * row.hits / total_events) | round(1) }} %</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <p class="admin-note">
+            Un chunk peut rester au classement après la suppression de son document :
+            le journal conserve son titre au moment du retrieval, pour que l'historique
+            reste lisible.
+        </p>
+
+    {% endif %}
+
+{% endblock %}

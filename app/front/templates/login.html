@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TN-GPT — Connexion</title>
+    <link rel="icon" type="image/webp" href="/static/ducky_cassis.webp">
+    <link rel="stylesheet" href="{{ asset('style.css') }}">
+    <script>
+        (function () {
+            var t = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            document.documentElement.setAttribute('data-theme', t);
+        })();
+    </script>
+</head>
+<body class="login-page">
+
+    <main class="login-main">
+        <div class="login-card">
+            <img src="/static/ducky_cassis.webp" class="login-ducky" alt="TN-GPT" width="80" height="80">
+            <h1 class="login-title">TN-<span>GPT</span></h1>
+            <p class="login-subtitle">L'assistant IA de TELECOM Nancy</p>
+
+            {% with messages = get_flashed_messages(category_filter=["banned"]) %}
+                {% if messages %}
+                    {% for message in messages %}
+                        <p class="login-banned" role="alert">{{ message }}</p>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <a href="/auth/login_google" class="btn-google">
+                Se connecter avec TelecomNancy.net
+            </a>
+        </div>
+    </main>
+
+</body>
+</html>

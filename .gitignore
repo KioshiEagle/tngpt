@@ -1,16 +1,43 @@
 # secret
 .env
-*/service-account.json
+app/back/service-account.json
 
 # chiant sur le repo
 .venv
-uv.lock
 app/back/__pycache__
 app/__pycache__
 core
 .DS_Store
 *.pyc
 *cache
+.python-version
+*.db
+.claude
+data/
 
 # fichiers d'output
 processed_files.json
+processed_pdfs.json
+*.pdf
+app/back/temp/
+Plaquette-Alpha**
+docs/api/
+site/
+# site de documentation construit par zensical, artefact de CI
+public/
+
+# état local Flask : contient le SQLite de repli, jamais la vraie base
+instance/
+
+# fichiers déposés dans le panel admin, en attente d'ingestion
+uploads/
+
+# exports de mails bruts : données personnelles (noms, adresses, pièces
+# jointes) de vraies personnes. Ne doivent jamais partir sur le remote.
+*.eml
+Mails*/
+
+# NB : migrations/ doit être versionné — c'est lui qui construit le schéma
+# en déploiement (`flask db upgrade`). Ne pas l'ignorer.
+# NB : docs/rapports/ doit rester versionné — ce sont les rapports de benchmark
+# publiés par la doc, pas un artefact de build. `data/` ne les couvre plus.

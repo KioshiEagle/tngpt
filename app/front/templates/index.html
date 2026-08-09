@@ -3,62 +3,100 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="TN-GPT — L'assistant IA optimisé pour TELECOM Nancy, conçu par la CETEN et Neura'TN.">
     <title>TN-GPT</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/webp" href="/static/ducky_cassis.webp">
+    <link rel="stylesheet" href="{{ asset('style.css') }}">
+    <!-- Prevent dark-mode flash -->
+    <script>
+        (function () {
+            var t = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            document.documentElement.setAttribute('data-theme', t);
+        })();
+    </script>
 </head>
 <body>
 
-    <aside class="sidebar">
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+    <button class="hamburger" id="hamburger" aria-label="Ouvrir le menu">☰</button>
+
+    <aside class="sidebar" id="sidebar">
         <div class="sidebar-header">
             <div class="logo-zone-mini">
-                <img src="/static/ducky_cassis.png" class="logo-img-mini" id="sidebar-ducky" alt="NeuraTN">
+                <img src="/static/ducky_cassis.webp" class="logo-img-mini" id="sidebar-ducky" alt="NeuraTN" width="68" height="68">
                 <div class="speech-bubble mini" id="sidebar-bubble">{{ quote }}</div>
             </div>
             <div class="brand">Discussions</div>
         </div>
 
         <a href="/" class="new-btn">+ nouvelle conv.</a>
-        
+
         <div class="conv-section">Récent</div>
-        <nav class="conv-list">
-            <a href="#" class="conv-item active">Salles libres ce soir</a>
-        </nav>
+        <nav class="conv-list" id="conv-list"></nav>
+
+        <div class="sidebar-footer">
+            <button class="theme-toggle" id="theme-toggle" aria-label="Changer le thème"></button>
+            <div class="user-menu" id="user-menu">
+                <div class="user-menu-header">
+                    {% if current_user.user_picture %}
+                        <img src="{{ current_user.user_picture }}" class="user-menu-avatar" alt="" referrerpolicy="no-referrer">
+                    {% else %}
+                        <div class="user-menu-avatar user-menu-avatar--initials">{{ current_user.user_firstname[0] }}{{ current_user.user_surname[0] }}</div>
+                    {% endif %}
+                    <div class="user-menu-info">
+                        <span class="user-menu-name">{{ current_user.user_firstname }} {{ current_user.user_surname }}</span>
+                        <span class="user-menu-mail">{{ current_user.user_mail }}</span>
+                    </div>
+                </div>
+                <div class="user-menu-divider"></div>
+                <a href="/auth/logout" class="user-menu-item user-menu-logout">Se déconnecter</a>
+            </div>
+
+            <button class="user-tab" id="user-tab">
+                {% if current_user.user_picture %}
+                    <img src="{{ current_user.user_picture }}" class="user-avatar" alt="" referrerpolicy="no-referrer">
+                {% else %}
+                    <div class="user-avatar">{{ current_user.user_firstname[0] }}{{ current_user.user_surname[0] }}</div>
+                {% endif %}
+                <span class="user-name">{{ current_user.user_firstname }} {{ current_user.user_surname }}</span>
+            </button>
+        </div>
     </aside>
 
     <main class="main">
-        <div class="topbar">
-            <span class="topbar-title">TN-GPT</span>
-            <span class="topbar-status">
-                <span class="dot"></span> en ligne
-            </span>
+        <div class="authors-corner">
+            <a href="https://ceten.fr" target="_blank" rel="noopener" class="author-link">
+                <img src="/static/logo_ceten.webp" class="author-logo" alt="CETEN" title="CETEN" width="277" height="112">
+            </a>
+            <a href="https://neuratn.ath0ms.fr" target="_blank" rel="noopener" class="author-link">
+                <img src="/static/logo_ecriture.webp" class="author-logo" alt="Neura'TN" title="Neura'TN" width="226" height="112">
+            </a>
         </div>
-
         <div class="messages" id="messages">
             <div class="empty" id="empty-state">
-                
+                <img src="/static/ducky_cassis.webp" class="landing-ducky" alt="NeuraTN" width="96" height="96">
                 <div class="hero-zone">
                     <h1 class="hero-title">TN-<span>GPT</span></h1>
                     <p class="hero-subtitle">Pose-moi n'importe quelle question et j'y répondrai intelligemment :)</p>
                 </div>
-
-                <div class="chips">
-                    <button class="chip" data-query="Salles libres maintenant">salles libres</button>
-                    <button class="chip" data-query="Infos drive 1A">drive 1A</button>
-                    <button class="chip" data-query="Lore de TELECOM Nancy">lore TN</button>
-                    <button class="chip" data-query="Menu du self cette semaine">menu du self</button>
-                </div>
             </div>
         </div>
 
+        <button class="scroll-btn" id="scroll-btn" aria-label="Descendre">↓</button>
+
         <div class="input-area">
             <form class="input-row" id="chat-form">
-                <input type="text" id="inp" placeholder="Donne 5 raisons de se gooner en public (urgent)..." autocomplete="off" required>
+                <textarea id="inp" placeholder="Donne 5 raisons de se gooner en public (urgent)..." autocomplete="off" rows="1"></textarea>
                 <button type="submit" class="send" id="sbtn">envoyer →</button>
             </form>
-            <div class="hint">Tourne sur llama 3 via l'API Groq</div>
+            <div class="hint">TN-GPT peut faire des erreurs. Il est aussi fiable que le BDE. &nbsp;·&nbsp; <kbd>Shift+Enter</kbd> pour sauter une ligne</div>
         </div>
+
+        <div class="chips" id="chips-container"></div>
     </main>
 
-    <script src="/static/main.js"></script>
+    <script src="{{ asset('marked.min.js') }}"></script>
+    <script src="{{ asset('treasuremap.js') }}"></script>
+    <script src="{{ asset('main.js') }}"></script>
 </body>
 </html>

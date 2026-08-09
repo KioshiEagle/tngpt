@@ -1,0 +1,53 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Vue d'ensemble{% endblock %}
+{% block heading %}Vue d'ensemble{% endblock %}
+{% block subtitle %}État de l'application et de son déploiement.{% endblock %}
+
+{% block content %}
+
+    <section class="admin-stats">
+        <article class="admin-stat">
+            <span class="admin-stat-value">{{ stats.users }}</span>
+            <span class="admin-stat-label">Utilisateurs</span>
+        </article>
+        <article class="admin-stat">
+            <span class="admin-stat-value">{{ stats.admins }}</span>
+            <span class="admin-stat-label">Administrateurs</span>
+        </article>
+        <article class="admin-stat">
+            <span class="admin-stat-value">{{ stats.questions }}</span>
+            <span class="admin-stat-label">Questions posées</span>
+        </article>
+        <article class="admin-stat">
+            <span class="admin-stat-value">{{ stats.conversations }}</span>
+            <span class="admin-stat-label">Conversations</span>
+        </article>
+        <article class="admin-stat">
+            <span class="admin-stat-value">{{ stats.documents }}</span>
+            <span class="admin-stat-label">Documents indexés</span>
+        </article>
+        <article class="admin-stat">
+            <span class="admin-stat-value">{{ stats.chunks }}</span>
+            <span class="admin-stat-label">Chunks dans Qdrant</span>
+        </article>
+    </section>
+
+    {% if stats.desynchronised %}
+        <div class="admin-flash admin-flash--warning">
+            {{ stats.desynchronised }} document(s) du catalogue sont introuvables dans Qdrant.
+            <a href="{{ url_for('admin.catalog_page') }}">Voir le catalogue</a>
+        </div>
+    {% endif %}
+
+    <section class="admin-card">
+        <h2>Prochaines briques</h2>
+        <p class="admin-note">
+            Les métriques d'usage (chunks les plus retrouvés, quotas) se construisent à partir
+            du journal de retrieval, alimenté à chaque question posée. Elles ne sont pas
+            reconstituables rétroactivement : plus le journal tourne longtemps, plus elles
+            seront parlantes.
+        </p>
+    </section>
+
+{% endblock %}
