@@ -168,33 +168,12 @@ def build_prompt(context: str, question: str, user_name: str | None = None) -> s
 
 def _filter_think(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
     """Streame les chunks en filtrant les blocs <think>...</think>, même multi-chunk."""
-    in_thought = False
-    buf = ""
-
+    think_filter = _ThinkFilter()
     for chunk in completion:
         raw = chunk.choices[0].delta.content
-        if not raw:
-            continue
-        buf += raw
-
-        while True:
-            tag = _THINK_CLOSE if in_thought else _THINK_OPEN
-            idx = buf.find(tag)
-            if idx != -1:
-                if not in_thought and idx > 0:
-                    yield buf[:idx]
-                buf = buf[idx + len(tag) :]
-                in_thought = not in_thought
-            else:
-                if not in_thought:
-                    keep = len(_THINK_OPEN) - 1
-                    if len(buf) > keep:
-                        yield buf[:-keep]
-                        buf = buf[-keep:]
-                break
-
-    if buf and not in_thought:
-        yield buf
+        if raw:
+            yield from think_filter.feed(raw)
+    yield from think_filter.flush()
 
 
 def _stream_chunks(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
@@ -290,6 +269,41 @@ def generate_answer(
     yield from _stream_with_retries(req, results, client, spec)
 
 
+@dataclass
+class _RetryOutcome:
+    """Ce qu'il faut faire après une tentative d'appel Groq ratée."""
+
+    retry: bool = False
+    backoff: bool = False
+    smaller_context: bool = False
+    error_message: str | None = None
+
+
+def _classify_error(e: Exception, attempt: int, max_retries: int) -> _RetryOutcome:
+    """Décide, pour une erreur Groq donnée, s'il faut réessayer et comment."""
+    can_retry = attempt < max_retries - 1
+    if isinstance(e, APIStatusError) and e.status_code == _HTTP_429 and can_retry:
+        return _RetryOutcome(retry=True, backoff=True)
+    if isinstance(e, APIStatusError) and e.status_code == _HTTP_413 and can_retry:
+        return _RetryOutcome(retry=True, smaller_context=True)
+    if isinstance(e, APIStatusError):
+        logger.error("Erreur Groq : statut %d", e.status_code, exc_info=e)
+        msg = f"Erreur avec Groq : statut {e.status_code}."
+        return _RetryOutcome(error_message=msg)
+    if isinstance(e, APITimeoutError):
+        logger.error("Erreur Groq : timeout", exc_info=e)
+        return _RetryOutcome(
+            error_message="Erreur avec Groq : délai d'attente dépassé."
+        )
+    if isinstance(e, APIConnectionError):
+        logger.error("Erreur Groq : connexion impossible", exc_info=e)
+        return _RetryOutcome(
+            error_message="Erreur avec Groq : impossible de se connecter à l'API."
+        )
+    logger.error("Erreur inattendue dans generate_answer", exc_info=e)
+    return _RetryOutcome(error_message=f"Erreur inattendue : {e!s}")
+
+
 def _stream_with_retries(
     req: GenerateRequest,
     results: list[SearchResult],
@@ -325,6 +339,9 @@ def _stream_with_retries(
                 continue
             if e.status_code == _HTTP_413 and attempt < max_retries - 1:
                 current_results = current_results[: max(1, len(current_results) // 2)]
+            if outcome.retry:
+                if outcome.backoff:
+                    time.sleep(2**attempt)
                 continue
             # Paramètres refusés (modèle configuré via GROQ_CHAT_MODEL qui ne
             # les supporte pas) : on retente sans eux plutôt que d'échouer.
