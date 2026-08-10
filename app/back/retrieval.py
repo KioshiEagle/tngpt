@@ -115,10 +115,8 @@ def _interleave(
 ) -> list[SearchResult]:
     """Entrelace deux listes de candidats, tête à tête et sans doublon.
 
-    Les scores de deux recherches ne se comparent pas : ils mesurent la distance
-    à deux vecteurs différents. Les fusionner par tri laisserait la formulation
-    la mieux notée occuper à elle seule la short-list du reranker, qui n'en
-    retient que les vingt premiers. L'alternance garantit que les deux y sont.
+    Les scores de deux recherches ne se comparent pas ; l'alternance garantit
+    que les deux formulations atteignent la short-list du reranker.
     """
     merged: list[SearchResult] = []
     seen: set[str] = set()
@@ -140,17 +138,12 @@ def search(
 ) -> list[SearchResult]:
     """Recherche hybride (sémantique + fraîcheur) dans Qdrant, puis reclassement.
 
-    `query` est la question telle qu'elle a été posée : c'est elle, et non une
-    reformulation, qui sert au reclassement. `context_query` est la variante
-    enrichie des tours précédents ; quand elle diffère, elle est cherchée en
-    plus et ses candidats sont entrelacés aux premiers. Une question qui tient
-    debout seule retrouve ainsi ses chunks même après dix tours sur un autre
-    sujet, et une question de suite garde le contexte qui la rend lisible.
+    `query` est la question posée, et c'est elle qui sert au reclassement.
+    `context_query` est sa variante enrichie des tours précédents : cherchée en
+    plus quand elle diffère, ses candidats sont entrelacés aux premiers.
 
-    `rerank_results=False` rend l'ordre hybride seul. La carte au trésor s'en
-    sert : elle enchaîne une dizaine de recherches pour couvrir tous les clubs,
-    y reclasser chacune ferait autant d'appels API pour un résultat qu'elle
-    déduplique et retrie ensuite de toute façon.
+    `rerank_results=False` rend l'ordre hybride seul, pour la carte au trésor
+    qui enchaîne dix recherches et les retrie de toute façon.
     """
     results = _candidates(query, top_k, collection_name)
     if context_query and context_query != query:

@@ -1,8 +1,6 @@
 """Tests des réponses réflexes, sorties du prompt système vers le code.
 
-Tant qu'elles étaient des règles de prompt, leur exactitude dépendait du modèle
-et rien ne pouvait l'éprouver. Le passage en code les rend testables : c'est la
-moitié de l'intérêt du déplacement.
+Les rendre testables était la moitié de l'intérêt du déplacement.
 """
 
 import pytest

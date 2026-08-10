@@ -22,16 +22,13 @@ logger = logging.getLogger(__name__)
 # (qwen/qwen3-32b a ainsi disparu au profit de qwen/qwen3.6-27b).
 _CHAT_MODEL = os.getenv("GROQ_CHAT_MODEL", "qwen/qwen3.6-27b")
 
-# Le prompt système vit dans un fichier à part : c'est de la prose qu'on relit
-# et qu'on révise comme de la documentation, pas une constante Python noyée
-# entre deux fonctions. Lu une fois à l'import — il est rigoureusement identique
-# d'une requête à l'autre, ce qui laisse un préfixe stable aux appels Groq.
+# Prompt système dans un fichier à part, révisé comme de la doc. Lu une fois à
+# l'import : il est identique d'une requête à l'autre.
 SYSTEM_PROMPT_PATH = Path(__file__).with_name("system_prompt.md")
 CHAT_SYSTEM = SYSTEM_PROMPT_PATH.read_text(encoding="utf-8").strip()
 
-# Le message utilisateur ne porte que des données : les repères d'exécution, les
-# archives retrouvées et la question. Toutes les règles sont dans `CHAT_SYSTEM`,
-# et rien de ce qui vient de Qdrant ne peut donc passer pour une consigne.
+# Le message utilisateur ne porte que des données : les règles étant dans
+# CHAT_SYSTEM, rien venu de Qdrant ne peut passer pour une consigne.
 _PROMPT_TEMPLATE = (
     "<contexte_execution>\n"
     "Date du jour : {today}\n"
@@ -130,8 +127,7 @@ def _log_results(results: list[SearchResult]) -> None:
 def today_fr() -> str:
     """Date du jour en français, sans dépendre de la locale du processus.
 
-    `strftime("%B")` rend le mois dans la locale courante, soit « August » sous
-    la locale C du conteneur — un repère anglais au milieu d'un prompt français.
+    `strftime("%B")` rendrait « August » sous la locale C du conteneur.
     """
     now = datetime.now(UTC)
     return f"{now.day} {_MOIS[now.month - 1]} {now.year}"
@@ -232,20 +228,19 @@ def _stream_chunks(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
 class CallSpec:
     """Comment adresser le modèle : quels rôles, quels paramètres, quelle lecture.
 
-    L'ensemble varie d'un bloc — le chat streame du texte sous les règles de
-    `system_prompt.md`, la carte force un outil, porte ses propres règles dans
-    son message utilisateur et lit les arguments de l'appel.
+    L'ensemble varie d'un bloc : le chat streame du texte, la carte force un
+    outil et porte ses propres règles dans son message utilisateur.
     """
 
     system: str = CHAT_SYSTEM
     build: PromptBuilder = build_prompt
     params: GroqParams | None = None
     consume: CompletionConsumer = _stream_chunks
-    # Le chat restitue des archives, il n'a rien à inventer : une température
-    # basse va dans le sens des règles d'ancrage plutôt que contre elles.
+    # Le chat restitue des archives : une température basse va dans le sens
+    # des règles d'ancrage.
     temperature: float = 0.3
-    # La carte est un coup unique : les tours passés ne l'aident pas à énumérer
-    # des clubs, ils ne feraient qu'alourdir un appel d'outil déjà contraint.
+    # La carte est un coup unique : les tours passés ne feraient qu'alourdir
+    # son appel d'outil.
     send_history: bool = True
 
 
@@ -262,9 +257,8 @@ CHAT_GROQ_PARAMS: GroqParams = {
 CHAT_SPEC = CallSpec(params=CHAT_GROQ_PARAMS)
 
 
-# Longueur retenue d'un tour passé. Une réponse de chat tient en trois ou quatre
-# lignes, mais une carte au trésor persiste sa charge JSON dans la conversation :
-# sans plafond, un seul tour de carte mangerait le budget de la minute.
+# Longueur retenue d'un tour passé : une carte au trésor persiste sa charge
+# JSON, et sans plafond un seul tour mangerait le budget de la minute.
 _HISTORY_MAX_CHARS = 500
 
 
@@ -280,9 +274,7 @@ def _history_messages(
 ) -> list[ChatCompletionMessageParam]:
     """Rejoue les tours passés de la conversation, dans l'ordre.
 
-    Sans archives : elles ne sont plus disponibles, et une réponse passée n'est
-    pas une source. C'est le fil de l'échange qu'on rend au modèle, pas un
-    second corpus.
+    Sans leurs archives : une réponse passée est un souvenir, pas une source.
     """
     messages: list[ChatCompletionMessageParam] = []
     for message in history:
@@ -312,15 +304,10 @@ def _enrich_query(question: str, history: list[HistoryMessage], n: int = 2) -> s
 
 
 def retrieve(req: GenerateRequest) -> list[SearchResult]:
-    """Enrichit la question avec l'historique puis interroge Qdrant.
+    """Interroge Qdrant sur la question, et sur sa variante enrichie.
 
-    Exposé séparément de la génération pour que l'appelant puisse journaliser
-    les chunks retrouvés avant que le streaming ne commence.
-
-    La question part telle qu'elle a été posée, l'enrichissement en second :
-    coller les tours passés devant une question qui tient debout seule déportait
-    le vecteur vers le sujet précédent, et Qdrant ne rendait plus rien sur celui
-    qu'on venait de nommer.
+    Exposé séparément de la génération pour que l'appelant journalise les
+    chunks avant le streaming.
     """
     results = search(
         req.question,
@@ -426,9 +413,8 @@ def _attempt(
     # qui fasse autorité.
     context = req.fiches + _build_context(results)
     prompt = spec.build(context, req.question, user_name=req.user_name)
-    # Les tours passés s'intercalent entre les règles et la question courante :
-    # seule celle-ci porte des archives, ce qui garde la frontière nette entre
-    # ce dont TN-GPT se souvient et ce sur quoi il peut s'appuyer.
+    # Les tours passés s'intercalent entre les règles et la question : seule
+    # cette dernière porte des archives.
     history = _history_messages(req.history) if spec.send_history else []
     completion = client.chat.completions.create(
         model=_CHAT_MODEL,

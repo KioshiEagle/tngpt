@@ -1,10 +1,7 @@
 """Réponses réflexes : les questions dont la réponse ne dépend pas du modèle.
 
-Trois plaisanteries maison — la lettre suivante de l'alphabet, « feur »,
-« gorge » — ouvraient les règles du prompt système, à l'endroit le plus lu,
-pour un comportement purement mécanique qu'un modèle ne rendait qu'avec une
-probabilité. En code, elles sont exactes, ne coûtent aucun token et
-court-circuitent Qdrant comme Groq.
+Trois plaisanteries maison, mécaniques : en code elles sont exactes, gratuites
+en tokens, et court-circuitent Qdrant comme Groq.
 """
 
 _ALPHABET = "abcdefghijklmnopqrstuvwxyz"

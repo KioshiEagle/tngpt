@@ -1,13 +1,8 @@
 """Tests de la fusion des deux formulations d'une même question.
 
-Aucun accès réseau : `_interleave` est une fonction pure, et c'est elle qui
-décide quels chunks atteignent la short-list du reranker.
-
-Le cas qui a motivé ce code : « et guillaume rozier ? » posée après une question
-sur le bureau BDE. La requête enrichie des tours passés déportait le vecteur
-vers les comptes rendus de réunion, Qdrant ne rendait plus un seul chunk sur
-Rozier — pourtant présents dans le corpus — et TN-GPT répondait qu'il ne savait
-pas, ce qui était exact au regard de ce qu'il recevait.
+Motivés par « et guillaume rozier ? » posée après une question sur le bureau :
+la requête enrichie déportait le vecteur et Qdrant ne rendait plus un chunk sur
+Rozier, pourtant présent au corpus.
 """
 
 from app.back.retrieval import _interleave
