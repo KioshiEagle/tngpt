@@ -11,6 +11,7 @@ from werkzeug.exceptions import HTTPException
 
 from app.back.admin import admin_bp
 from app.back.auth import auth_bp
+from app.back.generate import SYSTEM_PROMPT_PATH
 from app.back.models import User, db
 from app.back.permissions import login_manager
 from app.cli import register_cli
@@ -136,4 +137,13 @@ register_cli(app)
 
 if __name__ == "__main__":
     debug_mode = os.environ.get("FLASK_DEBUG", "True").lower() in ["true", "1", "t"]
-    app.run(host="127.0.0.1", debug=debug_mode, port=8501)
+    # Le rechargeur ne surveille que les modules Python. `CHAT_SYSTEM` étant lu
+    # une fois à l'import, une retouche de system_prompt.md resterait sans effet
+    # jusqu'au prochain redémarrage — et sans rien signaler, ce qui donne
+    # l'impression que le prompt ne change plus rien aux réponses.
+    app.run(
+        host="127.0.0.1",
+        debug=debug_mode,
+        port=8501,
+        extra_files=[SYSTEM_PROMPT_PATH],
+    )

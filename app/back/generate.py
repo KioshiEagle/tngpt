@@ -26,9 +26,8 @@ _CHAT_MODEL = os.getenv("GROQ_CHAT_MODEL", "qwen/qwen3.6-27b")
 # et qu'on révise comme de la documentation, pas une constante Python noyée
 # entre deux fonctions. Lu une fois à l'import — il est rigoureusement identique
 # d'une requête à l'autre, ce qui laisse un préfixe stable aux appels Groq.
-CHAT_SYSTEM = (
-    (Path(__file__).with_name("system_prompt.md")).read_text(encoding="utf-8").strip()
-)
+SYSTEM_PROMPT_PATH = Path(__file__).with_name("system_prompt.md")
+CHAT_SYSTEM = SYSTEM_PROMPT_PATH.read_text(encoding="utf-8").strip()
 
 # Le message utilisateur ne porte que des données : les repères d'exécution, les
 # archives retrouvées et la question. Toutes les règles sont dans `CHAT_SYSTEM`,
