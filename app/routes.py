@@ -294,7 +294,6 @@ CITATIONS: list[Citation] = [
     ("Absolute Bouthier", 5),
     ("plus qu'une salle et la carte sera complétée.....", 2),
     ("ah bas le gouvernement BDE !!", 3),
-
 ]
 
 
