@@ -131,12 +131,23 @@ Le prompt système est un fichier,
 c'est de la prose qu'on relit et qu'on révise comme de la documentation. Il est
 lu une fois à l'import et ne varie jamais d'une requête à l'autre.
 
-Le partage entre les deux messages envoyés à Groq est strict :
+Le partage entre les messages envoyés à Groq est strict :
 
 | Message | Contenu | Varie |
 |---|---|---|
 | `system` | les règles, en sections `<mission>`, `<perimetre>`, `<ancrage_factuel>`, `<hierarchie_des_sources>`, `<ton_et_format>`, `<conversation>` | jamais |
+| tours passés | les `HISTORY_CONTEXT_SIZE` derniers messages de la conversation, relus en base, tronqués à 500 caractères chacun | à chaque requête |
 | `user` | `<contexte_execution>` (date, prénom), `<archives>` (fiches SQL + chunks Qdrant), `<question>` | à chaque requête |
+
+La mémoire est celle d'**une** conversation : l'historique vient de la ligne
+`conversations` visée, jamais des autres. Les tours passés partent sans leurs
+archives — elles ne sont plus disponibles — ce qui fait du fil de l'échange un
+souvenir et non un second corpus, et le prompt système le dit au modèle. La
+carte au trésor ne les reçoit pas : c'est un coup unique.
+
+Le même historique sert déjà, en amont, à enrichir la requête Qdrant
+(`_enrich_query`) : une question de suite ramène les bons chunks *et* se lit
+dans son fil.
 
 Rien de ce qui vient de Qdrant n'atterrit du côté des règles. Les archives sont
 des documents ingérés automatiquement, donc du texte que personne ne relit : les

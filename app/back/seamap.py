@@ -495,6 +495,7 @@ MAP_SPEC = CallSpec(
     params=MAP_GROQ_PARAMS,
     consume=_collect_tool_arguments,
     temperature=0.7,
+    send_history=False,
 )
 
 

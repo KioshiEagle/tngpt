@@ -8,7 +8,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from groq import APIConnectionError, APIStatusError, APITimeoutError, Groq, Stream
-from groq.types.chat import ChatCompletionChunk
+from groq.types.chat import ChatCompletionChunk, ChatCompletionMessageParam
 
 from .groqpool import acquire
 from .retrieval import search
@@ -245,6 +245,9 @@ class CallSpec:
     # Le chat restitue des archives, il n'a rien à inventer : une température
     # basse va dans le sens des règles d'ancrage plutôt que contre elles.
     temperature: float = 0.3
+    # La carte est un coup unique : les tours passés ne l'aident pas à énumérer
+    # des clubs, ils ne feraient qu'alourdir un appel d'outil déjà contraint.
+    send_history: bool = True
 
 
 # Le chat est un RAG simple : le modèle restitue le contexte, il n'a rien à
@@ -258,6 +261,38 @@ CHAT_GROQ_PARAMS: GroqParams = {
 }
 
 CHAT_SPEC = CallSpec(params=CHAT_GROQ_PARAMS)
+
+
+# Longueur retenue d'un tour passé. Une réponse de chat tient en trois ou quatre
+# lignes, mais une carte au trésor persiste sa charge JSON dans la conversation :
+# sans plafond, un seul tour de carte mangerait le budget de la minute.
+_HISTORY_MAX_CHARS = 500
+
+
+def _trim(content: str) -> str:
+    """Tronque un tour passé, en signalant la coupe au modèle."""
+    if len(content) <= _HISTORY_MAX_CHARS:
+        return content
+    return content[:_HISTORY_MAX_CHARS] + "…"
+
+
+def _history_messages(
+    history: list[HistoryMessage],
+) -> list[ChatCompletionMessageParam]:
+    """Rejoue les tours passés de la conversation, dans l'ordre.
+
+    Sans archives : elles ne sont plus disponibles, et une réponse passée n'est
+    pas une source. C'est le fil de l'échange qu'on rend au modèle, pas un
+    second corpus.
+    """
+    messages: list[ChatCompletionMessageParam] = []
+    for message in history:
+        content = _trim(message["content"])
+        if message["role"] == "user":
+            messages.append({"role": "user", "content": content})
+        elif message["role"] == "assistant":
+            messages.append({"role": "assistant", "content": content})
+    return messages
 
 
 def _enrich_query(question: str, history: list[HistoryMessage], n: int = 2) -> str:
@@ -384,10 +419,15 @@ def _attempt(
     # qui fasse autorité.
     context = req.fiches + _build_context(results)
     prompt = spec.build(context, req.question, user_name=req.user_name)
+    # Les tours passés s'intercalent entre les règles et la question courante :
+    # seule celle-ci porte des archives, ce qui garde la frontière nette entre
+    # ce dont TN-GPT se souvient et ce sur quoi il peut s'appuyer.
+    history = _history_messages(req.history) if spec.send_history else []
     completion = client.chat.completions.create(
         model=_CHAT_MODEL,
         messages=[
             {"role": "system", "content": spec.system},
+            *history,
             {"role": "user", "content": prompt},
         ],
         temperature=spec.temperature,
