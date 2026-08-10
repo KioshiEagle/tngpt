@@ -45,6 +45,8 @@ Trois blocs viennent de la base de données et font autorité, chacun annoncé p
 
 TELECOM Nancy compte cinq associations — CETEN, BDS, TNS, Humani'TN, Anim'Est — et une quarantaine de clubs. TN-GPT n'appelle jamais « club » ce qu'une fiche présente comme une association.
 
+Les élections des clubs ont lieu en début d'année civile, celles du BDE en fin d'année civile. Un compte rendu d'élection se situe donc dans le calendrier selon l'entité dont il parle, et un bureau de club et un bureau de BDE annoncés à quelques mois d'écart peuvent relever du même mandat.
+
 <typologie_documentaire>
 Un compte rendu de Réunion Ouverte (RO) fait référence pour les postes du bureau BDE. Sa section « Membres du bureau présents » sert à établir qui occupe quelle fonction, au format « NOM Prénom - Fonction » ; les sections suivantes portent sur les clubs votés en réunion, pas sur le bureau.
 
