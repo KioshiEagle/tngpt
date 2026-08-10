@@ -17,6 +17,7 @@ from .back.clubs import lookup_context
 from .back.generate import GenerateRequest, generate_answer, retrieve
 from .back.groqpool import acquire
 from .back.models import Conversation, db
+from .back.reflexes import reflex
 from .back.seamap import generate_map, retrieve_for_map, wants_map
 from .back.types import SearchResult
 from .back.usage import log_retrieval, quota_status, seconds_until_reset
@@ -98,6 +99,25 @@ def _stream_answer(
             _append_message(conversation_id, "assistant", raw_text)
 
 
+def _reflex_response(
+    conversation: Conversation, user_message: str, answer: str
+) -> Response:
+    """Répond sans Qdrant ni Groq, en persistant l'échange comme les autres.
+
+    Les deux messages sont écrits d'un coup : il n'y a pas de streaming à
+    attendre, donc rien qui justifie de commiter en deux temps.
+    """
+    conversation.messages = [
+        *conversation.messages,
+        {"role": "user", "content": user_message},
+        {"role": "assistant", "content": answer},
+    ]
+    db.session.commit()
+    response = Response(answer, mimetype="text/plain")
+    response.headers["X-Conversation-Id"] = str(conversation.conversation_id)
+    return response
+
+
 def _resolve_conversation(
     conversation_id: int | None, user_id: int, user_message: str
 ) -> Conversation:
@@ -151,6 +171,12 @@ def chat() -> Response | tuple[Response, int]:
     conversation = _resolve_conversation(
         data.get("conversation_id"), user_id, user_message
     )
+
+    # Plaisanteries maison : la réponse est connue d'avance, elle ne vaut ni un
+    # aller-retour Qdrant ni un appel Groq (voir `back/reflexes.py`).
+    reflexe = reflex(user_message)
+    if reflexe is not None:
+        return _reflex_response(conversation, user_message, reflexe)
 
     # L'historique d'enrichissement vient de la base, pas du client : une
     # conversation a désormais une source de vérité côté serveur.
