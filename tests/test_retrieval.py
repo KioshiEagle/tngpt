@@ -1,8 +1,7 @@
 """Tests de la fusion des deux formulations d'une même question.
 
-Motivés par « et guillaume rozier ? » posée après une question sur le bureau :
-la requête enrichie déportait le vecteur et Qdrant ne rendait plus un chunk sur
-Rozier, pourtant présent au corpus.
+Motivés par « et guillaume rozier ? » en second tour : la requête enrichie
+déportait le vecteur et Qdrant ne rendait plus rien sur Rozier.
 """
 
 from app.back.retrieval import _interleave

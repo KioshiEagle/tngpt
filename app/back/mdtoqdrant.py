@@ -80,14 +80,10 @@ class VectorStore:
         )
 
     def upload_file(self, md_path: Path) -> IngestResult | None:
-        """Ingère un fichier Markdown dans Qdrant et retourne ses métadonnées.
+        """Ingère un fichier Markdown dans Qdrant, ou None si le fichier est vide.
 
-        Chaque chunk est préfixé avec date et titre avant l'encodage pour
-        améliorer la qualité du matching sémantique ; le texte brut (sans préfixe)
-        est stocké dans le payload pour l'affichage. Les chunks existants du même
-        document sont supprimés d'abord : ré-ingérer remplace, ne duplique pas.
-
-        Retourne None si le document ne produit aucun chunk (fichier vide).
+        Chaque chunk est préfixé de sa date et de son titre avant encodage, et
+        les chunks du même document sont purgés d'abord : ré-ingérer remplace.
         """
         source_id = md_path.stem
         with md_path.open(encoding="utf-8") as f:

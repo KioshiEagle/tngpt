@@ -1,10 +1,7 @@
 """Carte au trésor des clubs de TELECOM Nancy.
 
-Chemin de code distinct du chat classique. Une demande de carte déclenche un
-retrieval multi-requêtes (le `TOP_K = 5` du chat ne permet pas d'énumérer les
-clubs à travers ~400 archives), puis un appel Groq dont l'outil `generate_map`
-est forcé : le modèle renvoie des données structurées — clubs, tutelle, icône —
-et non une syntaxe de diagramme à réparer. Le dessin appartient au navigateur.
+Retrieval multi-requêtes puis appel Groq à outil forcé : le modèle rend des
+données structurées, jamais une syntaxe de diagramme. Le dessin est au navigateur.
 """
 
 import json
@@ -44,9 +41,8 @@ def wants_map(question: str) -> bool:
 
 # --- Retrieval multi-requêtes -------------------------------------------------
 
-# Angles sous lesquels les clubs apparaissent dans les archives (RO, comptes-rendus,
-# budgets). La question de l'utilisateur est interrogée en plus : c'est elle qui
-# remonte les chunks des clubs explicitement nommés quand la demande est ciblée.
+# Angles sous lesquels les clubs apparaissent dans les archives. La question de
+# l'utilisateur est interrogée en plus, pour les clubs explicitement nommés.
 _MAP_QUERIES = (
     "liste des clubs et associations de TELECOM Nancy",
     "pôles artistiques et culturels du BDA",
@@ -54,23 +50,16 @@ _MAP_QUERIES = (
 )
 
 MAP_TOP_K = 10
-# Plafond calibré sur le tier Groq de l'organisation (8000 tokens/minute) :
-# 24 chunks pèsent ~6000 tokens de prompt, la complétion tient dans le reste.
-# Au-delà, Groq renvoie 413 et `_stream_with_retries` divise le contexte par deux.
+# Plafond calibré sur le tier Groq (8000 tokens/minute) : 24 chunks pèsent
+# ~6000 tokens, et au-delà Groq renvoie 413.
 MAP_MAX_CHUNKS = 24
 
 
 def retrieve_for_map(req: GenerateRequest) -> list[SearchResult]:
     """Agrège plusieurs recherches Qdrant pour couvrir l'ensemble des clubs.
 
-    Chaque requête passe par `search()`, qui applique son propre reclassement par
-    fraîcheur. Les résultats sont dédupliqués sur `point_id` en gardant le
-    meilleur score, retriés, puis plafonnés à `MAP_MAX_CHUNKS` — garde-fou contre
-    le 413 de Groq.
-
-    Le reranker est désactivé ici : la carte veut de la couverture, pas de la
-    précision, et il coûterait un appel API par requête pour un ordre que la
-    déduplication et le tri qui suivent recomposent entièrement.
+    Dédupliqué sur `point_id`, retrié, plafonné à `MAP_MAX_CHUNKS` ; reranker
+    désactivé, la carte voulant de la couverture et non de la précision.
     """
     seen: dict[str, SearchResult] = {}
     for query in (req.question, *_MAP_QUERIES):
@@ -91,9 +80,8 @@ def retrieve_for_map(req: GenerateRequest) -> list[SearchResult]:
 
 # --- Icônes ------------------------------------------------------------------
 
-# Énumération fermée : c'est elle qui garantit qu'un symbole existe toujours.
-# Toute valeur produite hors de cette liste est ramenée dans le rang par
-# `_resolve_icone`.
+# Énumération fermée, qui garantit qu'un symbole existe toujours : hors liste,
+# `_resolve_icone` ramène la valeur dans le rang.
 ICONES = (
     "atelier",
     "gymnase",
@@ -114,9 +102,8 @@ ICONES = (
 )
 _ICONE_DEFAUT = "drapeau"
 
-# Repli déterministe quand le modèle propose une icône hors énumération.
-# Appliqué au nom et à la tutelle désaccentués, dans l'ordre : la première
-# correspondance gagne, donc du plus spécifique au plus général.
+# Repli déterministe hors énumération, sur nom et tutelle désaccentués : la
+# première correspondance gagne, du plus spécifique au plus général.
 _ICONE_MOTS: tuple[tuple[re.Pattern[str], str], ...] = tuple(
     (re.compile(motif, re.IGNORECASE), icone)
     for motif, icone in (
@@ -142,9 +129,8 @@ _ICONE_MOTS: tuple[tuple[re.Pattern[str], str], ...] = tuple(
 def _resolve_icone(propose: object, nom: str, tutelle: str) -> str:
     """Ramène l'icône d'un club dans l'énumération connue.
 
-    Le modèle choisit en premier ; hors énumération, une table de mots-clés
-    tranche sur le nom ; en dernier recours, un drapeau neutre. Aucun club ne
-    peut donc se retrouver sans symbole sur la carte.
+    Le modèle, puis une table de mots-clés sur le nom, puis un drapeau neutre :
+    aucun club ne peut se retrouver sans symbole.
     """
     if isinstance(propose, str) and propose.strip().lower() in ICONES:
         return propose.strip().lower()
@@ -157,10 +143,8 @@ def _resolve_icone(propose: object, nom: str, tutelle: str) -> str:
 
 # --- Logos --------------------------------------------------------------------
 
-# Logos découpés de la plaquette alpha 2026-2027 (voir `app/front/static/logos/`).
-# Le modèle ne les choisit pas : un club porte le sien ou n'en porte pas, et
-# c'est son nom qui trie. Les 41 clubs de l'école n'ont pas tous un logo dans la
-# plaquette — les absents gardent le pictogramme dessiné.
+# Logos de la plaquette (`app/front/static/logos/`). Le modèle ne les choisit
+# pas, c'est le nom qui trie ; les clubs sans logo gardent le pictogramme.
 LOGOS = (
     "absoludique",
     "algo",
@@ -242,9 +226,8 @@ _LOGO_MOTS: tuple[tuple[re.Pattern[str], str], ...] = tuple(
 def _resolve_logo(nom: str) -> str:
     """Slug du logo du club, ou chaîne vide s'il n'en a pas dans la plaquette.
 
-    Seul le nom décide, jamais la tutelle : sans quoi tous les clubs d'un même
-    bureau hériteraient du logo de leur association mère et la carte n'afficherait
-    plus qu'une poignée de symboles répétés.
+    Seul le nom décide : sur la tutelle, tous les clubs d'un même bureau
+    hériteraient du logo de leur association mère.
     """
     cible = strip_accents(nom)
     for motif, logo in _LOGO_MOTS:
@@ -257,10 +240,8 @@ def _resolve_logo(nom: str) -> str:
 
 MAP_TOOL_NAME = "generate_map"
 
-# Le schéma de l'outil EST le contrat de sortie. Forcer cet outil est la seule
-# façon d'imposer une structure à qwen3.6-27b en un seul aller-retour : Groq ne
-# supporte `response_format={"type": "json_schema"}` que sur les modèles gpt-oss,
-# et le documente incompatible avec le streaming comme avec les outils.
+# Le schéma de l'outil EST le contrat de sortie : Groq ne supporte
+# `response_format` json_schema que sur gpt-oss, et pas avec le streaming.
 _MAP_TOOL: ChatCompletionToolParam = {
     "type": "function",
     "function": {
@@ -346,10 +327,8 @@ _MAP_PROMPT_TEMPLATE = (
 )
 
 
-# La carte garde ses règles dans son message utilisateur, avec le message
-# système laconique qu'elle a toujours eu : `system_prompt.md` décrit un chat
-# qui répond en prose et refuse le hors-sujet, ce qui n'a aucun sens pour un
-# appel d'outil qui doit rendre une liste de clubs.
+# La carte garde ses règles dans son message utilisateur : `system_prompt.md`
+# décrit un chat en prose, sans rapport avec un appel d'outil.
 _MAP_SYSTEM = "Tu es un étudiant de Telecom Nancy."
 
 
@@ -468,9 +447,8 @@ MAP_GROQ_PARAMS: GroqParams = {
 def _collect_tool_arguments(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
     """Concatène les fragments d'arguments de l'outil, puis émet la charge utile.
 
-    Compatible `generate.CompletionConsumer`. Les arguments arrivent découpés
-    dans `delta.tool_calls[].function.arguments` ; rien ne peut être exploité
-    avant la fin, on n'émet donc qu'une fois le flux terminé.
+    Les arguments arrivent découpés dans `delta.tool_calls[]` : rien n'est
+    exploitable avant la fin du flux.
     """
     arguments = ""
     for chunk in completion:

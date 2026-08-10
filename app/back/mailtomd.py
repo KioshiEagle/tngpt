@@ -1,18 +1,7 @@
 """Conversion d'un mail exporté (.eml) en Markdown, jumeau de `pdftomd`.
 
-Toute la pipeline converge sur `VectorStore.upload_file`, qui lit du Markdown à
-frontmatter : un mail n'a donc pas besoin d'un second chemin d'ingestion, mais
-d'un convertisseur qui produise cette forme-là. Chunking, embeddings, catalogue
-et suivi à l'écran restent ceux des PDF.
-
-Le document produit annonce qu'il est un mail et à quelle date il est parti.
-Sans ce marquage, « le CTF commence aujourd'hui » se lit comme une information
-du jour, un an après l'envoi. La règle qui exploite le marquage vit dans le
-prompt de `generate` et s'accroche au titre : celui-ci doit commencer par
-« Mail », les deux ne peuvent pas diverger sans que la règle devienne muette.
-
-Les fonctions de décision sont pures et reçoivent le catalogue en argument,
-comme celles de `clubs` : elles restent testables sans base ni application.
+Le titre produit doit commencer par « Mail » : c'est ce que la règle de
+`system_prompt.md` reconnaît pour ne pas lire une annonce d'il y a un an au présent.
 """
 
 import email
@@ -35,19 +24,16 @@ logger = logging.getLogger(__name__)
 _APOSTROPHES = "\u2019\u02bc\u00b4"
 _APO = f"['{_APOSTROPHES}]"
 
-# Salutations ouvrant le corps d'un mail. Ce sont elles qui bornent le résumé :
-# tout ce qui les précède en est un. Les lettres finales sont étirables, la
-# ponctuation du corpus étant ce qu'elle est (« Bonjouuur ! », « Holaaa »).
+# Salutations ouvrant le corps : elles bornent le résumé, tout ce qui précède
+# en est un. Lettres finales étirables (« Bonjouuur ! »).
 _SALUTATION = re.compile(
     r"^\s*(bonjou+r|bonsoi+r|salu+t|hola+|hell?o+|hey+|coucou+|yo+|plop|"
     r"cher(?:e?s)?|chere?s?|salutations|bien le bonjour)\b",
     re.IGNORECASE,
 )
 
-# Un mail du corpus s'ouvre sur « <accroche> : <résumé> », où l'accroche est une
-# variation libre sur le thème de la vitesse (« En vitesse lumière », « Speedrun »,
-# « Crackéclair »). Elle n'apprend rien et, répétée sur des dizaines de mails,
-# rapprocherait tous ces chunks du même point de l'espace vectoriel.
+# Accroche d'ouverture, variation libre sur la vitesse : elle n'apprend rien et
+# rapprocherait des dizaines de chunks du même point de l'espace vectoriel.
 _ACCROCHE_MAX = 40
 _RESTE_MIN = 20
 # Au-delà, le texte qui précède la salutation n'est pas un résumé mais un mail
@@ -64,11 +50,8 @@ _POSTE = re.compile(
 _SIGNATURE_LIGNES = 18
 _POSTES_MAX = 6
 
-# Tags nommant la liste de diffusion, non un club : `[CETEN]` figure sur 228
-# mails du corpus, le retenir d'emblée reviendrait à n'en distinguer aucun. Mais
-# un mail tagué `[CETEN]` et rien d'autre émane bien du CETEN — que la base tient
-# sous une seule ligne avec le BDE (`nom='CETEN'`, `slug='bde'`). D'où le repli
-# de dernier rang plutôt qu'une exclusion pure.
+# Tags de liste, non de club : `[CETEN]` figure sur 228 mails. Repli de dernier
+# rang plutôt qu'exclusion, un mail tagué CETEN seul émanant bien du CETEN.
 _TAGS_LISTE = frozenset({"ceten", "infoceten", "info ceten"})
 # Tags décrivant la nature du document ou une campagne, jamais une entité.
 _TAGS_HORS_CLUB = _TAGS_LISTE | {"cr", "odj", "campagne", "voyage"}
@@ -84,9 +67,8 @@ _CITATION = re.compile(
 )
 # Séparateur de signature normalisé (RFC 3676) : « -- » seul sur sa ligne.
 _FIN_SIGNATURE = re.compile(r"^-- ?$", re.MULTILINE)
-# Pied de page ajouté par Google Groups aux mails de liste (19 mails du corpus).
-# Il est au mot près le même partout : indexé tel quel, il formerait un amas de
-# chunks jumeaux que n'importe quelle question sur le CETEN irait percuter.
+# Pied de page Google Groups, au mot près le même sur 19 mails : indexé tel
+# quel, il formerait un amas de chunks jumeaux.
 _PIED_LISTE = re.compile(
     r"^.*(?:issu du Ceten|\+unsubscribe@|retirer de la liste).*$",
     re.IGNORECASE | re.MULTILINE,
@@ -107,14 +89,8 @@ _ADRESSE_ECOLE = re.compile(r"^([a-z]+)\.([a-z-]+)@", re.IGNORECASE)
 class Citee:
     """Une entité reconnue, et la forme sous laquelle le mail la nomme.
 
-    Les deux diffèrent souvent : un tag `[Abso]` pour Abso'Ludique, un
-    `[Inté'Galactique]` pour le club d'inté, qui se renomme chaque février. Le
-    Markdown porte les deux — le nom canonique fait le lien avec la base, la
-    forme du mail permet de retrouver l'entité dans le corps du message.
-
-    La formulation reste neutre parce que la base ne distingue pas un surnom
-    d'un nom révolu : les deux vivent dans la même colonne `aliases`. Écrire
-    « aujourd'hui X » serait juste pour Inté'Galactique et faux pour Abso.
+    Le Markdown porte les deux : le nom canonique fait le lien avec la base,
+    la forme du mail permet de retrouver l'entité dans le corps.
     """
 
     entite: Entite
@@ -145,10 +121,8 @@ class Mail:
     def titre(self) -> str:
         """Titre du frontmatter, repris en préfixe de chaque chunk.
 
-        Il commence par « Mail » : c'est ce mot que la règle de `generate`
-        reconnaît pour ne pas lire une annonce d'il y a un an au présent.
-        L'entité y figure aussi, faute de quoi les morceaux du corps — qui ne
-        portent pas le bloc « Infos » — ne diraient pas de qui ils parlent.
+        Commence par « Mail », mot que reconnaît la règle du prompt ; l'entité y
+        figure, sans quoi les morceaux du corps ne diraient pas de qui ils parlent.
         """
         noms = [citee.entite.nom for citee in self.entites[:2]]
         qui = ", ".join(noms) if noms else self.liste
@@ -175,11 +149,8 @@ def _en_clair(iso: str) -> str:
 def _expediteur(brut: str) -> str:
     """Nom de l'expéditeur sous la forme « NOM Prénom » des archives.
 
-    Le nom affiché dans l'en-tête est trop instable pour servir de clé : le
-    corpus contient « Lucas Jordan » et « LUCAS JORDAN », « Secrétariat BDE » et
-    « Secrétaire BDE ». L'adresse, elle, suit la convention de l'école
-    (`prenom.nom@`) et donne la même forme pour tous. On ne retombe sur le nom
-    affiché que pour les boîtes fonctionnelles, qui n'ont pas cette forme.
+    Tiré de l'adresse (`prenom.nom@`), stable là où le nom affiché ne l'est
+    pas ; repli sur celui-ci pour les boîtes fonctionnelles.
     """
     nom_affiche, adresse = parseaddr(brut)
     found = _ADRESSE_ECOLE.match(adresse)
@@ -233,9 +204,8 @@ def _index_salutation(lignes: Sequence[str]) -> int | None:
 def _sans_accroche(resume: str) -> str:
     """Retire l'accroche qui précède le deux-points, quand c'en est une.
 
-    « Vitesse x2 : rdv jeudi 16/10 » donne « rdv jeudi 16/10 ». On exige que
-    l'accroche soit courte et que le reste tienne debout seul, pour ne pas
-    amputer un résumé qui contiendrait légitimement un deux-points.
+    Accroche courte et reste tenant debout seul, pour ne pas amputer un résumé
+    qui contiendrait légitimement un deux-points.
     """
     accroche, sep, suite = resume.partition(":")
     suite = suite.strip()
@@ -247,13 +217,8 @@ def _sans_accroche(resume: str) -> str:
 def _scinder(corps: str) -> tuple[str, str]:
     """Sépare le résumé d'ouverture du reste du message.
 
-    Le corpus a formalisé le TL;DR sans le nommer : une ligne qui situe le
-    message, placée avant la salutation. C'est cette position — et non un
-    mot-clé — qui l'identifie, les rédacteurs inventant chacun la leur.
-
-    Le résumé est retiré du corps parce qu'il est remonté dans le bloc
-    « Infos » : l'y laisser aussi le ferait encoder deux fois, dans deux chunks
-    voisins qui se disputeraient ensuite la même question.
+    Identifié par sa position avant la salutation, et retiré du corps : remonté
+    dans « Infos », l'y laisser l'encoderait deux fois.
     """
     lignes = corps.splitlines()
     index = _index_salutation(lignes)
@@ -273,10 +238,8 @@ def _scinder(corps: str) -> tuple[str, str]:
 def _fonction(corps: str) -> str:
     """Postes déclarés dans la signature, séparés par « · ».
 
-    Quatre mails sur cinq se terminent par une signature qui énumère les
-    mandats de leur auteur (« Vice-secrétaire BDE 2025 »). C'est la même
-    information que `ClubRole`, datée et en libre-service : la couper — ce que
-    fait d'ordinaire un nettoyage de mails — jetterait le plus utile du corpus.
+    Quatre mails sur cinq énumèrent les mandats de leur auteur : c'est la même
+    information que `ClubRole`, datée, et la couper jetterait le plus utile.
     """
     found = _FIN_SIGNATURE.search(corps)
     queue = corps[found.end() :] if found else corps
@@ -322,13 +285,8 @@ def _entites(
 ) -> list[Citee]:
     """Clubs et associations que le mail concerne, par ordre de fiabilité.
 
-    Trois rangs : les tags qui nomment une entité, puis le texte du sujet
-    (« Event Inté BDS : Paintball » n'a pas de tag), puis le tag de liste — un
-    mail tagué `[CETEN]` sans autre indication émane du CETEN lui-même.
-
-    La reconnaissance est exacte (nom officiel, slug, alias) : `match_flou` est
-    volontairement écarté, ses résultats étant des pistes à soumettre au modèle,
-    jamais une identification à inscrire dans un document qui fera ensuite foi.
+    Tags nommant une entité, puis sujet, puis tag de liste ; reconnaissance
+    exacte seulement, `match_flou` ne rendant que des pistes.
     """
     trouvees: list[Citee] = []
     for tag in tags:
@@ -362,9 +320,8 @@ def lire(chemin: Path, catalogue: Sequence[Entite]) -> Mail:
     brut = _nettoyer(_sans_pied(_sans_citation(_corps_texte(msg))))
     liste = (msg.get("List-Id") or "").strip("<>").split(".")[0]
 
-    # La fonction se lit sur le corps entier : la signature vit après la
-    # salutation, donc dans la part que `_scinder` conserve, mais la lire avant
-    # le découpage évite de dépendre de cet ordre.
+    # Lue sur le corps entier : la signature survit à `_scinder`, mais la lire
+    # avant évite de dépendre de cet ordre.
     fonction = _fonction(brut)
     resume, corps = _scinder(brut)
 
@@ -383,11 +340,8 @@ def lire(chemin: Path, catalogue: Sequence[Entite]) -> Mail:
 def rendre(mail: Mail) -> str:
     """Rend le mail en Markdown à frontmatter, prêt pour `upload_file`.
 
-    Les titres `#` et `##` ne sont pas décoratifs : ce sont les deux niveaux sur
-    lesquels `get_hybrid_chunks` découpe, et chaque chunk hérite de leur libellé
-    en préfixe. Une ligne dont l'information manque est omise plutôt que remplie
-    d'un « Inconnu » — le prompt interdit d'inventer, un champ vide le ferait
-    mentir.
+    Les titres `#` et `##` sont les niveaux de découpe de `get_hybrid_chunks` ;
+    une information manquante est omise plutôt que remplie d'un « Inconnu ».
     """
     envoi = _en_clair(mail.date) if mail.date else "date inconnue"
     sur = f" sur la liste {mail.liste}" if mail.liste else ""
@@ -399,8 +353,7 @@ def rendre(mail: Mail) -> str:
         ),
     ]
     # Deux lignes distinctes, et jamais « club » pour une association : le
-    # prompt interdit explicitement de confondre les deux natures, et le CETEN
-    # — que la base tient sous la même ligne que le BDE — est une association.
+    # prompt interdit de confondre les deux natures.
     if clubs := mail.nommees(NATURE_CLUB):
         infos.append(f"Nom du club : {clubs}")
     if assos := mail.nommees(NATURE_ASSO):
@@ -427,9 +380,8 @@ def rendre(mail: Mail) -> str:
 def convert_file(eml_path: Path, output_dir: Path, catalogue: Sequence[Entite]) -> Path:
     """Convertit un `.eml` en Markdown et retourne le chemin du `.md`.
 
-    Unité de travail de la conversion, appelée par le worker d'ingestion pour un
-    fichier déposé. Le `.md` porte le nom du `.eml` : c'est ce que le worker
-    supprime ensuite, et ce dont `upload_file` tire le `source_id`.
+    Le `.md` porte le nom du `.eml` : c'est ce que le worker supprime ensuite,
+    et ce dont `upload_file` tire le `source_id`.
     """
     if eml_path.stat().st_size == 0:
         msg = f"Fichier vide : {eml_path.name}"

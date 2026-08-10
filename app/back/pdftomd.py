@@ -171,10 +171,8 @@ class DocumentProcessor:
     ) -> Path:
         """Convertit un PDF en Markdown avec frontmatter et retourne le chemin du .md.
 
-        Unité de travail de la conversion : `convert_directory` en fait une boucle,
-        et le dépôt d'un fichier unique depuis le panel admin l'appelle directement.
-        `client` est le client Groq à utiliser (une clé du pool) ; à défaut, la
-        clé de repli .env.
+        Unité de travail de la conversion, appelée en boucle ou à l'unité ;
+        `client` est une clé du pool, à défaut celle de repli .env.
         """
         if pdf_path.stat().st_size == 0:
             msg = f"Fichier vide : {pdf_path.name}"

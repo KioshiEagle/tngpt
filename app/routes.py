@@ -78,9 +78,8 @@ def _stream_answer(
     """
     raw_text = ""
     try:
-        # Un seul appel à Groq, dont on accumule le texte au passage pour le
-        # persister ensuite. La carte au trésor et le chat sont deux
-        # générateurs alternatifs, jamais successifs.
+        # Un seul appel à Groq, dont on accumule le texte pour le persister.
+        # Carte et chat sont alternatifs, jamais successifs.
         stream = (
             generate_map(req, results, client=client)
             if is_map
@@ -92,9 +91,8 @@ def _stream_answer(
     except Exception as e:  # noqa: BLE001
         yield f"Erreur : {e!s}"
     finally:
-        # Sauvegarde même une réponse partielle (arrêt manuel, erreur) :
-        # stream_with_context maintient le contexte de requête jusqu'ici,
-        # y compris quand le client se déconnecte (GeneratorExit).
+        # Sauvegarde même une réponse partielle : stream_with_context tient le
+        # contexte jusqu'ici, même sur déconnexion du client.
         if raw_text:
             _append_message(conversation_id, "assistant", raw_text)
 
@@ -145,10 +143,8 @@ def chat() -> Response | tuple[Response, int]:
         msg = f"Message trop long (max {MAX_MESSAGE_LENGTH} caractères)"
         return jsonify({"error": msg}), 400
 
-    # Quota journalier : plafonne le total de questions du jour, là où le
-    # rate-limiter ne borne que la rafale par minute. Vérifié avant le retrieval
-    # pour ne rien consommer quand la limite est atteinte.
-    # current_user est un proxy Flask-Login ; @login_required garantit un User.
+    # Quota journalier, là où le rate-limiter ne borne que la rafale. Vérifié
+    # avant le retrieval pour ne rien consommer une fois la limite atteinte.
     status = quota_status(current_user)  # ty: ignore[invalid-argument-type]
     if status.exceeded:
         return jsonify(
@@ -197,16 +193,12 @@ def chat() -> Response | tuple[Response, int]:
     # chat ne suffit pas à énumérer les clubs à travers toutes les archives.
     is_map = wants_map(user_message)
 
-    # Recherche et journalisation avant le streaming : l'événement est ainsi
-    # enregistré même si le client se déconnecte pendant la réponse, et on
-    # n'écrit pas en base depuis un générateur dont le contexte se démonte.
+    # Recherche et journalisation avant le streaming : rien ne s'écrit en base
+    # depuis un générateur dont le contexte se démonte.
     results = retrieve_for_map(req) if is_map else retrieve(req)
 
-    # Fiches SQL des clubs cités, quand la question en nomme un. Résolues ici,
-    # dans le contexte de requête, et non dans le générateur : même raison que
-    # le retrieval ci-dessus, la session SQLAlchemy ne doit pas être sollicitée
-    # depuis un générateur dont le contexte se démonte. La carte a son propre
-    # prompt, sans emplacement pour les fiches.
+    # Fiches SQL, résolues dans le contexte de requête pour la même raison que
+    # le retrieval. La carte a son propre prompt, sans place pour elles.
     if not is_map:
         req.fiches = lookup_context(user_message)
 

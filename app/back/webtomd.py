@@ -1,17 +1,7 @@
 """Conversion d'une page web en Markdown, troisième jumeau de `pdftomd`.
 
-Même principe que `mailtomd` : la pipeline converge sur `upload_file`, qui lit
-du Markdown à frontmatter, donc une source nouvelle n'a besoin que d'un
-convertisseur vers cette forme.
-
-Le site de l'école est du WordPress rendu côté serveur, dont l'API REST est
-fermée (401) : on passe donc par le HTML, et par le sitemap plutôt que par un
-parcours de liens — il donne la liste exhaustive sans deviner la structure.
-
-Extraire le contenu principal n'est pas optionnel. Le menu, le pied de page et
-le bandeau cookies pèsent l'essentiel des 150 Ko de chaque page ; recopiés dans
-431 documents, ils formeraient un amas de chunks jumeaux que n'importe quelle
-question irait percuter. C'est le rôle de trafilatura.
+WordPress à l'API REST fermée : on passe par le HTML et le sitemap. Extraire le
+contenu principal est obligatoire, menu et pied de page pesant l'essentiel.
 """
 
 import logging
@@ -26,14 +16,12 @@ import trafilatura
 
 logger = logging.getLogger(__name__)
 
-# Le titre commence par ce marqueur, comme celui d'un mail commence par « Mail ».
-# `upload_file` le recopie en préfixe de chaque chunk : c'est ce qui dit au
-# modèle qu'il lit le site officiel de l'école et non une archive étudiante.
+# Marqueur de titre, recopié en préfixe de chaque chunk : il dit au modèle
+# qu'il lit le site officiel de l'école et non une archive étudiante.
 _MARQUEUR = "Site TELECOM Nancy"
 
-# En deçà, l'extraction n'a rien ramené d'exploitable : page de redirection,
-# galerie d'images, formulaire seul. Mieux vaut aucun document qu'un document
-# vide qui occuperait une ligne au catalogue.
+# En deçà, l'extraction n'a rien ramené d'exploitable : mieux vaut aucun
+# document qu'un document vide au catalogue.
 _CORPS_MIN = 200
 
 # Identifiant de document : `Document.source_id` est un VARCHAR(128).
@@ -63,9 +51,8 @@ class Page:
     def source_id(self) -> str:
         """Identifiant stable du document, dérivé du chemin de l'URL.
 
-        Dérivé de l'URL et non du titre : deux pages peuvent porter le même
-        titre, jamais la même adresse. Un re-crawl retombe donc sur le même
-        identifiant et remplace le document au lieu de le dupliquer.
+        De l'URL et non du titre, que deux pages peuvent partager : un re-crawl
+        remplace donc le document au lieu de le dupliquer.
         """
         chemin = _NON_SLUG.sub("-", urlparse(self.url).path.lower()).strip("-")
         return f"web-{chemin or 'accueil'}"[:_MAX_SOURCE_ID]
@@ -89,23 +76,8 @@ def _nettoyer_titre(brut: str | None, url: str) -> str:
 def _hors_perimetre(url: str) -> bool:
     """Écarte les URLs sans contenu propre à indexer.
 
-    Deux familles.
-
-    Les doublons d'abord. Le sitemap WordPress liste chaque contenu sous son
-    permalien propre et sous sa forme brute (`/?p=11279`, `/?page_id=311`) :
-    toutes ces formes ont un chemin vide et se réduisaient au même `source_id`,
-    donc au même document, chacune écrasant la précédente. Les traductions
-    `?lang=en` faisaient pire, écrasant la version française de leur original
-    dans une base interrogée en français.
-
-    Les archives de catégorie, d'étiquette et d'auteur ensuite. Elles n'ont pas
-    de contenu propre — seulement des amorces d'articles — et portent la date de
-    leur dernière régénération, donc une fraîcheur perpétuellement maximale. Au
-    classement hybride, « Archives des études » doublait ainsi les vraies pages
-    sur la question « qui est Guillaume Rozier » avec un score sémantique
-    pourtant inférieur (0.543 contre 0.603), et repoussait la réponse hors des
-    cinq premiers résultats. Le contrôle d'URL canonique ne les attrape pas :
-    contrairement aux pages de listing, leur canonique est bien la leur.
+    Les doublons du sitemap, qui se réduisent au même `source_id` ; et les
+    archives, sans contenu propre et à fraîcheur perpétuellement maximale.
     """
     parts = urlparse(url)
     return bool(parts.query) or any(
@@ -116,12 +88,8 @@ def _hors_perimetre(url: str) -> bool:
 def lire(url: str, html: str) -> Page | None:
     """Extrait le contenu principal d'une page. None si rien d'exploitable.
 
-    Renvoie None sur les pages de listing : trafilatura y prend le premier
-    article de la liste pour le contenu principal, et produit un document
-    attribué à une autre URL que celle demandée. La divergence entre l'URL
-    canonique extraite et l'URL crawlée est ce qui les trahit — sans ce
-    contrôle, « /vie-etudiante/ » entrerait en base sous le titre d'un article
-    de 2023 sur le club poker.
+    None aussi sur les pages de listing, que trahit la divergence entre URL
+    canonique et URL crawlée : trafilatura y prend le premier article.
     """
     corps = trafilatura.extract(
         html,
@@ -152,10 +120,8 @@ def lire(url: str, html: str) -> Page | None:
 def rendre(page: Page) -> str:
     """Rend la page en Markdown à frontmatter, prêt pour `upload_file`.
 
-    Le bloc « Infos » porte l'URL et la nature de la source. L'URL sert de
-    citation vérifiable ; la nature dit au modèle que cette page fait autorité
-    sur l'institutionnel — cursus, admissions, contacts — là où les archives
-    étudiantes n'engagent que leurs auteurs.
+    Le bloc « Infos » porte l'URL, citation vérifiable, et la nature de la
+    source, qui fait autorité sur l'institutionnel.
     """
     infos = [
         (

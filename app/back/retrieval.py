@@ -20,27 +20,8 @@ logger = logging.getLogger(__name__)
 FRESHNESS_ALPHA = 0.7
 # Taux de décroissance : demi-vie ≈ 350 jours (un document d'un an vaut ~0.5)
 DECAY_RATE = 0.002
-# Plus de seuil de similarité. Le 0.5 qui vivait ici avait été calibré sur les
-# embeddings Gemini et n'a jamais été remesuré après le passage à bge-m3 — le
-# commentaire d'alors le réclamait déjà.
-#
-# Remesuré sur 10 questions dont on sait quel chunk doit remonter :
-#
-#     seuil   cible atteinte   bruit servi
-#     0.5          5/10            3.3
-#     0.4          7/10            4.0
-#     0.3          8/10            5.0
-#     aucun        8/10            5.0
-#
-# Il coupait donc la moitié des questions légitimes — toutes celles qui portent
-# sur une personne, un nom propre étant un signal trop court face à des chunks
-# de prose — sans arrêter le bruit pour autant : « comment tricoter une écharpe »
-# score 0.627, au-dessus de 8 des 10 questions valides. Les deux populations se
-# recouvrent, aucun seuil ne les sépare.
-#
-# Le tri de pertinence revient au reranker (voir `reranking.py`) et le refus du
-# hors-sujet au prompt, qui s'en acquitte déjà. 0.3 donnant exactement le même
-# résultat qu'aucun seuil, on garde la forme la plus honnête : pas de seuil.
+# Pas de seuil : mesuré, il coupait la moitié des questions légitimes sans
+# arrêter le bruit (voir docs/rapports.md).
 SCORE_THRESHOLD: float | None = None
 CANDIDATE_MULTIPLIER = 20
 
@@ -138,12 +119,8 @@ def search(
 ) -> list[SearchResult]:
     """Recherche hybride (sémantique + fraîcheur) dans Qdrant, puis reclassement.
 
-    `query` est la question posée, et c'est elle qui sert au reclassement.
-    `context_query` est sa variante enrichie des tours précédents : cherchée en
-    plus quand elle diffère, ses candidats sont entrelacés aux premiers.
-
-    `rerank_results=False` rend l'ordre hybride seul, pour la carte au trésor
-    qui enchaîne dix recherches et les retrie de toute façon.
+    `query` sert au reclassement, `context_query` (variante enrichie) n'ajoute
+    que du rappel ; `rerank_results=False` rend l'ordre hybride seul.
     """
     results = _candidates(query, top_k, collection_name)
     if context_query and context_query != query:

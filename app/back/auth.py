@@ -130,9 +130,8 @@ def callback() -> Response:
 
     db.session.commit()
 
-    # login_user() refuse un utilisateur dont `is_active` est faux (banni). Sans
-    # ce traitement, il repartirait vers "/" sans session et rebondirait sur le
-    # login sans jamais savoir pourquoi.
+    # login_user() refuse un banni (`is_active` faux) : sans ce traitement il
+    # rebondirait sur le login sans jamais savoir pourquoi.
     if not login_user(user):
         reason = user.ban_reason or "Aucun motif précisé."
         flash(f"Votre accès à TN-GPT a été suspendu. Motif : {reason}", "banned")

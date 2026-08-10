@@ -96,9 +96,8 @@ class User(UserMixin, db.Model):
     def is_active(self) -> bool:
         """Un banni ne peut pas ouvrir de session.
 
-        Flask-Login consulte cette propriété dans `login_user()` : la surcharger
-        (UserMixin la fixe à True) suffit à refuser toute nouvelle connexion. Les
-        sessions déjà ouvertes, elles, sont coupées dans le `user_loader`.
+        Consultée par `login_user()` ; les sessions déjà ouvertes sont coupées
+        dans le `user_loader`.
         """
         return self.status != USER_BANNED
 
@@ -142,9 +141,8 @@ class Conversation(db.Model):
 class Document(db.Model):
     """Un document source présent dans la base vectorielle Qdrant.
 
-    Catalogue de données : reflète ce que contient Qdrant à l'instant t.
-    Remplace le fichier processed_files.json, qui était local au conteneur,
-    éphémère et invisible depuis l'application web.
+    Remplace processed_files.json, local au conteneur, éphémère et invisible
+    depuis l'application web.
     """
 
     __tablename__ = "documents"
@@ -241,9 +239,8 @@ class RetrievalEvent(db.Model):
     )
     # Identifiant du point Qdrant : la clé d'agrégation du barchart.
     point_id = db.Column(db.String(64), nullable=False, index=True)
-    # Document d'origine (drive_id) et titre, dénormalisés : ils permettent
-    # d'afficher les statistiques sans réinterroger Qdrant, et de les conserver
-    # même si le document est supprimé de la base vectorielle.
+    # Document d'origine et titre, dénormalisés : statistiques affichables sans
+    # réinterroger Qdrant, et conservées même après suppression du document.
     source_id = db.Column(db.String(128), nullable=True, index=True)
     title = db.Column(db.String(300), nullable=True)
     rank = db.Column(db.Integer, nullable=False)
@@ -267,10 +264,8 @@ class RetrievalEvent(db.Model):
 class GroqKey(db.Model):
     """Clé d'API Groq du pool.
 
-    TN-GPT appelle Groq avec l'une de ces clés, choisie en round-robin parmi les
-    clés actives, pour qu'aucune ne sature sous le trafic de tous les
-    utilisateurs. Le secret (gsk_…) est nécessaire pour appeler Groq : il est
-    stocké tel quel, affiché masqué.
+    Choisie en round-robin parmi les actives, pour qu'aucune ne sature ; le
+    secret est stocké tel quel, affiché masqué.
     """
 
     __tablename__ = "groq_keys"
@@ -308,16 +303,9 @@ class GroqKey(db.Model):
 
 
 # --- Vie associative ----------------------------------------------------------
-#
-# Le RAG échoue sur les questions dont la réponse tient dans un seul document
-# parmi ~400 (« qui est trésorier de TNS ») : le retrieval sémantique ramène des
-# chunks du bon thème mais rate l'unique compte-rendu qui porte le nom. Ces
-# quatre tables tiennent la même information sous forme relationnelle, et
-# `app/back/clubs.py` l'injecte dans le contexte avant l'appel au modèle.
-#
-# Les identifiants sont fixés à la main (`autoincrement=False`), pas alloués par
-# une séquence Postgres : ce sont des énumérations stables, pas des lignes
-# créées à la volée.
+
+# Ces quatre tables tiennent en relationnel ce que le RAG rate ; `clubs.py`
+# l'injecte dans le contexte. Identifiants fixés à la main : énumérations stables.
 
 
 class Asso(db.Model):
@@ -331,10 +319,8 @@ class Asso(db.Model):
     # question, et présentation reprise de la plaquette.
     slug = db.Column(db.String(40), nullable=True, index=True)
     description = db.Column(db.Text, nullable=True)
-    # Autres appellations, séparées par « | » : le nom d'usage diffère souvent du
-    # nom officiel (« Abso » pour Abso'Ludique). Une colonne plutôt qu'une table :
-    # le catalogue entier tient en mémoire à chaque question, une jointure
-    # n'apporterait rien et la saisie à la main reste sur une seule ligne.
+    # Autres appellations, séparées par « | » (« Abso » pour Abso'Ludique). Une
+    # colonne et non une table : le catalogue tient en mémoire de toute façon.
     aliases = db.Column(db.Text, nullable=True)
 
     clubs = db.relationship("Club", back_populates="asso")
@@ -367,25 +353,20 @@ class Club(db.Model):
 
     club_id = db.Column(db.Integer, primary_key=True, autoincrement=False)
     club_name = db.Column(db.String(120), nullable=False)
-    # Clé courte servant à reconnaître le club dans une question (« tns »), là où
-    # `club_name` porte la forme développée. C'est aussi le slug du logo quand le
-    # club en a un dans la plaquette (voir `seamap.LOGOS`).
+    # Clé courte pour reconnaître le club dans une question (« tns »), là où
+    # `club_name` développe. C'est aussi le slug du logo (voir `seamap.LOGOS`).
     slug = db.Column(db.String(40), nullable=True, index=True)
-    # Présentation du club, reprise de la plaquette alpha. Sert à répondre aux
-    # « c'est quoi X ? » sans passer par les archives. NULL pour les clubs que la
-    # plaquette ne décrit pas : mieux vaut aucune description qu'une inventée.
+    # Présentation reprise de la plaquette, pour les « c'est quoi X ? ». NULL
+    # si la plaquette ne décrit pas le club : aucune description vaut mieux.
     description = db.Column(db.Text, nullable=True)
     # Catégorie du club au sens du CETEN : Loisirs, Événementiel ou Services.
     type_club = db.Column(db.String(20), nullable=True)
     contact_email = db.Column(db.String(150), nullable=True)
-    # Format libre (« 01/10/24 » comme « 16/09/2025 ») : stockée telle quelle,
-    # même parti pris que `Document.doc_date`, plutôt que de risquer une
-    # interprétation jour/mois sur des saisies hétérogènes.
+    # Format libre, stockée telle quelle comme `Document.doc_date` : sur des
+    # saisies hétérogènes, interpréter jour/mois est un pari.
     date_creation = db.Column(db.String(10), nullable=True)
-    # Autres appellations, séparées par « | » : le nom d'usage diffère souvent du
-    # nom officiel (« Abso » pour Abso'Ludique). Une colonne plutôt qu'une table :
-    # le catalogue entier tient en mémoire à chaque question, une jointure
-    # n'apporterait rien et la saisie à la main reste sur une seule ligne.
+    # Autres appellations, séparées par « | » (« Abso » pour Abso'Ludique). Une
+    # colonne et non une table : le catalogue tient en mémoire de toute façon.
     aliases = db.Column(db.Text, nullable=True)
     asso_id = db.Column(db.Integer, db.ForeignKey("assos.asso_id"), nullable=False)
 
@@ -402,14 +383,8 @@ class Club(db.Model):
 class ClubRole(db.Model):
     """Qui occupe quel poste, dans quel club, sur quel mandat.
 
-    Clé primaire technique, et non (role_id, club_id, mandat) : un même poste
-    peut avoir plusieurs titulaires — Anim'Est a deux présidents, le CETEN deux
-    responsables communication. Seule la répétition exacte d'une personne sur un
-    même poste est interdite, par la contrainte d'unicité.
-
-    `mandat` est obligatoire : sans lui la table ne décrirait que le bureau
-    courant, alors que les archives — et les questions des utilisateurs —
-    remontent à 2016 (« qui était président du BDE en 2022 »).
+    Clé technique : un poste peut avoir plusieurs titulaires. `mandat` est
+    obligatoire, les questions remontant à 2016.
     """
 
     __tablename__ = "club_roles"
@@ -446,11 +421,8 @@ class ClubRole(db.Model):
 class AssoRole(db.Model):
     """Qui occupe quel poste, dans quelle association, sur quel mandat.
 
-    Jumelle de `ClubRole`, sur une table distincte : une association n'est pas
-    un club. Les mélanger obligeait à inscrire CETEN, le BDS ou TNS dans
-    `clubs`, ce qui produisait des fiches absurdes (« CETEN rattaché à CETEN »)
-    et laissait le modèle croire qu'une association était un club parmi
-    quarante.
+    Jumelle de `ClubRole` sur une table distincte : les mélanger produisait des
+    fiches absurdes (« CETEN rattaché à CETEN »).
     """
 
     __tablename__ = "asso_roles"

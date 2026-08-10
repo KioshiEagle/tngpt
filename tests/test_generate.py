@@ -1,12 +1,7 @@
 """Tests du prompt, du filtrage <think> et de l'échelle de repli Groq.
 
-Aucun accès réseau : le stream Groq est simulé, et `_classify_error` est une
-fonction de décision pure.
-
-Ces deux mécaniques ont toutes deux été cassées par le merge des branches
-conversations et clubs-info — la classe `_ThinkFilter` et l'appel à
-`_classify_error` avaient disparu tout en laissant leurs points d'appel — sans
-qu'aucun test ne s'en aperçoive. D'où ce fichier.
+Sans réseau. Ces deux mécaniques ont été effacées par un merge sans qu'aucun
+test ne s'en aperçoive : d'où ce fichier.
 """
 
 from collections.abc import Iterator

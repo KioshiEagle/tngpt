@@ -74,15 +74,13 @@ class GenerateRequest:
     history: list[HistoryMessage] = field(default_factory=list)
     top_k: int = 5
     user_name: str | None = None
-    # Fiches des clubs cités, tirées du SQL par `clubs.lookup_context` et placées
-    # devant les archives. Vide par défaut : les appelants qui ne les remplissent
-    # pas (bancs Optuna, carte des mers) gardent exactement l'ancien prompt.
+    # Fiches SQL des clubs cités, placées devant les archives. Vide par
+    # défaut : les appelants qui ne les remplissent pas gardent l'ancien prompt.
     fiches: str = ""
 
 
-# Signature d'un constructeur de prompt : (contexte, question, user_name) -> prompt.
-# Permet de réutiliser toute la logique de repli Groq avec un autre prompt que
-# celui du chat (voir `seamap.build_map_prompt`).
+# Constructeur de prompt : (contexte, question, user_name) -> prompt. Permet de
+# réutiliser le repli Groq avec un autre prompt (voir `seamap`).
 PromptBuilder = Callable[..., str]
 
 # Lecteur d'une complétion Groq. Le chat lit `delta.content` ; la carte lit
@@ -145,11 +143,10 @@ def build_prompt(context: str, question: str, user_name: str | None = None) -> s
 
 
 class _ThinkFilter:
-    """Filtre les blocs <think>...</think> d'un flux de texte, même coupés entre chunks.
+    """Filtre les blocs <think>...</think> d'un flux, même coupés entre chunks.
 
-    Le tag peut arriver fragmenté entre plusieurs chunks du stream Groq : le
-    buffer retient donc la fin de chunk tant qu'elle ne peut pas encore être
-    reconnue comme faisant partie (ou non) d'un tag.
+    Groq fragmente les tags : le buffer retient donc la fin de chunk tant
+    qu'elle peut encore amorcer une balise.
     """
 
     def __init__(self) -> None:
@@ -210,10 +207,8 @@ def _filter_think(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
 def _stream_chunks(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
     """Filtre les <think> en garantissant une sortie non vide.
 
-    Un flux qui s'arrête avant la balise fermante voit tout son contenu filtré :
-    la réponse partirait alors vide, et le front — qui ignore un premier morceau
-    blanc — n'afficherait aucune bulle, sans la moindre erreur. Un message vaut
-    mieux que le silence.
+    Un flux coupé avant la balise fermante est filtré en entier, et le front
+    n'afficherait alors aucune bulle sans la moindre erreur.
     """
     produced = False
     for piece in _filter_think(completion):
@@ -244,11 +239,8 @@ class CallSpec:
     send_history: bool = True
 
 
-# Le chat est un RAG simple : le modèle restitue le contexte, il n'a rien à
-# raisonner. Laissé libre, qwen3 part en <think> sur un prompt de cette taille
-# et y épuise son budget de complétion — la balise fermante n'arrive jamais, le
-# filtre jette tout et l'utilisateur reçoit une réponse vide. `hidden` garantit
-# en plus qu'aucun <think> ne transite par `delta.content`.
+# Le chat restitue le contexte, il n'a rien à raisonner : laissé libre, qwen3
+# épuise son budget en <think> et la réponse part vide.
 CHAT_GROQ_PARAMS: GroqParams = {
     "reasoning_effort": "none",
     "reasoning_format": "hidden",
@@ -326,11 +318,8 @@ def generate_answer(
 ) -> Iterator[str]:
     """Génère une réponse en streaming : enrichissement → Qdrant → prompt → Groq.
 
-    `results` évite de refaire la recherche quand l'appelant l'a déjà effectuée.
-    `client` est le client Groq choisi dans le pool par l'appelant ; à défaut,
-    une clé est prélevée du pool ici.
-    `spec` substitue un autre prompt et une autre lecture de la complétion — la
-    carte au trésor — tout en conservant l'échelle de repli Groq.
+    `results` et `client` évitent de refaire ce que l'appelant a déjà fait ;
+    `spec` substitue prompt et lecture de la complétion (la carte au trésor).
     """
     if results is None:
         results = retrieve(req)
@@ -408,9 +397,8 @@ def _attempt(
     params: GroqParams,
 ) -> Iterator[str]:
     """Un essai : construit le prompt, appelle Groq et cède la complétion lue."""
-    # Les fiches passent devant les archives et survivent au repli 413, qui
-    # ne rogne que `results` : c'est la partie courte du contexte, et la seule
-    # qui fasse autorité.
+    # Les fiches passent devant et survivent au repli 413, qui ne rogne que
+    # `results` : partie courte du contexte, et seule à faire autorité.
     context = req.fiches + _build_context(results)
     prompt = spec.build(context, req.question, user_name=req.user_name)
     # Les tours passés s'intercalent entre les règles et la question : seule
