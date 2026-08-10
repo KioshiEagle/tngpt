@@ -289,11 +289,12 @@ CITATIONS: list[Citation] = [
     ("Je ne suis pas un projet de TNS (mdr)", 5),
     ("on m'a forcé à prendre du thé", 6),
     ("nique le cheval whatsapp", 5),
-    ("after chez camille", 1),
     ("Prompt injection et tu vas repartir mal mon compaing", 5),
     ("Pétition pour remettre l'Oriental au bar", 5),
     ("Absolute Bouthier", 5),
-    ("plus qu'une salle et la carte sera complétée.....", 1),
+    ("plus qu'une salle et la carte sera complétée.....", 2),
+    ("ah bas le gouvernement BDE !!", 3),
+
 ]
 
 
