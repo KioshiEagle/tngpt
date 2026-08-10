@@ -2,6 +2,7 @@ import logging
 import math
 import os
 from datetime import UTC, datetime
+from itertools import zip_longest
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -75,20 +76,8 @@ def _freshness_score(date_str: str) -> float:
         return 0.5
 
 
-def search(
-    query: str,
-    top_k: int = 5,
-    collection_name: str = "documents",
-    *,
-    rerank_results: bool = True,
-) -> list[SearchResult]:
-    """Recherche hybride (sémantique + fraîcheur) dans Qdrant, puis reclassement.
-
-    `rerank_results=False` rend l'ordre hybride seul. La carte au trésor s'en
-    sert : elle enchaîne une dizaine de recherches pour couvrir tous les clubs,
-    y reclasser chacune ferait autant d'appels API pour un résultat qu'elle
-    déduplique et retrie ensuite de toute façon.
-    """
+def _candidates(query: str, top_k: int, collection_name: str) -> list[SearchResult]:
+    """Candidats hybrides pour une formulation, du meilleur au moins bon."""
     query_vector = embed_query(query)
     response = get_client().query_points(
         collection_name=collection_name,
@@ -118,6 +107,56 @@ def search(
         )
 
     results.sort(key=lambda x: x["score"], reverse=True)
+    return results
+
+
+def _interleave(
+    first: list[SearchResult], second: list[SearchResult]
+) -> list[SearchResult]:
+    """Entrelace deux listes de candidats, tête à tête et sans doublon.
+
+    Les scores de deux recherches ne se comparent pas : ils mesurent la distance
+    à deux vecteurs différents. Les fusionner par tri laisserait la formulation
+    la mieux notée occuper à elle seule la short-list du reranker, qui n'en
+    retient que les vingt premiers. L'alternance garantit que les deux y sont.
+    """
+    merged: list[SearchResult] = []
+    seen: set[str] = set()
+    for pair in zip_longest(first, second):
+        for candidate in pair:
+            if candidate is not None and candidate["point_id"] not in seen:
+                seen.add(candidate["point_id"])
+                merged.append(candidate)
+    return merged
+
+
+def search(
+    query: str,
+    top_k: int = 5,
+    collection_name: str = "documents",
+    *,
+    rerank_results: bool = True,
+    context_query: str | None = None,
+) -> list[SearchResult]:
+    """Recherche hybride (sémantique + fraîcheur) dans Qdrant, puis reclassement.
+
+    `query` est la question telle qu'elle a été posée : c'est elle, et non une
+    reformulation, qui sert au reclassement. `context_query` est la variante
+    enrichie des tours précédents ; quand elle diffère, elle est cherchée en
+    plus et ses candidats sont entrelacés aux premiers. Une question qui tient
+    debout seule retrouve ainsi ses chunks même après dix tours sur un autre
+    sujet, et une question de suite garde le contexte qui la rend lisible.
+
+    `rerank_results=False` rend l'ordre hybride seul. La carte au trésor s'en
+    sert : elle enchaîne une dizaine de recherches pour couvrir tous les clubs,
+    y reclasser chacune ferait autant d'appels API pour un résultat qu'elle
+    déduplique et retrie ensuite de toute façon.
+    """
+    results = _candidates(query, top_k, collection_name)
+    if context_query and context_query != query:
+        results = _interleave(
+            results, _candidates(context_query, top_k, collection_name)
+        )
     if rerank_results:
         return rerank(query, results, top_k)
     return results[:top_k]

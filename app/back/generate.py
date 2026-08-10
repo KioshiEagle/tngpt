@@ -316,9 +316,17 @@ def retrieve(req: GenerateRequest) -> list[SearchResult]:
 
     Exposé séparément de la génération pour que l'appelant puisse journaliser
     les chunks retrouvés avant que le streaming ne commence.
+
+    La question part telle qu'elle a été posée, l'enrichissement en second :
+    coller les tours passés devant une question qui tient debout seule déportait
+    le vecteur vers le sujet précédent, et Qdrant ne rendait plus rien sur celui
+    qu'on venait de nommer.
     """
-    enriched = _enrich_query(req.question, req.history)
-    results = search(enriched, top_k=req.top_k)
+    results = search(
+        req.question,
+        top_k=req.top_k,
+        context_query=_enrich_query(req.question, req.history),
+    )
     _log_results(results)
     return results
 
