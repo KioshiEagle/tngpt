@@ -11,12 +11,11 @@ import json
 import logging
 import re
 from collections.abc import Iterator
-from datetime import UTC, datetime
 
 from groq import Groq, Stream
 from groq.types.chat import ChatCompletionChunk, ChatCompletionToolParam
 
-from .generate import CallSpec, GenerateRequest, generate_answer
+from .generate import CallSpec, GenerateRequest, generate_answer, today_fr
 from .groqpool import acquire
 from .retrieval import search
 from .textnorm import strip_accents
@@ -347,9 +346,16 @@ _MAP_PROMPT_TEMPLATE = (
 )
 
 
+# La carte garde ses règles dans son message utilisateur, avec le message
+# système laconique qu'elle a toujours eu : `system_prompt.md` décrit un chat
+# qui répond en prose et refuse le hors-sujet, ce qui n'a aucun sens pour un
+# appel d'outil qui doit rendre une liste de clubs.
+_MAP_SYSTEM = "Tu es un étudiant de Telecom Nancy."
+
+
 def build_map_prompt(context: str, question: str, user_name: str | None = None) -> str:
     """Construit le prompt de carte (compatible `generate.PromptBuilder`)."""
-    today = datetime.now(UTC).strftime("%d %B %Y")
+    today = today_fr()
     user_line = f"Utilisateur connecté : {user_name}" if user_name else ""
     return _MAP_PROMPT_TEMPLATE.format(
         today=today,
@@ -484,9 +490,11 @@ def _collect_tool_arguments(completion: Stream[ChatCompletionChunk]) -> Iterator
 
 
 MAP_SPEC = CallSpec(
+    system=_MAP_SYSTEM,
     build=build_map_prompt,
     params=MAP_GROQ_PARAMS,
     consume=_collect_tool_arguments,
+    temperature=0.7,
 )
 
 

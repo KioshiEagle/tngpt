@@ -1,4 +1,4 @@
-"""Tests du filtrage <think> et de l'échelle de repli Groq.
+"""Tests du prompt, du filtrage <think> et de l'échelle de repli Groq.
 
 Aucun accès réseau : le stream Groq est simulé, et `_classify_error` est une
 fonction de décision pure.
@@ -19,9 +19,12 @@ from groq.types.chat import ChatCompletionChunk
 
 from app.back.generate import (
     _EMPTY_ANSWER,
+    CHAT_SYSTEM,
     _classify_error,
     _stream_chunks,
     _ThinkFilter,
+    build_prompt,
+    today_fr,
 )
 
 
@@ -52,6 +55,75 @@ def _filtre(*fragments: str) -> str:
     filtre = _ThinkFilter()
     sortie = "".join("".join(filtre.feed(f)) for f in fragments)
     return sortie + "".join(filtre.flush())
+
+
+# --- Partage entre le message système et le message utilisateur --------------
+
+
+def test_le_prompt_systeme_porte_bien_les_regles() -> None:
+    """`system_prompt.md` est chargé, et ses sections sont toutes là."""
+    for section in (
+        "<mission>",
+        "<perimetre>",
+        "<ancrage_factuel>",
+        "<graphie_approximative>",
+        "<hierarchie_des_sources>",
+        "<typologie_documentaire>",
+        "<ton_et_format>",
+        "<conversation>",
+    ):
+        assert section in CHAT_SYSTEM
+
+
+def test_les_trois_blocs_faisant_autorite_sont_documentes() -> None:
+    """`clubs.py` sait produire trois en-têtes : le prompt doit les connaître.
+
+    « NOMS PROCHES » manquait au prompt précédent, qui laissait donc le modèle
+    face à un bloc jamais annoncé.
+    """
+    for entete in (
+        "FICHE OFFICIELLE",
+        "ANNUAIRE DE LA VIE ASSOCIATIVE",
+        "NOMS PROCHES",
+    ):
+        assert entete in CHAT_SYSTEM
+
+
+def test_le_message_utilisateur_ne_porte_que_des_donnees() -> None:
+    """Aucune règle ne doit fuir du côté où arrivent les archives."""
+    prompt = build_prompt("[Source: RO] le bureau", "qui est prez ?", "Tobias")
+    assert "<archives>\n[Source: RO] le bureau\n</archives>" in prompt
+    assert "<question>\nqui est prez ?\n</question>" in prompt
+    assert "Utilisateur connecté : Tobias" in prompt
+    assert "TN-GPT" not in prompt
+
+
+def test_sans_utilisateur_connecte_pas_de_ligne_vide() -> None:
+    """L'ancien `{user_line}` laissait une ligne blanche quand le nom manquait."""
+    prompt = build_prompt("archives", "question")
+    assert "Utilisateur connecté" not in prompt
+    assert "\n\n</contexte_execution>" not in prompt
+
+
+def test_la_date_est_en_francais() -> None:
+    """`strftime('%B')` rendait un mois anglais sous la locale C du conteneur."""
+    assert any(
+        mois in today_fr()
+        for mois in (
+            "janvier",
+            "février",
+            "mars",
+            "avril",
+            "mai",
+            "juin",
+            "juillet",
+            "août",
+            "septembre",
+            "octobre",
+            "novembre",
+            "décembre",
+        )
+    )
 
 
 # --- Filtrage des blocs <think> ---------------------------------------------

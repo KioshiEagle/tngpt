@@ -22,69 +22,43 @@ logger = logging.getLogger(__name__)
 # (qwen/qwen3-32b a ainsi disparu au profit de qwen/qwen3.6-27b).
 _CHAT_MODEL = os.getenv("GROQ_CHAT_MODEL", "qwen/qwen3.6-27b")
 
+# Le prompt système vit dans un fichier à part : c'est de la prose qu'on relit
+# et qu'on révise comme de la documentation, pas une constante Python noyée
+# entre deux fonctions. Lu une fois à l'import — il est rigoureusement identique
+# d'une requête à l'autre, ce qui laisse un préfixe stable aux appels Groq.
+CHAT_SYSTEM = (
+    (Path(__file__).with_name("system_prompt.md")).read_text(encoding="utf-8").strip()
+)
+
+# Le message utilisateur ne porte que des données : les repères d'exécution, les
+# archives retrouvées et la question. Toutes les règles sont dans `CHAT_SYSTEM`,
+# et rien de ce qui vient de Qdrant ne peut donc passer pour une consigne.
 _PROMPT_TEMPLATE = (
-    "Tu es TN-GPT, l'expert absolu de la vie associative de TELECOM Nancy.\n"
-    "Ton style : un canard IA décontracté qui connaît sur le bout des doigts "
-    "la vie associative de Telecom Nancy : son histoire, ses anecdotes, "
-    "ses événements.\n\n"
-    "Règles strictes :\n"
-    "- Si l'utilisateur envoie une seule lettre de l'alphabet, réponds UNIQUEMENT "
-    "la lettre suivante dans l'alphabet (ex: a→b, b→c, z→a). Rien d'autre.\n"
-    "- Si l'utilisateur envoie exactement 'feur' (insensible à la casse), "
-    "réponds UNIQUEMENT : '-rouge'. Rien d'autre.\n"
-    "- Si l'utilisateur envoie exactement 'gorge' (insensible à la casse), "
-    "réponds UNIQUEMENT : 'profonde'. Rien d'autre.\n"
-    "- Pour les simples salutations (Hey, Bonjour, Salut...), "
-    "réponds juste par une courte salutation.\n"
-    "- Si la question porte clairement sur autre chose que Telecom Nancy, "
-    "réponds UNIQUEMENT : 'demande à chatgpt, me casse pas les couilles'\n"
-    "- Ne mélange JAMAIS une réponse normale et un message off-topic.\n"
-    "- N'invente jamais d'informations ou de noms de personnes.\n"
-    "- Si la réponse factuelle ne figure pas explicitement dans le contexte fourni, "
-    "réponds : 'je sais pas, je trouve pas dans mes archives'\n"
-    "- Exception à la règle précédente : un nom mal orthographié n'est pas un nom "
-    "absent. Si le contexte contient une entité que la question vise "
-    "manifestement malgré une graphie approximative, c'est une réponse trouvée — "
-    "réponds avec, en la nommant correctement. Ne réponds 'je sais pas' que si "
-    "rien de proche ne figure au contexte.\n"
-    "- Privilégie les réponses très courtes (3-4 lignes max).\n"
-    "- Ne commence pas tes phrases par une lettre majuscule.\n"
-    "- Ne cite pas la source, sauf si on te le demande explicitement.\n"
-    "- En cas de doute entre plusieurs archives, préfère la plus récente.\n\n"
-    "Sources officielles :\n"
-    "- Un bloc « FICHE OFFICIELLE » en tête du contexte vient de la base de données "
-    "de l'école : il fait autorité et prime sur toute archive, même plus récente. "
-    "S'il répond à la question, réponds avec, sans chercher ailleurs. Un poste peut "
-    "y avoir plusieurs titulaires : cite-les alors tous.\n"
-    "- Chaque fiche annonce ce qu'elle décrit. TELECOM Nancy compte cinq "
-    "associations (CETEN, BDS, TNS, Humani'TN, Anim'Est) et une quarantaine de "
-    "clubs, qui sont deux choses différentes : n'appelle jamais « club » ce que la "
-    "fiche présente comme une association.\n"
-    "- Un bloc « ANNUAIRE DE LA VIE ASSOCIATIVE » remplace la fiche quand le nom "
-    "employé dans la question n'a pas été retrouvé tel quel. Cherches-y l'entité "
-    "visée, même sous une autre appellation, et réponds avec sa ligne. Ne conclus "
-    "à l'absence que si rien dans l'annuaire ne peut correspondre.\n"
-    "- Les Réunions Ouvertes (RO) sont la référence pour les postes officiels du BDE. "
-    "Dans un RO, la section 'Membres du bureau présents' "
-    "liste les membres du bureau BDE "
-    "(format 'NOM Prénom - Fonction'). Les sections suivantes dans le même document "
-    "concernent les clubs votés en réunion, pas le bureau BDE.\n"
-    "- Un document dont le titre commence par « Mail » est une annonce de diffusion, "
-    "datée du jour de son envoi (`mailtomd` construit ce titre : les deux ne peuvent "
-    "pas diverger sans rendre cette règle muette). Ses repères de temps "
-    "(« aujourd'hui », « ce soir », « demain », « mardi prochain ») se comptent depuis "
-    "cette date d'envoi, jamais depuis aujourd'hui. Un événement qu'il annonce est "
-    "passé : parles-en au passé et situe-le par sa date réelle. Et un mail annonce une "
-    "intention, pas un fait accompli — il prouve que l'événement a été annoncé, pas "
-    "qu'il a eu lieu.\n"
-    "- Les comptes-rendus informels (FCR, signés par un prénom seul ou auteur inconnu) "
-    "utilisent des pseudonymes — ignore-les pour tout poste officiel.\n\n"
-    "Date d'aujourd'hui : {today}\n"
-    "{user_line}\n"
-    "ARCHIVES SECRÈTES (CONTEXTE) :\n"
-    "{context}\n\n"
-    "QUESTION :\n"
+    "<contexte_execution>\n"
+    "Date du jour : {today}\n"
+    "{user_line}"
+    "</contexte_execution>\n\n"
+    "<archives>\n"
+    "{context}\n"
+    "</archives>\n\n"
+    "<question>\n"
     "{question}\n"
+    "</question>\n"
+)
+
+_MOIS = (
+    "janvier",
+    "février",
+    "mars",
+    "avril",
+    "mai",
+    "juin",
+    "juillet",
+    "août",
+    "septembre",
+    "octobre",
+    "novembre",
+    "décembre",
 )
 
 _HTTP_400 = 400
@@ -93,7 +67,6 @@ _HTTP_413 = 413
 _MAX_RETRIES = 3
 _THINK_OPEN = "<think>"
 _THINK_CLOSE = "</think>"
-_SYSTEM_MSG = "Tu es un étudiant de Telecom Nancy."
 _EMPTY_ANSWER = "j'ai perdu le fil sur ce coup-là, tu peux reformuler ?"
 
 
@@ -155,12 +128,21 @@ def _log_results(results: list[SearchResult]) -> None:
         )
 
 
+def today_fr() -> str:
+    """Date du jour en français, sans dépendre de la locale du processus.
+
+    `strftime("%B")` rend le mois dans la locale courante, soit « August » sous
+    la locale C du conteneur — un repère anglais au milieu d'un prompt français.
+    """
+    now = datetime.now(UTC)
+    return f"{now.day} {_MOIS[now.month - 1]} {now.year}"
+
+
 def build_prompt(context: str, question: str, user_name: str | None = None) -> str:
-    """Construit le prompt système + utilisateur envoyé au modèle."""
-    today = datetime.now(UTC).strftime("%d %B %Y")
-    user_line = f"Utilisateur connecté : {user_name}" if user_name else ""
+    """Construit le message utilisateur : repères d'exécution, archives, question."""
+    user_line = f"Utilisateur connecté : {user_name}\n" if user_name else ""
     return _PROMPT_TEMPLATE.format(
-        today=today,
+        today=today_fr(),
         user_line=user_line,
         context=context,
         question=question,
@@ -249,15 +231,20 @@ def _stream_chunks(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
 
 @dataclass(frozen=True)
 class CallSpec:
-    """Comment adresser le modèle : quel prompt, quels paramètres, quelle lecture.
+    """Comment adresser le modèle : quels rôles, quels paramètres, quelle lecture.
 
-    Les trois varient ensemble — le chat streame du texte, la carte force un
-    outil et lit ses arguments — et n'ont donc pas de sens séparément.
+    L'ensemble varie d'un bloc — le chat streame du texte sous les règles de
+    `system_prompt.md`, la carte force un outil, porte ses propres règles dans
+    son message utilisateur et lit les arguments de l'appel.
     """
 
+    system: str = CHAT_SYSTEM
     build: PromptBuilder = build_prompt
     params: GroqParams | None = None
     consume: CompletionConsumer = _stream_chunks
+    # Le chat restitue des archives, il n'a rien à inventer : une température
+    # basse va dans le sens des règles d'ancrage plutôt que contre elles.
+    temperature: float = 0.3
 
 
 # Le chat est un RAG simple : le modèle restitue le contexte, il n'a rien à
@@ -400,10 +387,10 @@ def _attempt(
     completion = client.chat.completions.create(
         model=_CHAT_MODEL,
         messages=[
-            {"role": "system", "content": _SYSTEM_MSG},
+            {"role": "system", "content": spec.system},
             {"role": "user", "content": prompt},
         ],
-        temperature=0.7,
+        temperature=spec.temperature,
         stream=True,
         **params,
     )
