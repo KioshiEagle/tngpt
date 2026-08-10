@@ -136,14 +136,23 @@ register_cli(app)
 # table existante, ce qui laisserait le schéma diverger en silence.
 
 if __name__ == "__main__":
-    debug_mode = os.environ.get("FLASK_DEBUG", "True").lower() in ["true", "1", "t"]
-    # Le rechargeur ne surveille que les modules Python. `CHAT_SYSTEM` étant lu
-    # une fois à l'import, une retouche de system_prompt.md resterait sans effet
-    # jusqu'au prochain redémarrage — et sans rien signaler, ce qui donne
-    # l'impression que le prompt ne change plus rien aux réponses.
+    # Point d'entrée de développement uniquement : la production sert `main:app`
+    # par gunicorn et ne passe jamais ici.
+    #
+    # `debug=False` explicite, et non l'argument omis : sans lui, Flask lit
+    # FLASK_DEBUG dans l'environnement et rallume le débogueur de lui-même — or
+    # .env porte FLASK_DEBUG=true pour l'OAuth en http local. Le débogueur
+    # Werkzeug affiche une console d'exécution de code Python sur ses pages
+    # d'erreur ; il n'a rien à faire sur un serveur, fût-il local.
+    #
+    # Le rechargeur, lui, reste. Il ne surveille que les modules Python, d'où
+    # `extra_files` : `CHAT_SYSTEM` est lu une fois à l'import, donc sans cette
+    # ligne une retouche de system_prompt.md resterait sans effet jusqu'au
+    # prochain redémarrage — et sans rien signaler.
     app.run(
         host="127.0.0.1",
-        debug=debug_mode,
         port=8501,
+        debug=False,
+        use_reloader=True,
         extra_files=[SYSTEM_PROMPT_PATH],
     )
