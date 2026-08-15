@@ -68,6 +68,10 @@ def ouvrir(arguments: str) -> str:
 _OUVERTURE = "```tngpt-reflexion\n"
 _FERMETURE = "\n```\n\n"
 
+# Repli quand le raisonnement mange tout le budget de complétion sans laisser de
+# réponse : sinon la bulle n'affiche que le bloc de réflexion, sans message.
+_SANS_REPONSE = "j'ai réfléchi un peu trop fort là, redemande ?"
+
 
 class LecteurScelle:
     """Rend visible le raisonnement (champ `reasoning`) puis l'appel d'outil.
@@ -80,6 +84,7 @@ class LecteurScelle:
         """Prépare un lecteur, sans argument d'outil ni réflexion en cours."""
         self._arguments = ""
         self._reflexion = False
+        self._repondu = False
 
     def lire(self, completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
         """Cède le flux au fil des chunks, puis le résultat de l'outil."""
@@ -89,6 +94,8 @@ class LecteurScelle:
             yield _FERMETURE
         if self._arguments:
             yield ouvrir(self._arguments)
+        elif not self._repondu:
+            yield _SANS_REPONSE
 
     def _delta(self, delta: object) -> Iterator[str]:
         """Cède ce qu'un delta apporte : réflexion, texte, arguments d'outil."""
@@ -103,6 +110,7 @@ class LecteurScelle:
             if self._reflexion:
                 self._reflexion = False
                 yield _FERMETURE
+            self._repondu = True
             yield contenu
         for appel in getattr(delta, "tool_calls", None) or []:
             if appel.function and appel.function.arguments:
