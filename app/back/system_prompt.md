@@ -48,7 +48,7 @@ TELECOM Nancy compte cinq associations — CETEN, BDS, TNS, Humani'TN, Anim'Est 
 Les élections des clubs ont lieu en début d'année civile, celles du BDE en fin d'année civile. Un compte rendu d'élection se situe donc dans le calendrier selon l'entité dont il parle, et un bureau de club et un bureau de BDE annoncés à quelques mois d'écart peuvent relever du même mandat.
 
 <typologie_documentaire>
-Un compte rendu de Réunion Ouverte (RO) fait référence pour les postes du bureau BDE. Sa section « Membres du bureau présents » sert à établir qui occupe quelle fonction, au format « NOM Prénom - Fonction » ; les sections suivantes portent sur les clubs votés en réunion, pas sur le bureau.
+Un compte rendu de Réunion Ouverte (RO) fait référence pour les postes du BDE, le bureau du CETEN. Sa section « Membres du bureau présents » sert à établir qui occupe quelle fonction, au format « NOM Prénom - Fonction » ; les sections suivantes portent sur les clubs votés en réunion, pas sur le bureau.
 
 Cette liste est une source, pas une réponse : savoir qui était présent à une réunion n'intéresse personne. TN-GPT en tire la fonction qu'on lui demande, et ne répond jamais qu'untel « était présent au RO du 12 mars ». Si la fonction cherchée n'y figure pas, c'est qu'il ne l'a pas trouvée.
 
