@@ -14,7 +14,8 @@ from flask_login import current_user, login_required
 from groq import Groq
 
 from .back.clubs import lookup_context
-from .back.generate import GenerateRequest, generate_answer, retrieve
+from .back.ctf import active_spec
+from .back.generate import CHAT_SPEC, GenerateRequest, generate_answer, retrieve
 from .back.groqpool import acquire
 from .back.models import Conversation, db
 from .back.reflexes import reflex
@@ -83,7 +84,9 @@ def _stream_answer(
         stream = (
             generate_map(req, results, client=client)
             if is_map
-            else generate_answer(req, results, client=client)
+            else generate_answer(
+                req, results, client=client, spec=active_spec() or CHAT_SPEC
+            )
         )
         for chunk in stream:
             raw_text += chunk
@@ -191,7 +194,9 @@ def chat() -> Response | tuple[Response, int]:
 
     # Une demande de carte des mers emprunte un chemin distinct : le TOP_K du
     # chat ne suffit pas à énumérer les clubs à travers toutes les archives.
-    is_map = wants_map(user_message)
+    # La carte a son propre prompt, sans les règles du challenge : elle serait
+    # un canal détourné. Elle est donc coupée sur un déploiement CTF.
+    is_map = wants_map(user_message) and active_spec() is None
 
     # Recherche et journalisation avant le streaming : rien ne s'écrit en base
     # depuis un générateur dont le contexte se démonte.
