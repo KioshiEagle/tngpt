@@ -100,10 +100,43 @@ function renderTreasureMap(bubble, source) {
     }
 }
 
-// Point d'entrée unique : prose dans .msg-text, carte dans son voisin.
+// --- Raisonnement dépliable (chal RAG) ---
+// Le back émet le raisonnement du modèle dans une fence `tngpt-reflexion`, avant
+// la réponse. On l'extrait comme la carte, pour le loger dans un <details>
+// replié plutôt que de le noyer dans la prose. Fence fermante facultative : le
+// raisonnement streame d'abord, encore ouvert.
+const REFLEXION_BLOCK = /```[ \t]*tngpt-reflexion[ \t]*\r?\n([\s\S]*?)(?:```|$)/i;
+
+function splitReflexion(raw) {
+    const match = raw.match(REFLEXION_BLOCK);
+    if (!match) return { reflexion: null, rest: raw };
+    return { reflexion: match[1].trim(), rest: raw.replace(match[0], '').trim() };
+}
+
+// Zone dépliable placée au-dessus de la réponse, repliée par défaut : le
+// raisonnement ne s'affiche qu'au clic, comme une chaîne de pensée.
+function renderReflexion(bubble, text) {
+    let box = bubble.querySelector(':scope > .msg-reasoning');
+    if (!box) {
+        box = document.createElement('details');
+        box.className = 'msg-reasoning';
+        const summary = document.createElement('summary');
+        summary.textContent = 'raisonnement de tn-gpt';
+        const body = document.createElement('pre');
+        body.className = 'msg-reasoning-body';
+        box.append(summary, body);
+        bubble.insertBefore(box, bubble.firstChild);
+    }
+    box.querySelector('.msg-reasoning-body').textContent = text;
+}
+
+// Point d'entrée unique : raisonnement dans son <details>, prose dans .msg-text,
+// carte dans son voisin.
 function renderAssistant(bubble, raw) {
     const textEl = bubble.querySelector('.msg-text');
-    const { prose, carte, complete } = splitResponse(raw);
+    const { reflexion, rest } = splitReflexion(raw);
+    if (reflexion !== null) renderReflexion(bubble, reflexion);
+    const { prose, carte, complete } = splitResponse(rest);
     if (textEl) textEl.innerHTML = marked.parse(prose);
     bubble.dataset.raw = raw;
     if (carte && complete) renderTreasureMap(bubble, carte);

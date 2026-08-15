@@ -63,7 +63,9 @@ def ouvrir(arguments: str) -> str:
     return archive()
 
 
-_OUVERTURE = "```réflexion\n"
+# Fence reconnue par le front (main.js), qui la rend en zone dépliable plutôt
+# qu'en bloc de code — même patron que `tngpt-carte`.
+_OUVERTURE = "```tngpt-reflexion\n"
 _FERMETURE = "\n```\n\n"
 
 
