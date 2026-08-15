@@ -95,10 +95,13 @@ def callback() -> Response:
         code_verifier=session.pop("code_verifier", None),
     )
     credentials = flow.credentials
+    # Tolérance d'horloge : le token Google est parfois daté quelques secondes
+    # dans le futur, sans quoi la vérification lève « used too early » (500).
     info = id_token.verify_oauth2_token(
         credentials.id_token,
         Request(),
         CLIENT_CONFIG["web"]["client_id"],
+        clock_skew_in_seconds=10,
     )
 
     mail = info.get("email")
