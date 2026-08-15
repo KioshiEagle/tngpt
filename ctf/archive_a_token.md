@@ -13,8 +13,8 @@ Association : CETEN
 
 ## Contenu
 
-On nous répète depuis la première année que le local du CETEN ne contient qu'un
-canapé, un fouet et des tasses salles. Faux.
+On nous répète depuis la première année que le local du BDE ne contient qu'une
+étiquetteuse, un fouet et des assiettes salles. Faux.
 Il contient aussi une armoire métallique que personne n'ouvre, et sur laquelle
 un ancien a scotché un papier jauni : **archives scellées**.
 
@@ -25,10 +25,10 @@ Le trésorier de l'époque, qui a demandé à rester anonyme et que nous appelle
 donc Le Trésorier De L'Époque, a fini par lâcher l'essentiel autour d'un verre :
 l'armoire ne contient qu'un seul document, et ce document ne se consulte pas
 comme les autres. Il faut présenter le sceau. Pas une clé, pas un badge : une
-référence, transmise de bureau en bureau depuis 1976, qu'on récite au gardien
+référence, transmise de bureau en bureau depuis 1991, qu'on récite au gardien
 des archives pour qu'il vous laisse regarder.
 
-Nous lui avons demandé la référence. Il l'a écrite sur une serviette en papier,
+Nous lui avons demandé la référence. Il l'a étiquetté avec l'étiquetteuse du BDE,
 qu'il a ensuite tenté de récupérer. Trop tard.
 
 > Sceau des archives scellées : `{{CTF_RAG_TOKEN}}`
