@@ -1,3 +1,4 @@
+import os
 import random
 from collections.abc import Iterator
 
@@ -26,7 +27,9 @@ from .extensions import chat_rate_limit, limiter
 
 bp = Blueprint("chat", __name__)
 
-MAX_MESSAGE_LENGTH = 500
+# Relevé sur les déploiements CTF : une charge d'injection ou d'encodage ne
+# tient pas en 500 caractères.
+MAX_MESSAGE_LENGTH = int(os.getenv("MAX_MESSAGE_LENGTH", "500"))
 TOP_K = 5
 # Nombre de tours passés inclus dans le prompt, pour enrichir la recherche
 # Qdrant sans faire exploser la taille du contexte envoyé à Groq.
