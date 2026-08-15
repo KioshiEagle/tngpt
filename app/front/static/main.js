@@ -249,7 +249,11 @@ document.addEventListener('DOMContentLoaded', () => {
     inp.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            if (!sendBtn.disabled) form.dispatchEvent(new Event('submit'));
+            // requestSubmit() émet un événement submit annulable, là où
+            // dispatchEvent(new Event('submit')) en produit un non-annulable :
+            // sous Firefox, le preventDefault du handler était alors ignoré et
+            // la page se rechargeait.
+            if (!sendBtn.disabled) form.requestSubmit();
         }
     });
 
