@@ -378,7 +378,7 @@ document.addEventListener('DOMContentLoaded', () => {
         abortController = new AbortController();
 
         try {
-            const response = await fetch('/chat', {
+            const response = await fetch(window.CHAT_ENDPOINT || '/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ message: text, conversation_id: currentConversationId }),

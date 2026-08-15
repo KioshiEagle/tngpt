@@ -9,19 +9,46 @@ from app.back import ctf
 from app.back.ctf_filtre import COUPURE, censurer
 
 
-def test_inactif_par_defaut(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Sans CTF_CHAL, le déploiement sert le TN-GPT normal."""
-    monkeypatch.delenv("CTF_CHAL", raising=False)
-    assert ctf.active_spec() is None
+def _armer(monkeypatch: pytest.MonkeyPatch, *chals: str) -> None:
+    """Renseigne l'environnement de chaque chal nommé, comme un déploiement."""
+    variables = {
+        ctf.SOCIAL: {"CTF_FLAG_SOCIAL": "NTN{social}"},
+        ctf.PROMPT: {
+            "CTF_FLAG_PROMPT": "NTN{vrai}",
+            "CTF_LEURRE_PROMPT": "NTN{leurre}",
+        },
+    }
+    for chal in chals:
+        for var, val in variables[chal].items():
+            monkeypatch.setenv(var, val)
 
 
-def test_un_chal_inconnu_ne_change_rien(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Une faute de frappe dans CTF_CHAL ne doit pas servir un prompt au hasard."""
-    monkeypatch.setenv("CTF_CHAL", "sociale")
-    assert ctf.active_spec() is None
+def test_un_chal_sans_ses_flags_renvoie_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Un chal dont les secrets manquent n'est pas servi (404 côté route)."""
+    monkeypatch.delenv("CTF_FLAG_SOCIAL", raising=False)
+    assert ctf.spec_for(ctf.SOCIAL) is None
+    assert ctf.enabled(ctf.SOCIAL) is False
 
 
-@pytest.mark.parametrize("chal", [ctf.SOCIAL, ctf.PROMPT])
+def test_un_chal_inconnu_renvoie_none() -> None:
+    """Un nom de chal hors liste ne sert aucun prompt."""
+    assert ctf.spec_for("sociale") is None
+
+
+def test_les_trois_chals_cohabitent(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Armés ensemble, les trois sont servis simultanément."""
+    _armer(monkeypatch, ctf.SOCIAL, ctf.PROMPT)
+    monkeypatch.setenv("CTF_FLAG_RAG", "NTN{rag}")
+    monkeypatch.setenv("CTF_RAG_TOKEN", "sceau-x")
+    monkeypatch.setenv("CTF_RAG_ARCHIVE", str(ctf.chemin(ctf.RAG)))
+    assert ctf.spec_for(ctf.SOCIAL) is not None
+    assert ctf.spec_for(ctf.PROMPT) is not None
+    assert ctf.spec_for(ctf.RAG) is not None
+
+
+@pytest.mark.parametrize("chal", [ctf.SOCIAL, ctf.PROMPT, ctf.RAG])
 def test_aucun_flag_dans_le_depot(chal: str) -> None:
     """Les prompts versionnés portent des gabarits, jamais un flag."""
     assert "NTN{" not in ctf.chemin(chal).read_text(encoding="utf-8")
@@ -31,9 +58,8 @@ def test_le_flag_social_vient_de_l_environnement(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Le gabarit est substitué au chargement et disparaît du prompt servi."""
-    monkeypatch.setenv("CTF_CHAL", ctf.SOCIAL)
-    monkeypatch.setenv("CTF_FLAG_SOCIAL", "NTN{social}")
-    spec = ctf.active_spec()
+    _armer(monkeypatch, ctf.SOCIAL)
+    spec = ctf.spec_for(ctf.SOCIAL)
     assert spec is not None
     assert "NTN{social}" in spec.system
     assert "{{" not in spec.system
@@ -41,22 +67,12 @@ def test_le_flag_social_vient_de_l_environnement(
 
 def test_le_chal_prompt_porte_flag_et_leurre(monkeypatch: pytest.MonkeyPatch) -> None:
     """Les deux gabarits du chal 2 sont substitués, le vrai comme le faux."""
-    monkeypatch.setenv("CTF_CHAL", ctf.PROMPT)
-    monkeypatch.setenv("CTF_FLAG_PROMPT", "NTN{vrai}")
-    monkeypatch.setenv("CTF_LEURRE_PROMPT", "NTN{leurre}")
-    spec = ctf.active_spec()
+    _armer(monkeypatch, ctf.PROMPT)
+    spec = ctf.spec_for(ctf.PROMPT)
     assert spec is not None
     assert "NTN{vrai}" in spec.system
     assert "NTN{leurre}" in spec.system
     assert "{{" not in spec.system
-
-
-def test_sans_flag_le_chal_refuse_de_demarrer(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Mieux vaut une erreur au démarrage qu'un chal servi avec un gabarit."""
-    monkeypatch.setenv("CTF_CHAL", ctf.SOCIAL)
-    monkeypatch.delenv("CTF_FLAG_SOCIAL", raising=False)
-    with pytest.raises(KeyError):
-        ctf.active_spec()
 
 
 def test_l_identite_ne_vient_que_du_contexte_execution() -> None:

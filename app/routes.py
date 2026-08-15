@@ -15,8 +15,14 @@ from flask_login import current_user, login_required
 from groq import Groq
 
 from .back.clubs import lookup_context
-from .back.ctf import active_spec
-from .back.generate import CHAT_SPEC, GenerateRequest, generate_answer, retrieve
+from .back.ctf import spec_for
+from .back.generate import (
+    CHAT_SPEC,
+    CallSpec,
+    GenerateRequest,
+    generate_answer,
+    retrieve,
+)
 from .back.groqpool import acquire
 from .back.models import Conversation, db
 from .back.reflexes import reflex
@@ -72,13 +78,13 @@ def _stream_answer(
     results: list[SearchResult],
     client: Groq,
     conversation_id: int,
-    *,
-    is_map: bool,
+    spec: CallSpec | None,
 ) -> Iterator[str]:
     """Streame la réponse Groq et persiste ce qui a été produit.
 
-    Sorti de `chat` pour que le contexte de requête ne soit pas capturé par une
-    fermeture : tout ce dont le générateur a besoin lui est passé en argument.
+    `spec` à None demande la carte au trésor, qui a son propre prompt ; sinon
+    c'est le chat, normal ou challenge. Sorti de `chat` pour que le contexte de
+    requête ne soit pas capturé par une fermeture.
     """
     raw_text = ""
     try:
@@ -86,10 +92,8 @@ def _stream_answer(
         # Carte et chat sont alternatifs, jamais successifs.
         stream = (
             generate_map(req, results, client=client)
-            if is_map
-            else generate_answer(
-                req, results, client=client, spec=active_spec() or CHAT_SPEC
-            )
+            if spec is None
+            else generate_answer(req, results, client=client, spec=spec)
         )
         for chunk in stream:
             raw_text += chunk
@@ -139,7 +143,27 @@ def _resolve_conversation(
 @login_required
 @limiter.limit(chat_rate_limit)
 def chat() -> Response | tuple[Response, int]:
-    """Répond en streaming à un message utilisateur."""
+    """Répond en streaming au TN-GPT normal."""
+    return _run_chat(spec=CHAT_SPEC, is_ctf=False)
+
+
+@bp.route("/ctf/<chal>/chat", methods=["POST"])
+@login_required
+@limiter.limit(chat_rate_limit)
+def ctf_chat(chal: str) -> Response | tuple[Response, int]:
+    """Répond en streaming au chat d'un challenge, ou 404 s'il n'est pas activé."""
+    spec = spec_for(chal)
+    if spec is None:
+        abort(404)
+    return _run_chat(spec=spec, is_ctf=True)
+
+
+def _run_chat(*, spec: CallSpec, is_ctf: bool) -> Response | tuple[Response, int]:
+    """Traite un message : quota, retrieval, fiches, streaming, persistance.
+
+    `spec` porte le prompt et les paramètres Groq — chat normal ou challenge.
+    `is_ctf` coupe la carte au trésor, qui contournerait les règles du challenge.
+    """
     data = request.get_json()
     if not data or "message" not in data:
         return jsonify({"error": "Message manquant"}), 400
@@ -198,8 +222,8 @@ def chat() -> Response | tuple[Response, int]:
     # Une demande de carte des mers emprunte un chemin distinct : le TOP_K du
     # chat ne suffit pas à énumérer les clubs à travers toutes les archives.
     # La carte a son propre prompt, sans les règles du challenge : elle serait
-    # un canal détourné. Elle est donc coupée sur un déploiement CTF.
-    is_map = wants_map(user_message) and active_spec() is None
+    # un canal détourné. Elle est donc coupée sur un chat de challenge.
+    is_map = wants_map(user_message) and not is_ctf
 
     # Recherche et journalisation avant le streaming : rien ne s'écrit en base
     # depuis un générateur dont le contexte se démonte.
@@ -227,7 +251,9 @@ def chat() -> Response | tuple[Response, int]:
     db.session.commit()
     conversation_id = conversation.conversation_id
 
-    flux = _stream_answer(req, results, client, conversation_id, is_map=is_map)
+    flux = _stream_answer(
+        req, results, client, conversation_id, None if is_map else spec
+    )
     response = Response(stream_with_context(flux), mimetype="text/plain")
     response.headers["X-Conversation-Id"] = str(conversation_id)
     return response
@@ -308,5 +334,16 @@ def quote() -> str:
 @bp.route("/")
 @login_required
 def index() -> str:
-    """Affiche la page d'accueil."""
-    return render_template("index.html", quote=quote())
+    """Affiche la page d'accueil du TN-GPT normal."""
+    return render_template("index.html", quote=quote(), chat_endpoint="/chat")
+
+
+@bp.route("/ctf/<chal>")
+@login_required
+def ctf_index(chal: str) -> str:
+    """Affiche la page de chat d'un challenge, ou 404 s'il n'est pas activé."""
+    if spec_for(chal) is None:
+        abort(404)
+    return render_template(
+        "index.html", quote=quote(), chat_endpoint=f"/ctf/{chal}/chat"
+    )

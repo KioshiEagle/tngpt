@@ -1,6 +1,7 @@
 """Challenges CTF : un prompt et un CallSpec par épreuve.
 
-Inactif tant que `CTF_CHAL` est vide, donc sans effet sur le TN-GPT de prod.
+Chaque chal est servi sur son URL `/ctf/<chal>` et activé par la seule présence
+de ses flags en environnement ; les trois cohabitent avec le TN-GPT normal.
 """
 
 import os
@@ -73,9 +74,21 @@ def _rendre(chal: str) -> str:
     return texte.strip()
 
 
-def active_chal() -> str:
-    """Challenge servi par ce déploiement, ou chaîne vide pour le TN-GPT normal."""
-    return os.getenv("CTF_CHAL", "").strip().lower()
+CHALS = (SOCIAL, PROMPT, RAG)
+
+# Variables d'environnement que chaque chal exige pour être servi. Un chal dont
+# les flags manquent renvoie 404 : les trois cohabitent, chacun activé par la
+# seule présence de ses secrets.
+_REQUIS: dict[str, tuple[str, ...]] = {
+    SOCIAL: ("CTF_FLAG_SOCIAL",),
+    PROMPT: ("CTF_FLAG_PROMPT", "CTF_LEURRE_PROMPT"),
+    RAG: ("CTF_FLAG_RAG", "CTF_RAG_TOKEN", "CTF_RAG_ARCHIVE"),
+}
+
+
+def enabled(chal: str) -> bool:
+    """Vrai si le chal est connu et tous ses secrets présents dans l'environnement."""
+    return chal in CHALS and all(os.getenv(v) for v in _REQUIS[chal])
 
 
 def _consommateur_censure(secrets: tuple[str, ...]) -> CompletionConsumer:
@@ -96,9 +109,10 @@ def _consommateur_rag() -> CompletionConsumer:
     return consume
 
 
-def active_spec() -> CallSpec | None:
-    """CallSpec du challenge actif, ou None hors CTF."""
-    chal = active_chal()
+def spec_for(chal: str) -> CallSpec | None:
+    """CallSpec d'un challenge nommé, ou None si le chal n'est pas activé ici."""
+    if not enabled(chal):
+        return None
     if chal == SOCIAL:
         return CallSpec(system=_rendre(SOCIAL), params=CHAT_GROQ_PARAMS)
     if chal == PROMPT:
@@ -108,10 +122,8 @@ def active_spec() -> CallSpec | None:
             params=CHAT_GROQ_PARAMS,
             consume=_consommateur_censure(secrets),
         )
-    if chal == RAG:
-        return CallSpec(
-            system=_rendre(RAG),
-            params=RAG_GROQ_PARAMS,
-            consume=_consommateur_rag(),
-        )
-    return None
+    return CallSpec(
+        system=_rendre(RAG),
+        params=RAG_GROQ_PARAMS,
+        consume=_consommateur_rag(),
+    )
