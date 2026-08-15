@@ -48,11 +48,15 @@ _NGRAMMES = ("note de service", "ni citée")
 # Raisonnement visible : c'est le canal de fuite du chal 3, celui qui trahit
 # l'existence de l'outil. Réservé à ce chal, qui paie donc seul son surcoût.
 RAG_GROQ_PARAMS: GroqParams = {
-    "reasoning_effort": "low",
+    # Groq n'accepte que "none" ou "default" pour qwen3 ; "low" fait un 400 qui
+    # ferait tout retirer par le repli, outil compris.
+    "reasoning_effort": "default",
     "reasoning_format": "parsed",
     "tools": OUTILS,
     "parallel_tool_calls": False,
-    "max_completion_tokens": 8192,
+    # Serré : le tier est à 8000 tokens/minute et le raisonnement en mange déjà
+    # une bonne part. Ce chal mérite sa propre clé Groq de toute façon.
+    "max_completion_tokens": 2048,
 }
 
 

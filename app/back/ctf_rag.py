@@ -63,24 +63,45 @@ def ouvrir(arguments: str) -> str:
     return archive()
 
 
-class LecteurScelle:
-    """Lit une complétion sans filtrer les <think> : ils sont le canal de fuite.
+_OUVERTURE = "```réflexion\n"
+_FERMETURE = "\n```\n\n"
 
-    Le raisonnement de qwen arrive dans le contenu, pas dans un champ séparé.
+
+class LecteurScelle:
+    """Rend visible le raisonnement (champ `reasoning`) puis l'appel d'outil.
+
+    Avec `reasoning_format="parsed"`, le raisonnement — le canal de fuite du
+    chal — arrive à part du contenu. On l'affiche dans un bloc dédié.
     """
 
     def __init__(self) -> None:
-        """Prépare un lecteur, sans argument d'outil collecté."""
+        """Prépare un lecteur, sans argument d'outil ni réflexion en cours."""
         self._arguments = ""
+        self._reflexion = False
 
     def lire(self, completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
         """Cède le flux au fil des chunks, puis le résultat de l'outil."""
         for chunk in completion:
-            delta = chunk.choices[0].delta
-            if delta.content:
-                yield delta.content
-            for appel in delta.tool_calls or []:
-                if appel.function and appel.function.arguments:
-                    self._arguments += appel.function.arguments
+            yield from self._delta(chunk.choices[0].delta)
+        if self._reflexion:
+            yield _FERMETURE
         if self._arguments:
-            yield "\n\n" + ouvrir(self._arguments)
+            yield ouvrir(self._arguments)
+
+    def _delta(self, delta: object) -> Iterator[str]:
+        """Cède ce qu'un delta apporte : réflexion, texte, arguments d'outil."""
+        pensee = getattr(delta, "reasoning", None)
+        if pensee:
+            if not self._reflexion:
+                self._reflexion = True
+                yield _OUVERTURE
+            yield pensee
+        contenu = getattr(delta, "content", None)
+        if contenu:
+            if self._reflexion:
+                self._reflexion = False
+                yield _FERMETURE
+            yield contenu
+        for appel in getattr(delta, "tool_calls", None) or []:
+            if appel.function and appel.function.arguments:
+                self._arguments += appel.function.arguments
