@@ -42,10 +42,6 @@ _GABARITS: dict[str, tuple[tuple[str, str], ...]] = {
     RAG: (),
 }
 
-# Tournures rares de la note de service. Les bloquer en sortie oblige à déformer
-# le texte plutôt qu'à le citer, sans gêner une réponse ordinaire.
-_NGRAMMES = ("note de service", "ni citée")
-
 # Raisonnement visible : c'est le canal de fuite du chal 3, celui qui trahit
 # l'existence de l'outil. Réservé à ce chal, qui paie donc seul son surcoût.
 RAG_GROQ_PARAMS: GroqParams = {
@@ -116,11 +112,12 @@ def spec_for(chal: str) -> CallSpec | None:
     if chal == SOCIAL:
         return CallSpec(system=_rendre(SOCIAL), params=CHAT_GROQ_PARAMS)
     if chal == PROMPT:
-        secrets = (os.environ["CTF_FLAG_PROMPT"], *_NGRAMMES)
+        # Seul le flag est censuré : le reste du prompt doit fuiter pour que le
+        # joueur y lise « Référence de la note : ███ » et sache quoi extraire.
         return CallSpec(
             system=_rendre(PROMPT),
             params=CHAT_GROQ_PARAMS,
-            consume=_consommateur_censure(secrets),
+            consume=_consommateur_censure((os.environ["CTF_FLAG_PROMPT"],)),
         )
     return CallSpec(
         system=_rendre(RAG),
