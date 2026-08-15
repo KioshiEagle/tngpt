@@ -27,7 +27,6 @@ const ALL_CHIPS = [
     { label: 'salles libres', query: 'Salles libres maintenant' },
     { label: "Planning de l'inté", query: "Balance le planning de l'intégration 2026" },
     { label: 'lore TN', query: 'Lore de TELECOM Nancy' },
-    { label: 'menu du self', query: 'Menu du self cette semaine' },
     { label: 'clubs & assos', query: 'Liste des clubs et associations à TELECOM Nancy' },
     { label: 'agenda BDE', query: "Quels sont les prochains événements du BDE ?" },
     { label: 'jobs & stages', query: "Comment trouver un stage ou une alternance depuis TN ?" },
@@ -233,7 +232,9 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.addEventListener('click', () => {
             inp.value = chip.query;
             autoResize();
-            form.dispatchEvent(new Event('submit'));
+            // requestSubmit() et non dispatchEvent(new Event('submit')) :
+            // l'événement synthétique non annulable rechargeait la page sous Firefox.
+            form.requestSubmit();
         });
         chipsContainer.appendChild(btn);
     });
