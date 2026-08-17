@@ -90,7 +90,7 @@ jobs:
       - run: uv sync
       - run: uv run python docs/gen_ref_pages.py
       - run: uv run zensical build --strict --clean
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: public
 
