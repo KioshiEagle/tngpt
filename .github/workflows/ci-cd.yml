@@ -1,0 +1,128 @@
+name: CI/CD
+
+on:
+  push:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ghcr.io/kioshieagle/tngpt
+
+jobs:
+  # ---- check_code_quality stage ----
+  lint:
+    runs-on: ubuntu-latest
+    container: ghcr.io/astral-sh/uv:0.11.21-python3.13-trixie
+    steps:
+      - uses: actions/checkout@v4
+      - run: uv lock --check
+      - run: uvx ruff check . --statistics
+      - run: uvx ruff format . --check
+      - run: uv check
+      # uv check est encore expérimental donc on garde uvx ty check pour l'instant
+      - run: uvx ty check
+
+  check_security:
+    runs-on: ubuntu-latest
+    container: ghcr.io/astral-sh/uv:0.11.21-python3.13-trixie
+    steps:
+      - uses: actions/checkout@v4
+      - run: uvx bandit -c pyproject.toml -r .
+      - run: uv audit
+      # uv audit est encore expérimental donc on garde pip-audit pour l'instant
+      - run: uvx pip-audit
+
+  # ---- test stage ----
+  pytest:
+    runs-on: ubuntu-latest
+    container: ghcr.io/astral-sh/uv:0.11.21-python3.13-trixie
+    needs:
+      - lint
+      - check_security
+    steps:
+      - uses: actions/checkout@v4
+      - run: uv sync
+      - run: uv run pytest tests/
+
+  # ---- build stage ----
+  build_and_push_image:
+    runs-on: ubuntu-latest
+    needs: pytest
+    # Sur main : latest + sha. Sur un tag vX.Y.Z : les tags de version.
+    if: >-
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Dérive les tags de l'image du contexte git : version sémantique sur un
+      # tag vX.Y.Z, latest + sha sur main.
+      - name: Métadonnées et tags de version
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ---- deploy stage ----
+  pages_build:
+    runs-on: ubuntu-latest
+    container: ghcr.io/astral-sh/uv:0.11.21-python3.13-trixie
+    needs: pytest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - run: uv sync
+      - run: uv run python docs/gen_ref_pages.py
+      - run: uv run zensical build --strict --clean
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  pages_deploy:
+    runs-on: ubuntu-latest
+    needs: pages_build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

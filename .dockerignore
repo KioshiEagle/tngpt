@@ -14,3 +14,4 @@ docs/
 # Bancs Optuna : code mort qui importe sentence-transformers, inutile en prod.
 app/back/optuna*.py
 .DS_Store
+app/back/service-account.json

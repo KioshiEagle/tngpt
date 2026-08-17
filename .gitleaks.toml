@@ -1,0 +1,14 @@
+[extend]
+useDefault = true
+
+# Logs de benchmark Optuna (docs/rapports/*, app/back/) : chaque ligne contient
+# des tableaux d'IDs Google Drive aléatoires (retrieved_sources/expected_documents).
+# Certains IDs contiennent par coïncidence la sous-chaîne "key" (insensible à la
+# casse) suivie d'une virgule, que la règle generic-api-key interprète comme un
+# séparateur clé/valeur — l'ID suivant dans le tableau est alors flagué à tort.
+# Voir la même exclusion "Bancs Optuna" sous [tool.ruff]/[tool.bandit] dans
+# pyproject.toml.
+[allowlist]
+paths = [
+  '''.*optuna_retrieval_trial_log\.jsonl$''',
+]
