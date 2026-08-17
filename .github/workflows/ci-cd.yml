@@ -2,8 +2,6 @@ name: CI/CD
 
 on:
   push:
-    branches:
-      - main
   pull_request:
     branches:
       - main
@@ -53,7 +51,7 @@ jobs:
   build_and_push_image:
     runs-on: ubuntu-latest
     needs: pytest
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: read
       packages: write
@@ -86,7 +84,7 @@ jobs:
     runs-on: ubuntu-latest
     container: ghcr.io/astral-sh/uv:0.11.21-python3.13-trixie
     needs: pytest
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
       - run: uv sync
@@ -99,7 +97,7 @@ jobs:
   pages_deploy:
     runs-on: ubuntu-latest
     needs: pages_build
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       pages: write
       id-token: write
