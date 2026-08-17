@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     container: ghcr.io/astral-sh/uv:0.11.21-python3.13-trixie
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: uv lock --check
       - run: uvx ruff check . --statistics
       - run: uvx ruff format . --check
@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     container: ghcr.io/astral-sh/uv:0.11.21-python3.13-trixie
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: uvx bandit -c pyproject.toml -r .
       - run: uv audit
       # uv audit est encore expérimental donc on garde pip-audit pour l'instant
@@ -43,7 +43,7 @@ jobs:
       - lint
       - check_security
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: uv sync
       - run: uv run pytest tests/
 
@@ -56,7 +56,7 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -86,7 +86,7 @@ jobs:
     needs: pytest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: uv sync
       - run: uv run python docs/gen_ref_pages.py
       - run: uv run zensical build --strict --clean
