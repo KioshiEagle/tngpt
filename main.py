@@ -18,8 +18,6 @@ from app.cli import register_cli
 from app.extensions import csrf, limiter
 from app.routes import bp
 
-
-
 load_dotenv()
 
 logging.basicConfig(
@@ -33,7 +31,7 @@ app = Flask(
     template_folder="app/front/templates",
     static_folder="app/front/static",
 )
-app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)  # ty: ignore[invalid-assignment]
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "change-moi-en-prod")
 
 # Pas de repli sur SQLite : sans DATABASE_URL, l'app démarrerait sur une base

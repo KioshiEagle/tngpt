@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "L'IA optimisé pour TELECOM Nancy"
 readme = "README.md"
 requires-python = ">=3.13"
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
 dependencies = [
     "flask>=3.1.3",
     "google-api-python-client>=2.197.0",
@@ -18,8 +20,7 @@ dependencies = [
     # le même `to_markdown()` sans aucune inférence locale.
     "pymupdf4llm>=0.3.4,<1.0",
     "gunicorn>=26.0.0",
-    "dotenv>=0.9.9",
-    "datetime>=6.0",
+    "python-dotenv>=1.2.2",
     "flask-limiter>=4.1.1",
     "flask-compress>=1.24",
     "flask-login>=0.6.3",
@@ -103,6 +104,8 @@ skips = ["B101"]
 [tool.complexipy]
 max-complexity-allowed = 15
 failed = true
+# Bancs Optuna : voir la note sous [tool.ruff], même exclusion temporaire.
+exclude = ["app/back/optuna_rag_benchmark.py", "app/back/optuna_retrieval_benchmark.py", "app/back/optuna3.py"]
 
 [tool.pydoclint]
 exclude = [
