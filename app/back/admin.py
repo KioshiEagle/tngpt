@@ -232,7 +232,7 @@ def catalog_delete(source_id: str) -> Response:
     try:
         deleted = delete_document(source_id)
     except Exception:
-        logger.exception("Échec de la suppression de %s", source_id)
+        logger.exception("Échec de la suppression de %r", source_id)
         flash(
             f"Suppression impossible : Qdrant est injoignable ({source_id}).", "warning"
         )
@@ -575,7 +575,7 @@ def moderate_user(user_id: int) -> Response:
     db.session.commit()
 
     logger.info(
-        "Modération : %s -> %s par %s (motif : %s)",
+        "Modération : %r -> %s par %r (motif : %r)",
         user.user_mail,
         action,
         current_user.user_mail,

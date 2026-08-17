@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from functools import wraps
 from typing import ParamSpec, Protocol, TypeVar
+from urllib.parse import urlsplit
 
 from flask import flash, redirect, request, url_for
 from flask_login import LoginManager, current_user
@@ -94,9 +95,13 @@ def perm_required(perm: int) -> Callable[[Callable[P, R]], Callable[P, R | Respo
                     f'"{permission_table[perm]}" pour accéder à cette page.',
                     "warning",
                 )
-                if request.referrer is None:
-                    return redirect(url_for("chat.index"))
-                return redirect(request.referrer)
+                referrer = request.referrer
+                # On ne fait confiance au Referer que s'il pointe sur ce même
+                # site : cet en-tête est fourni par le client et peut être
+                # falsifié pour rediriger vers un site tiers (open redirect).
+                if referrer and urlsplit(referrer).netloc == request.host:
+                    return redirect(referrer)
+                return redirect(url_for("chat.index"))
 
             return func(*args, **kwargs)
 

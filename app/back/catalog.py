@@ -296,5 +296,5 @@ def delete_document(source_id: str) -> bool:
     db.session.delete(document)
     db.session.commit()
 
-    logger.info("Document supprimé : %s", source_id)
+    logger.info("Document supprimé : %r", source_id)
     return True
