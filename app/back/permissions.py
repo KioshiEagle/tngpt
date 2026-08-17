@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from functools import wraps
 from typing import ParamSpec, Protocol, TypeVar
-from urllib.parse import urlsplit
+from werkzeug.urls import url_parse
 
 from flask import flash, redirect, request, url_for
 from flask_login import LoginManager, current_user
@@ -99,8 +99,13 @@ def perm_required(perm: int) -> Callable[[Callable[P, R]], Callable[P, R | Respo
                 # On ne fait confiance au Referer que s'il pointe sur ce même
                 # site : cet en-tête est fourni par le client et peut être
                 # falsifié pour rediriger vers un site tiers (open redirect).
-                if referrer and urlsplit(referrer).netloc == request.host:
-                    return redirect(referrer)
+                if referrer:
+                    parsed_referrer = url_parse(referrer)
+                    if (
+                        parsed_referrer.scheme in {"", "http", "https"}
+                        and (not parsed_referrer.netloc or parsed_referrer.netloc == request.host)
+                    ):
+                        return redirect(referrer)
                 return redirect(url_for("chat.index"))
 
             return func(*args, **kwargs)
