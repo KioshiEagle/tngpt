@@ -40,7 +40,7 @@ Détail des variables :
 | Variable | Description |
 |---|---|
 | `FLASK_SECRET_KEY` | Clé de signature des sessions/cookies. Génère la tienne : `python -c "import secrets; print(secrets.token_hex(32))"` |
-| `FLASK_DEBUG` | `True` en local (active aussi `OAUTHLIB_INSECURE_TRANSPORT` pour l'OAuth en http), `False` en production |
+| `FLASK_DEBUG` | `True` en local, `False` en production. Ne pilote plus que `OAUTHLIB_INSECURE_TRANSPORT`, sans quoi l'OAuth Google refuse le http local — le débogueur Werkzeug, lui, a été retiré du serveur de développement |
 | `DEFAULT_DAILY_QUOTA` | Quota de questions par jour par défaut (les administrateurs n'y sont pas soumis) |
 | `DATABASE_URL` | Connexion PostgreSQL, obligatoire — l'app refuse de démarrer sans elle (pas de repli SQLite) |
 | `POSTGRES_PASSWORD` | Mot de passe Postgres utilisé par `docker-compose.yml` |

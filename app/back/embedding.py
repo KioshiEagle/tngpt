@@ -89,9 +89,8 @@ def _embed(texts: list[str]) -> list[list[float]]:
     return vectors
 
 
-# bge-m3 est symétrique : contrairement à E5 ("query:"/"passage:") ou à Gemini
-# (task_type), requêtes et documents s'encodent de la même façon. Les deux
-# fonctions restent séparées pour garder l'intention lisible aux appels.
+# bge-m3 est symétrique : requêtes et documents s'encodent pareil. Deux
+# fonctions quand même, pour garder l'intention lisible aux appels.
 def embed_documents(texts: list[str]) -> list[list[float]]:
     """Encode des chunks destinés à l'indexation Qdrant."""
     return _embed(texts)

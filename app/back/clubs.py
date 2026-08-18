@@ -1,27 +1,7 @@
 """Fiches officielles de la vie associative : le SQL répond là où le RAG échoue.
 
-« Qui est trésorier de TNS » porte sur une information présente dans un seul
-document parmi ~400 : le retrieval sémantique ramène des chunks du bon thème
-mais rate régulièrement l'unique compte-rendu qui porte le nom. Les tables
-`assos`, `clubs`, `roles`, `asso_roles` et `club_roles` tiennent la même
-information sous forme relationnelle ; ce module la retrouve et la met en tête
-du contexte, où le prompt lui donne autorité sur les archives.
-
-Associations et clubs sont deux choses distinctes — cinq associations d'un côté
-(CETEN, BDS, TNS, Humani'TN, Anim'Est), une quarantaine de clubs de l'autre —
-et chacune a sa table de bureaux. Le traitement, lui, est commun : `Entite` les
-représente indifféremment, et la fiche produite annonce toujours laquelle des
-deux natures elle décrit, pour que le modèle ne prenne pas une association pour
-un club.
-
-La reconnaissance est **déterministe**, pas déléguée au modèle. Trois raisons :
-le chat ne fait qu'un seul appel Groq et le streame (un outil en imposerait
-deux, sur un tier à 8000 tokens/minute), il tourne en `reasoning_effort="none"`
-et déciderait donc mal d'appeler un outil, et l'espace est fermé. Rien de
-reconnu : rien n'est injecté et le comportement reste celui d'avant.
-
-Les fonctions de décision sont pures et reçoivent le catalogue en argument :
-elles sont ainsi testables sans base ni application Flask.
+Reconnaissance déterministe et non déléguée au modèle, qui tourne sans budget
+de raisonnement ; sans rien de reconnu, rien n'est injecté.
 """
 
 import logging
@@ -36,19 +16,16 @@ from .textnorm import strip_accents
 
 logger = logging.getLogger(__name__)
 
-# Plafond d'entités détaillées dans une même fiche. Une question en cite une ou
-# deux ; au-delà, c'est une reconnaissance trop large et le bloc pèserait plus
-# que les archives qu'il est censé compléter.
+# Plafond d'entités par fiche : au-delà de deux, la reconnaissance est trop
+# large et le bloc pèse plus que les archives qu'il complète.
 MAX_FICHES = 4
 
 # Les deux natures d'entité. Le libellé part tel quel dans le prompt.
 NATURE_CLUB = "club"
 NATURE_ASSO = "association"
 
-# Apostrophes typographiques ramenées à l'apostrophe droite : « Crea'TN » saisi
-# dans la base et la variante courbe tapée par l'utilisateur doivent se
-# rencontrer. Écrites en échappements : ces caractères sont indiscernables à
-# l'œil dans le source.
+# Apostrophes typographiques ramenées à l'apostrophe droite. En échappements :
+# ces caractères sont indiscernables à l'œil dans le source.
 _APOSTROPHES = str.maketrans(dict.fromkeys("\u2019\u02bc\u00b4`", "'"))
 
 
@@ -71,18 +48,16 @@ class Entite:
     nature: str
     tutelle: str = ""
     description: str = ""
-    # Appellations d'usage en plus du nom officiel et du slug : « Abso » pour
-    # Abso'Ludique, « Intégration » pour Les Intéductibles Gaulois. Sans elles,
-    # la reconnaissance rate les noms que les gens emploient réellement.
+    # Appellations d'usage : « Abso » pour Abso'Ludique. Sans elles, on rate
+    # les noms que les gens emploient réellement.
     aliases: tuple[str, ...] = ()
 
     @property
     def cle(self) -> tuple[str, int]:
         """Identifiant unique toutes natures confondues.
 
-        Les identifiants de `clubs` et d'`assos` se recoupent (les deux tables
-        commencent à 0) : la nature doit entrer dans la clé, sans quoi le bureau
-        d'une association irait se coller à un club de même numéro.
+        Les id de `clubs` et d'`assos` se recoupent : sans la nature dans la
+        clé, le bureau d'une asso irait se coller à un club de même numéro.
         """
         return (self.nature, self.entite_id)
 
@@ -99,9 +74,7 @@ class RoleEntry:
 class Ligne:
     """Un poste et ses titulaires.
 
-    Plusieurs personnes par poste : Anim'Est a deux présidents, le CETEN deux
-    responsables communication. Elles sont regroupées sur une seule ligne plutôt
-    que répétées, pour que le modèle lise « le poste a deux titulaires » et non
+    Regroupés sur une ligne : le modèle doit lire « deux titulaires » et non
     « deux archives se contredisent ».
     """
 
@@ -113,9 +86,8 @@ class Ligne:
 class Fiche:
     """Le bureau d'une entité sur un mandat donné, prêt à être mis en forme.
 
-    `description` n'est renseignée que sur les questions qui ne visent aucun
-    poste précis : « c'est quoi Neura'TN » a besoin de la présentation, « qui
-    est trésorier de TNS » n'en ferait que des tokens perdus.
+    `description` n'est renseignée que si la question ne vise aucun poste
+    précis ; ailleurs elle ne ferait que des tokens perdus.
     """
 
     nom: str
@@ -139,9 +111,8 @@ Bureaux = dict[tuple[str, int], list[BureauRow]]
 def _blank(haystack: str, pattern: re.Pattern[str]) -> tuple[str, bool]:
     """Cherche un motif et neutralise l'occurrence trouvée.
 
-    Blanchir la portion consommée — plutôt que la supprimer, ce qui décalerait
-    les positions — empêche un motif plus court de la retrouver ensuite : sans
-    cela « bar » matcherait à l'intérieur de « baroudeurs ».
+    Blanchir plutôt que supprimer garde les positions ; sans quoi « bar »
+    matcherait à l'intérieur de « baroudeurs ».
     """
     found = pattern.search(haystack)
     if found is None:
@@ -154,21 +125,16 @@ def _blank(haystack: str, pattern: re.Pattern[str]) -> tuple[str, bool]:
     return blanked, True
 
 
-# Ce qui peut séparer deux morceaux d'un nom, y compris rien du tout. Un même
-# club s'écrit « Créa'TN », « Créa TN » ou « CréaTN » selon qui tape, et le slug
-# ne retient aucun séparateur : les trois doivent se rencontrer.
+# Ce qui peut séparer deux morceaux d'un nom, y compris rien : « Créa'TN »,
+# « Créa TN » et « CréaTN » doivent se rencontrer.
 _LIAISON = r"[\s'.\-]*"
 
 
 def _word(needle: str) -> re.Pattern[str]:
     r"""Compile un motif exigeant des frontières de mot autour du terme.
 
-    `\b` ne convient pas en bordure : les noms de clubs se terminent volontiers
-    par une apostrophe ou un point, qui ne sont pas des caractères de mot.
-
-    À l'intérieur, les séparateurs sont rendus facultatifs. Seules les positions
-    où le nom officiel en comporte déjà un sont relâchées, ce qui laisse « bar »
-    strict tout en faisant coïncider « créa tn » et « creatn ».
+    `\b` ne convient pas en bordure (apostrophes, points) ; à l'intérieur, seuls
+    les séparateurs déjà présents au nom officiel deviennent facultatifs.
     """
     morceaux = [re.escape(m) for m in re.split(r"[^0-9a-z]+", needle) if m]
     if not morceaux:
@@ -179,9 +145,8 @@ def _word(needle: str) -> re.Pattern[str]:
 def match_entites(question: str, catalogue: Sequence[Entite]) -> list[Entite]:
     """Clubs et associations cités : nom officiel, slug ou appellation d'usage.
 
-    Les termes les plus longs sont essayés d'abord et consomment le texte
-    trouvé : « Telecom Nancy Services » l'emporte donc sur « TNS », et
-    « baroudeurs » sur « bar ».
+    Les termes les plus longs passent d'abord et consomment le texte trouvé :
+    « baroudeurs » l'emporte sur « bar ».
     """
     haystack = normalize(question)
     needles = sorted(
@@ -205,10 +170,8 @@ def match_entites(question: str, catalogue: Sequence[Entite]) -> list[Entite]:
     return sorted(found.values(), key=lambda e: (e.nature != NATURE_ASSO, e.entite_id))
 
 
-# Motifs de rôle, appliqués à la question normalisée, du plus spécifique au plus
-# général : « vice-président » contient « présid », il doit donc être essayé —
-# et consommé — avant « président ». La clé est le nom du rôle en base, comparé
-# lui aussi sous forme normalisée.
+# Motifs de rôle, du plus spécifique au plus général : « vice-président »
+# contient « présid » et doit donc être consommé avant « président ».
 _ROLE_MOTS: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
     (nom, re.compile(motif))
     for nom, motif in (
@@ -232,21 +195,16 @@ _ROLE_MOTS: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
 )
 
 
-# Longueur à partir de laquelle un intitulé de poste peut être tronqué :
-# « respo choré » doit atteindre « Responsable chorégraphie ». Quatre lettres
-# suffisent à distinguer tous les postes existants — trois confondraient
-# « informatique » et « infrastructure ».
+# Troncature minimale d'un intitulé (« respo choré ») : quatre lettres, trois
+# confondraient « informatique » et « infrastructure ».
 _TRONCATURE = 4
 
 
 def _motif_role(nom_normalise: str) -> re.Pattern[str]:
     """Motif reconnaissant un intitulé de poste et ses formes courantes.
 
-    Trois libertés, tirées de l'usage : « Responsable X » s'abrège en
-    « respo X », tout intitulé se met au pluriel (« les respos logistique »), et
-    le mot qui suit « respo » peut être tronqué (« respo choré »). Dériver tout
-    cela de l'intitulé évite d'inscrire à la main chacun des vingt-quatre postes
-    que comptent désormais les bureaux.
+    Abréviation, pluriel et troncature dérivés de l'intitulé, pour ne pas
+    inscrire à la main les vingt-quatre postes des bureaux.
     """
     if not nom_normalise.startswith("responsable "):
         return re.compile(rf"(?<!\w){re.escape(nom_normalise)}s?(?!\w)")
@@ -272,10 +230,8 @@ def match_roles(question: str, roles: Sequence[RoleEntry]) -> list[RoleEntry]:
 
     found: dict[int, RoleEntry] = {}
 
-    # Les intitulés de la table d'abord, du plus long au plus court, et chacun
-    # consomme le texte trouvé. C'est cet ordre qui fait que « vice-trésorier »
-    # est reconnu comme tel : la table d'abréviations ci-dessous cherche
-    # « tresor », qui matcherait sinon à l'intérieur du mot.
+    # Intitulés de la table d'abord, du plus long au plus court : sinon
+    # « tresor » matcherait à l'intérieur de « vice-trésorier ».
     for nom in sorted(par_nom, key=len, reverse=True):
         haystack, hit = _blank(haystack, _motif_role(nom))
         if hit:
@@ -295,9 +251,8 @@ def match_roles(question: str, roles: Sequence[RoleEntry]) -> list[RoleEntry]:
 
 # --- Rattrapage approximatif ---------------------------------------------------
 
-# Seuil de ressemblance, volontairement bas : ce qui sort d'ici n'est pas
-# affirmé au modèle mais proposé comme piste, il vaut donc mieux trois
-# candidats dont deux à écarter qu'un nom manqué.
+# Seuil bas à dessein : ce qui sort d'ici est une piste, pas une affirmation,
+# et trois candidats valent mieux qu'un nom manqué.
 SEUIL_FLOU = 80
 MAX_CANDIDATS = 3
 # En deçà, un fragment est trop court pour que la ressemblance veuille dire
@@ -312,14 +267,8 @@ def match_flou(
 ) -> list[Entite]:
     """Entités dont le nom ressemble à un fragment de la question.
 
-    Filet placé sous la reconnaissance exacte, pour les graphies qu'aucune liste
-    d'alias n'avait prévues : fautes de frappe, séparateurs inattendus, formes
-    tronquées. On compare chaque suite de un à trois mots de la question à tous
-    les noms connus.
-
-    Le résultat est une liste de pistes, pas une identification : l'appelant les
-    présente au modèle comme telles. C'est ce qui permet de descendre le seuil
-    sans risquer d'affirmer un nom faux.
+    Filet sous la reconnaissance exacte, comparant chaque suite de un à trois
+    mots ; le résultat est une liste de pistes, jamais une identification.
     """
     formes = _formes_connues(catalogue)
     if not formes:
@@ -379,10 +328,8 @@ def match_annee(question: str) -> str | None:
 def select_mandat(mandats: Iterable[str], annee: str | None) -> str | None:
     """Choisit le mandat à présenter parmi ceux que l'entité a connus.
 
-    Sans année, le plus récent — l'ordre lexicographique de « 2025-2026 » est
-    l'ordre chronologique. Avec une année, le plus récent de ceux qui la
-    couvrent ; si aucun ne la couvre, on retombe sur le mandat courant plutôt
-    que de ne rien montrer (l'année venait alors d'ailleurs dans la phrase).
+    Sans année, le plus récent (l'ordre lexicographique est chronologique) ;
+    avec, le plus récent qui la couvre, à défaut le courant.
     """
     connus = sorted(mandats, reverse=True)
     if not connus:
@@ -402,10 +349,8 @@ _ENTETE = "FICHE OFFICIELLE — base de données de l'école, fait autorité."
 def format_fiches(fiches: Sequence[Fiche]) -> str:
     """Rend les fiches en texte, ou une chaîne vide s'il n'y a rien à montrer.
 
-    Une description seule suffit à produire une fiche : tant que les bureaux ne
-    sont pas saisis, c'est elle qui porte tout l'apport du SQL. Le bloc se
-    termine par une ligne blanche, il est concaténé tel quel devant le contexte
-    issu de Qdrant.
+    Une description seule suffit ; le bloc finit par une ligne blanche, étant
+    concaténé tel quel devant le contexte Qdrant.
     """
     blocs = [
         "\n".join(
@@ -426,14 +371,8 @@ def format_fiches(fiches: Sequence[Fiche]) -> str:
     return f"{_ENTETE}\n" + "\n".join(blocs) + "\n\n"
 
 
-# Repli quand la reconnaissance ne trouve rien : l'annuaire entier part dans le
-# prompt et c'est le modèle qui fait le rapprochement — lui saura relier « Abso »
-# à Abso'Ludique, ce qu'une regex ne peut pas deviner sans alias.
-#
-# Mesuré à ~1350 tokens, contre un tier Groq à 8000 tokens/minute et un prompt de
-# chat déjà à ~3900. D'où le garde-fou : seules les questions qui parlent
-# visiblement de vie associative le paient. Une salutation ou une question
-# hors-sujet n'y a pas droit.
+# Repli sans reconnaissance : l'annuaire entier part au modèle, qui fait le
+# rapprochement. ~1350 tokens, d'où le garde-fou ci-dessous.
 _CUE_ASSO = re.compile(r"\bclubs?\b|\bassos?\b|\bassociations?\b|\bbureaux?\b")
 
 _ENTETE_ANNUAIRE = (
@@ -452,10 +391,8 @@ _ENTETE_PROCHES = (
 )
 
 
-# Longueur retenue d'une description dans l'annuaire. Les quarante descriptions
-# complètes pèsent 2000 tokens à elles seules, ce qui porterait le bloc à 3300 —
-# intenable face au prompt de chat et au tier à 8000 tokens/minute. La première
-# phrase suffit à dire ce que fait un club.
+# Longueur d'une description dans l'annuaire : les quarante complètes pèsent
+# 2000 tokens, et la première phrase suffit à dire ce que fait un club.
 _ABREGE = 130
 
 
@@ -479,13 +416,8 @@ def format_annuaire(
 ) -> str:
     """Annuaire complet : une ligne par entité, avec sa description et son bureau.
 
-    Volontairement exhaustif. C'est ce qui permet à la reconnaissance de rater
-    sans conséquence : le modèle dispose alors de tout et retrouve lui-même
-    l'entité visée. Amputer ce bloc — des descriptions par exemple — rendrait de
-    nouveau la reconnaissance responsable de l'exactitude des réponses.
-
-    Une seule ligne par entité plutôt qu'une par poste : à quarante-cinq
-    entités, c'est ce qui fait tenir le bloc dans le budget de tokens.
+    Exhaustif à dessein — c'est ce qui permet à la reconnaissance de rater sans
+    conséquence — et sur une ligne par entité, pour tenir dans le budget.
     """
     lignes = [_ligne_annuaire(entite, bureaux, abrege=abrege) for entite in entites]
     if not lignes:
@@ -516,9 +448,8 @@ def _ligne_annuaire(entite: Entite, bureaux: Bureaux, *, abrege: bool) -> str:
 def veut_annuaire(question: str, roles_cites: Sequence[RoleEntry]) -> bool:
     """Indique si une question non reconnue mérite qu'on lui serve l'annuaire.
 
-    Un poste cité ou le mot « club »/« asso »/« bureau » suffisent : c'est le
-    signe que la question porte sur la vie associative, et donc qu'un nom nous a
-    échappé plutôt qu'elle ne parle d'autre chose.
+    Un poste cité ou le mot « club »/« asso »/« bureau » signalent qu'un nom
+    nous a échappé, plutôt qu'une question sur autre chose.
     """
     return bool(roles_cites) or bool(_CUE_ASSO.search(normalize(question)))
 
@@ -531,11 +462,8 @@ def _lettres(text: str) -> str:
 def _titre(fiche: Fiche) -> str:
     """Ligne d'en-tête d'une fiche : ce qu'est l'entité, sa tutelle, son mandat.
 
-    La nature est écrite noir sur blanc — « association » ou « club » — c'est
-    elle qui empêche le modèle de présenter le BDS comme un club parmi les
-    autres. Le slug n'est rappelé entre parenthèses que s'il apprend quelque
-    chose : « Telecom Nancy Services (TNS) » oui, « Les Baroudeurs
-    (BAROUDEURS) » non.
+    La nature est écrite noir sur blanc, et le slug rappelé seulement s'il
+    apprend quelque chose : « Telecom Nancy Services (TNS) » oui.
     """
     nom, slug = _lettres(fiche.nom), _lettres(fiche.slug)
 
@@ -550,9 +478,8 @@ def _titre(fiche: Fiche) -> str:
         if fiche.tutelle and _lettres(fiche.tutelle) not in (nom, slug):
             titre = f"{titre} rattaché à {fiche.tutelle}"
 
-    # Pas de mandat quand aucun bureau n'est saisi : annoncer « mandat  » vide
-    # laisserait croire à une donnée manquante plutôt qu'à une fiche de
-    # présentation.
+    # Pas de mandat sans bureau saisi : un « mandat  » vide ferait croire à une
+    # donnée manquante plutôt qu'à une fiche de présentation.
     return f"{titre} — mandat {fiche.mandat}" if fiche.mandat else titre
 
 
@@ -638,10 +565,8 @@ def _grouper(
 ) -> tuple[Ligne, ...]:
     """Regroupe les titulaires d'un même poste sur une seule ligne.
 
-    Filtre au passage sur le mandat retenu et, si la question citait des postes,
-    sur ceux-là seulement. Le tri du tuple brut ordonne par mandat puis par
-    identifiant de poste : les postes sortent donc dans l'ordre hiérarchique de
-    la table `roles`, et les titulaires d'un poste dans l'ordre alphabétique.
+    Filtre sur le mandat retenu et sur les postes cités ; le tri du tuple brut
+    donne l'ordre hiérarchique de `roles`, puis l'alphabétique.
     """
     par_role: dict[str, list[str]] = {}
     for ligne_mandat, role_id, role_name, personne in sorted(brutes):
@@ -662,14 +587,8 @@ def assemble_fiches(
 ) -> list[Fiche]:
     """Assemble les fiches reconnues, filtrées par mandat puis par poste.
 
-    Reçoit les lignes de bureau plutôt que d'aller les chercher : la sélection
-    reste ainsi vérifiable sans base. Un poste cité restreint la fiche à ce
-    poste et écarte la description ; aucun poste cité montre le bureau entier et
-    la présentation.
-
-    Une entité sans bureau saisi produit quand même sa fiche, réduite à sa
-    description : c'est le cas de toute la base tant que les mandats ne sont pas
-    renseignés.
+    Reçoit les lignes de bureau plutôt que d'aller les chercher, pour rester
+    vérifiable sans base ; une entité sans bureau garde sa description.
     """
     voulus = {role.role_id for role in roles}
 
@@ -694,9 +613,8 @@ def assemble_fiches(
 def lookup_context(question: str) -> str:
     """Bloc de fiches à placer en tête du contexte, ou une chaîne vide.
 
-    Chaîne vide dans tous les cas incertains — rien de reconnu, bureau non
-    renseigné et pas de description : le chat retombe alors exactement sur son
-    comportement RAG.
+    Vide dans tous les cas incertains : le chat retombe alors exactement sur
+    son comportement RAG.
     """
     catalogue, roles = load_catalogue()
     if not catalogue:
@@ -704,14 +622,12 @@ def lookup_context(question: str) -> str:
 
     cites = match_entites(question, catalogue)
     if not cites:
-        # Rien de reconnu : soit la question ne parle pas de vie associative et
-        # on se tait, soit un nom nous a échappé et on laisse le modèle le
-        # retrouver dans l'annuaire.
+        # Rien de reconnu : on se tait, ou on laisse le modèle retrouver le nom
+        # dans l'annuaire.
         if not veut_annuaire(question, match_roles(question, roles)):
             return ""
-        # Deuxième chance : quelques noms ressemblants, proposés comme pistes.
-        # Beaucoup moins coûteux que l'annuaire, et suffisant dès qu'il ne
-        # s'agit que d'une graphie inattendue ou d'une faute de frappe.
+        # Deuxième chance : quelques noms ressemblants en pistes. Bien moins
+        # coûteux que l'annuaire, et suffisant sur une faute de frappe.
         proches = match_flou(question, catalogue)
         if proches:
             logger.debug(

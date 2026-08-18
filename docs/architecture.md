@@ -31,7 +31,8 @@ flowchart TB
         Perms["permissions.py<br/>bitmask de droits"]
         Retrieval["retrieval.py<br/>recherche hybride"]
         Rerank["reranking.py<br/>reclassement Workers AI"]
-        Generate["generate.py<br/>prompt + réponse"]
+        Reflex["reflexes.py<br/>réponses sans modèle"]
+        Generate["generate.py<br/>system_prompt.md + réponse"]
         Usage["usage.py<br/>journal + quotas"]
         Catalog["catalog.py<br/>catalogue + ingestion"]
         GroqPool["pool de clés Groq<br/>choix + suivi d'usage"]
@@ -59,6 +60,7 @@ flowchart TB
     AuthBP --> OAuth
     AuthBP --> PG
 
+    ChatBP --> Reflex
     ChatBP --> Retrieval --> Generate
     Retrieval --> QD
     Retrieval --> CF
@@ -115,6 +117,49 @@ sequenceDiagram
 
 La recherche et la journalisation ont lieu **avant** le streaming : l'usage est
 enregistré même si le client se déconnecte pendant la réponse.
+
+Certaines questions n'atteignent jamais ce trajet. Les réponses réflexes
+([reflexes.py](../app/back/reflexes.py)) — la lettre suivante de l'alphabet,
+« feur », « gorge » — sont résolues dans la route, avant Qdrant et avant Groq :
+leur réponse est connue d'avance, elle ne vaut ni une recherche ni une
+complétion.
+
+## Le prompt
+
+Le prompt système est un fichier,
+[system_prompt.md](../app/back/system_prompt.md), et non une constante Python :
+c'est de la prose qu'on relit et qu'on révise comme de la documentation. Il est
+lu une fois à l'import et ne varie jamais d'une requête à l'autre.
+
+Le partage entre les messages envoyés à Groq est strict :
+
+| Message | Contenu | Varie |
+|---|---|---|
+| `system` | les règles, en sections `<mission>`, `<perimetre>`, `<ancrage_factuel>`, `<hierarchie_des_sources>`, `<ton_et_format>`, `<conversation>` | jamais |
+| tours passés | les `HISTORY_CONTEXT_SIZE` derniers messages de la conversation, relus en base, tronqués à 500 caractères chacun | à chaque requête |
+| `user` | `<contexte_execution>` (date, prénom), `<archives>` (fiches SQL + chunks Qdrant), `<question>` | à chaque requête |
+
+La mémoire est celle d'**une** conversation : l'historique vient de la ligne
+`conversations` visée, jamais des autres. Les tours passés partent sans leurs
+archives — elles ne sont plus disponibles — ce qui fait du fil de l'échange un
+souvenir et non un second corpus, et le prompt système le dit au modèle. La
+carte au trésor ne les reçoit pas : c'est un coup unique.
+
+Le même historique sert déjà, en amont, à enrichir la requête Qdrant
+(`_enrich_query`) : une question de suite ramène les bons chunks *et* se lit
+dans son fil.
+
+Rien de ce qui vient de Qdrant n'atterrit du côté des règles. Les archives sont
+des documents ingérés automatiquement, donc du texte que personne ne relit : les
+isoler dans le message utilisateur est ce qui permet au prompt système de poser
+qu'un ordre trouvé dans une archive est du texte à citer, pas une consigne à
+suivre.
+
+Un `CallSpec` ([generate.py](../app/back/generate.py)) réunit le message
+système, le constructeur de prompt, les paramètres Groq, la lecture de la
+complétion et la température. La carte au trésor a le sien : elle garde ses
+règles dans son message utilisateur, parce qu'un prompt qui décrit un chat en
+prose n'a aucun sens pour un appel d'outil.
 
 ## Pipeline d'ingestion
 

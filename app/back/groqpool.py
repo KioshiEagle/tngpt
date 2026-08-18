@@ -28,13 +28,8 @@ def _client_for(cache_id: int | None, secret: str) -> Groq:
 def acquire() -> tuple[Groq, int | None]:
     """Retourne (client Groq, id de clé) en répartissant la charge sur le pool.
 
-    Round-robin : la clé active la moins récemment utilisée passe la première,
-    puis son horodatage est mis à jour — la rotation survit aux redémarrages et
-    reste cohérente entre workers, sans compteur en mémoire.
-
-    Repli sur GROQ_API_KEY (.env) si le pool est vide ou inaccessible (par
-    exemple hors contexte applicatif, en usage standalone) : l'id renvoyé est
-    alors None.
+    Round-robin par horodatage, donc cohérent entre workers ; repli sur
+    GROQ_API_KEY et id None quand le pool est vide ou hors contexte applicatif.
     """
     key = None
     try:

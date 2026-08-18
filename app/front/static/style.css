@@ -356,6 +356,48 @@ body {
     display: none;
 }
 
+/* Raisonnement du modèle (chal RAG) : replié par défaut, dépliable au clic. */
+.msg-reasoning {
+    margin-bottom: 6px;
+}
+.msg-reasoning > summary {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    padding: 2px 9px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg-input);
+    color: var(--text-muted);
+    font-size: 12px;
+    list-style: none;
+    user-select: none;
+}
+.msg-reasoning > summary::-webkit-details-marker {
+    display: none;
+}
+.msg-reasoning > summary::before {
+    content: '▸';
+    margin-right: 5px;
+    font-size: 10px;
+}
+.msg-reasoning[open] > summary::before {
+    content: '▾';
+}
+.msg-reasoning-body {
+    margin: 6px 0 0;
+    padding: 9px 13px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg-input);
+    color: var(--text-muted);
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
 /* Markdown content inside assistant bubbles */
 .msg.assistant .msg-text p { margin-bottom: 0.5em; }
 .msg.assistant .msg-text p:last-child { margin-bottom: 0; }

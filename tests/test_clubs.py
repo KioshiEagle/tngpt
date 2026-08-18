@@ -26,9 +26,8 @@ from app.back.clubs import (
     veut_annuaire,
 )
 
-# Catalogue de test : TNS pour le cas nominal (nom développé + sigle),
-# Baroudeurs et Bar pour le piège du terme court inclus dans le terme long,
-# Anim'Est pour l'apostrophe.
+# Catalogue de test : TNS pour le cas nominal, Baroudeurs et Bar pour le terme
+# court inclus dans le long, Anim'Est pour l'apostrophe.
 _TNS = Entite(
     entite_id=1,
     nom="Telecom Nancy Services",
@@ -487,9 +486,8 @@ def test_format_fiches_rend_une_description_seule() -> None:
             "",
             "Telecom Nancy Services (TNS) — association de TELECOM Nancy",
         ),
-        # Une association n'est jamais rattachée à quoi que ce soit, et le mot
-        # « association » doit figurer : c'est lui qui empêche le modèle de
-        # présenter le BDS comme un club parmi les quarante.
+        # Une association n'est rattachée à rien, et le mot « association »
+        # doit figurer : sans lui le BDS passe pour un club parmi quarante.
         ("BDS", "bds", NATURE_ASSO, "", "BDS — association de TELECOM Nancy"),
         ("CETEN", "bde", NATURE_ASSO, "", "CETEN (BDE) — association de TELECOM Nancy"),
     ],

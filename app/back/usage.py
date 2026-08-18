@@ -124,10 +124,8 @@ def log_retrieval(
 ) -> int | None:
     """Journalise une question et les chunks retrouvés, et renvoie l'id de requête.
 
-    `groq_key_id` attribue la génération à une clé Groq du pool (None = repli .env).
-
-    N'échoue jamais : le monitoring ne doit pas pouvoir casser le chat. Une
-    erreur d'écriture est tracée puis absorbée, et la réponse part quand même.
+    N'échoue jamais : une erreur d'écriture est tracée puis absorbée, le
+    monitoring ne devant pas pouvoir casser le chat.
     """
     try:
         query = Query(

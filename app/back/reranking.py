@@ -1,18 +1,7 @@
 """Reclassement des chunks retrouvés, via l'API de reranking Workers AI.
 
-Le banc Optuna (voir `docs/rapports.md`) tranche nettement : le reranker gagne
-sur les six modèles d'embedding testés, sans exception, et figure dans la
-configuration gagnante — essai #177, `use_reranker=True`.
-
-Le banc le jouait en local, avec un CrossEncoder `BAAI/bge-reranker-v2-m3`. Ici
-c'est `@cf/baai/bge-reranker-base`, seul reranker du catalogue Workers AI, servi
-par API : rien ne s'exécute en local, conformément à la règle du projet. Même
-famille de modèle, version plus légère — le gain mesuré au banc est donc un
-plafond, pas une promesse.
-
-Le reclassement est un bonus, jamais une dépendance. Toute panne de l'API laisse
-passer l'ordre hybride d'origine : une recherche dégradée vaut mieux qu'une
-recherche en erreur.
+Le banc le donne gagnant sur les six modèles testés (docs/rapports.md), mais en
+CrossEncoder local ; servi par API, il est plus léger, et jamais une dépendance.
 """
 
 import logging
@@ -26,9 +15,8 @@ from .types import SearchResult
 
 logger = logging.getLogger(__name__)
 
-# Le banc bornait la short-list à 20, indépendamment du top_k demandé : le
-# reranker voit toujours le même pool de candidats, ce qui rend les essais
-# comparables entre eux. On garde ce chiffre.
+# 20 comme au banc, indépendamment du top_k : même pool de candidats d'un essai
+# à l'autre.
 _POOL_SIZE_DEFAUT = 20
 _MODELE_DEFAUT = "@cf/baai/bge-reranker-base"
 # En dessous de deux candidats, il n'y a rien à reclasser.
@@ -89,9 +77,8 @@ def rerank(query: str, results: list[SearchResult], top_k: int) -> list[SearchRe
 
     shortlist = results[: _pool_size()]
     try:
-        # Un seul essai, sans backoff : le reclassement est sur le chemin de la
-        # réponse à l'utilisateur, et mieux vaut un ordre hybride tout de suite
-        # qu'un ordre reclassé après plusieurs secondes d'attente.
+        # Un seul essai, sans backoff : sur le chemin de la réponse, un ordre
+        # hybride tout de suite vaut mieux qu'un bon ordre dans cinq secondes.
         reponse = get_client().post(
             os.getenv("RERANK_MODEL", _MODELE_DEFAUT),
             json={
@@ -115,9 +102,8 @@ def rerank(query: str, results: list[SearchResult], top_k: int) -> list[SearchRe
         chunk["rerank_score"] = round(score, 6)
         reclasses.append(chunk)  # ty: ignore[invalid-argument-type]
 
-    # Un chunk que l'API n'a pas rendu (troncature côté service) ne doit pas
-    # disparaître : il reprend sa place derrière les reclassés, dans l'ordre
-    # hybride, plutôt que d'être perdu.
+    # Un chunk que l'API n'a pas rendu reprend sa place derrière les reclassés,
+    # dans l'ordre hybride, plutôt que d'être perdu.
     rendus = {indice for indice, _ in classement}
     reclasses.extend(c for i, c in enumerate(shortlist) if i not in rendus)
 

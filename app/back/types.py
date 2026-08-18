@@ -50,9 +50,8 @@ class MapPayload(TypedDict):
 class GroqParams(TypedDict, total=False):
     """Paramètres d'appel Groq ajustables selon le prompt utilisé.
 
-    Les types reprennent ceux du SDK Groq pour rester vérifiables au dépaquetage.
-    `reasoning_format` doit valoir 'parsed' ou 'hidden' dès qu'on passe des outils :
-    Groq refuse le format brut avec le tool calling.
+    `reasoning_format` doit valoir 'parsed' ou 'hidden' dès qu'on passe des
+    outils : Groq refuse le format brut avec le tool calling.
     """
 
     reasoning_effort: Literal["none", "default", "low", "medium", "high"]

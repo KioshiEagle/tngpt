@@ -1,8 +1,6 @@
 """Normalisation de texte partagée par les modules qui reconnaissent des noms.
 
-Extrait de `seamap` pour être réutilisable par `clubs` : importer le helper
-depuis `seamap` y ferait passer la chaîne `clubs → seamap → generate`, alors que
-ce module n'importe rien du projet et ne peut donc créer aucun cycle.
+Extrait de `seamap` : ce module n'importe rien du projet, donc aucun cycle.
 """
 
 import unicodedata

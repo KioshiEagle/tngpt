@@ -12,6 +12,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.back.admin import admin_bp
 from app.back.auth import auth_bp
+from app.back.generate import SYSTEM_PROMPT_PATH
 from app.back.models import User, db
 from app.back.permissions import login_manager
 from app.cli import register_cli
@@ -34,9 +35,8 @@ app = Flask(
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)  # ty: ignore[invalid-assignment]
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "change-moi-en-prod")
 
-# Pas de repli sur SQLite : sans DATABASE_URL, l'app démarrerait sur une base
-# vide et paraîtrait fonctionner (zéro utilisateur, zéro document) au lieu
-# d'échouer. Mieux vaut refuser de démarrer.
+# Pas de repli sur SQLite : sans DATABASE_URL, l'app paraîtrait fonctionner sur
+# une base vide au lieu d'échouer.
 database_url = os.environ.get("DATABASE_URL")
 if not database_url:
     msg = "DATABASE_URL est absent de l'environnement (voir .env)."
@@ -66,9 +66,8 @@ login_manager.login_view = "auth.login_page"
 def load_user(user_id: str) -> User | None:
     """Charge un utilisateur depuis la session Flask-Login.
 
-    Un banni est traité comme non connecté : c'est ce qui rend le bannissement
-    immédiat. Sans ce contrôle, sa session resterait valide jusqu'à expiration du
-    cookie et il continuerait d'utiliser le chat.
+    Un banni est traité comme non connecté : sans ça sa session resterait valide
+    jusqu'à expiration du cookie.
     """
     user = db.session.get(User, int(user_id))
     if user is not None and user.is_banned():
@@ -80,9 +79,8 @@ def load_user(user_id: str) -> User | None:
 def unauthorized() -> ResponseReturnValue:
     """Redirige la navigation vers le login, mais répond 401 JSON aux appels API.
 
-    Sans cela, un fetch() dont la session a expiré suit la redirection et reçoit
-    le HTML de la page de login en 200 — que le front afficherait comme une
-    réponse du chat.
+    Sans ça, un fetch() à session expirée reçoit le HTML du login en 200, que le
+    front afficherait comme une réponse du chat.
     """
     if request.is_json or request.accept_mimetypes.best == "application/json":
         return jsonify(
@@ -95,9 +93,8 @@ def unauthorized() -> ResponseReturnValue:
 def too_many_requests(error: HTTPException) -> ResponseReturnValue:
     """Répond en JSON aux appels API quand le rate-limiter renvoie un 429.
 
-    Le quota journalier renvoie déjà son propre JSON ; ce handler couvre la
-    rafale bloquée par flask-limiter, qui produirait sinon une page HTML que le
-    front afficherait comme une réponse du chat.
+    Couvre la rafale bloquée par flask-limiter, qui produirait sinon une page
+    HTML que le front afficherait comme une réponse du chat.
     """
     if request.is_json or request.accept_mimetypes.best == "application/json":
         description = getattr(error, "description", None)
@@ -113,9 +110,8 @@ def too_many_requests(error: HTTPException) -> ResponseReturnValue:
 def asset(filename: str) -> str:
     """URL d'un fichier statique, suffixée de son horodatage de modification.
 
-    Sans cette empreinte, un navigateur continue de servir l'ancien main.js ou
-    l'ancien style.css après un déploiement : le front tourne alors sur une
-    version périmée sans que rien ne le signale.
+    Sans cette empreinte, le navigateur sert l'ancien main.js après un
+    déploiement, sans que rien ne le signale.
     """
     path = Path(app.static_folder or "") / filename
     stamp = int(path.stat().st_mtime) if path.is_file() else 0
@@ -132,10 +128,16 @@ csrf.exempt(bp)
 
 register_cli(app)
 
-# Le schéma est géré par Alembic (`flask db upgrade`), pas par db.create_all() :
-# create_all() crée les tables manquantes mais n'ajoute jamais une colonne à une
-# table existante, ce qui laisserait le schéma diverger en silence.
+# Schéma géré par Alembic : `create_all()` crée les tables manquantes mais
+# n'ajoute jamais une colonne, et laisserait le schéma diverger en silence.
 
 if __name__ == "__main__":
-    debug_mode = os.environ.get("FLASK_DEBUG", "True").lower() in ["true", "1", "t"]
-    app.run(host="127.0.0.1", debug=debug_mode, port=8501)
+    # `debug=False` explicite : sans lui Flask lit FLASK_DEBUG et rallume le
+    # débogueur. `extra_files` : le rechargeur ignore les fichiers non-Python.
+    app.run(
+        host="127.0.0.1",
+        port=8501,
+        debug=False,
+        use_reloader=True,
+        extra_files=[SYSTEM_PROMPT_PATH],
+    )

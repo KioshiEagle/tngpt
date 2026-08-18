@@ -41,3 +41,6 @@ Mails*/
 # en déploiement (`flask db upgrade`). Ne pas l'ignorer.
 # NB : docs/rapports/ doit rester versionné — ce sont les rapports de benchmark
 # publiés par la doc, pas un artefact de build. `data/` ne les couvre plus.
+
+# CTF : les documents rendus portent le token et le flag en clair.
+ctf/*.rendu.md

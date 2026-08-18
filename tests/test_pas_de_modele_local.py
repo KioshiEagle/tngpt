@@ -1,15 +1,7 @@
 """Garde-fou : aucun modèle ne doit s'exécuter localement.
 
-TN-GPT est 100 % API — Groq pour la génération, Cloudflare Workers AI pour les
-embeddings et le reclassement. Le serveur de production n'a aucune ressource GPU.
-
-Ce n'est pas une préférence de style : c'est déjà arrivé qu'un modèle rentre
-sans que personne ne le voie. `pymupdf4llm>=1.27` tire `pymupdf-layout`, donc
-`onnxruntime` et ~118 Mo de modèles `.onnx` qu'il exécutait à chaque conversion
-de PDF — par une dépendance transitive, sans une ligne de code ajoutée. Un
-`uv lock --upgrade` un peu rapide, ou le retrait de l'épinglage, suffirait à le
-refaire. D'où ces tests, qui lisent `uv.lock` et non l'environnement installé :
-c'est le lock qui décide de ce que `uv sync --frozen --no-dev` met dans l'image.
+C'est déjà arrivé par dépendance transitive (`pymupdf4llm>=1.27` tirait 118 Mo
+de `.onnx`). Ces tests lisent `uv.lock`, qui décide du contenu de l'image.
 """
 
 import importlib.util
