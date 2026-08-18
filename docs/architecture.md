@@ -126,10 +126,10 @@ complétion.
 
 ## Le prompt
 
-Le prompt système est un fichier,
-[system_prompt.md](../app/back/system_prompt.md), et non une constante Python :
-c'est de la prose qu'on relit et qu'on révise comme de la documentation. Il est
-lu une fois à l'import et ne varie jamais d'une requête à l'autre.
+Le prompt système est un fichier, `app/back/system_prompt.md`, et non une
+constante Python : c'est de la prose qu'on relit et qu'on révise comme de la
+documentation. Il est lu une fois à l'import et ne varie jamais d'une requête
+à l'autre.
 
 Le partage entre les messages envoyés à Groq est strict :
 

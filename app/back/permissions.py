@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from functools import wraps
 from typing import ParamSpec, Protocol, TypeVar
-from werkzeug.urls import url_parse
+from urllib.parse import urlsplit
 
 from flask import flash, redirect, request, url_for
 from flask_login import LoginManager, current_user
@@ -77,6 +77,22 @@ def list_perm(user: HasPermissions) -> list[str]:
     ]
 
 
+def _safe_referrer(referrer: str | None) -> str | None:
+    """Retourne le referrer s'il pointe sur ce même site, sinon None.
+
+    On ne fait confiance au Referer que s'il pointe sur ce même site : cet
+    en-tête est fourni par le client et peut être falsifié pour rediriger
+    vers un site tiers (open redirect).
+    """
+    if not referrer:
+        return None
+    parsed = urlsplit(referrer)
+    same_host = not parsed.netloc or parsed.netloc == request.host
+    if parsed.scheme in {"", "http", "https"} and same_host:
+        return referrer
+    return None
+
+
 def perm_required(perm: int) -> Callable[[Callable[P, R]], Callable[P, R | Response]]:
     """Décorateur qui restreint l'accès à une permission spécifique."""
 
@@ -95,18 +111,8 @@ def perm_required(perm: int) -> Callable[[Callable[P, R]], Callable[P, R | Respo
                     f'"{permission_table[perm]}" pour accéder à cette page.',
                     "warning",
                 )
-                referrer = request.referrer
-                # On ne fait confiance au Referer que s'il pointe sur ce même
-                # site : cet en-tête est fourni par le client et peut être
-                # falsifié pour rediriger vers un site tiers (open redirect).
-                if referrer:
-                    parsed_referrer = url_parse(referrer)
-                    if (
-                        parsed_referrer.scheme in {"", "http", "https"}
-                        and (not parsed_referrer.netloc or parsed_referrer.netloc == request.host)
-                    ):
-                        return redirect(referrer)
-                return redirect(url_for("chat.index"))
+                safe_referrer = _safe_referrer(request.referrer)
+                return redirect(safe_referrer or url_for("chat.index"))
 
             return func(*args, **kwargs)
 
