@@ -27,7 +27,6 @@ const ALL_CHIPS = [
     { label: 'salles libres', query: 'Salles libres maintenant' },
     { label: "Planning de l'inté", query: "Balance le planning de l'intégration 2026" },
     { label: 'lore TN', query: 'Lore de TELECOM Nancy' },
-    { label: 'menu du self', query: 'Menu du self cette semaine' },
     { label: 'clubs & assos', query: 'Liste des clubs et associations à TELECOM Nancy' },
     { label: 'agenda BDE', query: "Quels sont les prochains événements du BDE ?" },
     { label: 'jobs & stages', query: "Comment trouver un stage ou une alternance depuis TN ?" },
@@ -100,10 +99,43 @@ function renderTreasureMap(bubble, source) {
     }
 }
 
-// Point d'entrée unique : prose dans .msg-text, carte dans son voisin.
+// --- Raisonnement dépliable (chal RAG) ---
+// Le back émet le raisonnement du modèle dans une fence `tngpt-reflexion`, avant
+// la réponse. On l'extrait comme la carte, pour le loger dans un <details>
+// replié plutôt que de le noyer dans la prose. Fence fermante facultative : le
+// raisonnement streame d'abord, encore ouvert.
+const REFLEXION_BLOCK = /```[ \t]*tngpt-reflexion[ \t]*\r?\n([\s\S]*?)(?:```|$)/i;
+
+function splitReflexion(raw) {
+    const match = raw.match(REFLEXION_BLOCK);
+    if (!match) return { reflexion: null, rest: raw };
+    return { reflexion: match[1].trim(), rest: raw.replace(match[0], '').trim() };
+}
+
+// Zone dépliable placée au-dessus de la réponse, repliée par défaut : le
+// raisonnement ne s'affiche qu'au clic, comme une chaîne de pensée.
+function renderReflexion(bubble, text) {
+    let box = bubble.querySelector(':scope > .msg-reasoning');
+    if (!box) {
+        box = document.createElement('details');
+        box.className = 'msg-reasoning';
+        const summary = document.createElement('summary');
+        summary.textContent = 'raisonnement de tn-gpt';
+        const body = document.createElement('pre');
+        body.className = 'msg-reasoning-body';
+        box.append(summary, body);
+        bubble.insertBefore(box, bubble.firstChild);
+    }
+    box.querySelector('.msg-reasoning-body').textContent = text;
+}
+
+// Point d'entrée unique : raisonnement dans son <details>, prose dans .msg-text,
+// carte dans son voisin.
 function renderAssistant(bubble, raw) {
     const textEl = bubble.querySelector('.msg-text');
-    const { prose, carte, complete } = splitResponse(raw);
+    const { reflexion, rest } = splitReflexion(raw);
+    if (reflexion !== null) renderReflexion(bubble, reflexion);
+    const { prose, carte, complete } = splitResponse(rest);
     if (textEl) textEl.innerHTML = marked.parse(prose);
     bubble.dataset.raw = raw;
     if (carte && complete) renderTreasureMap(bubble, carte);
@@ -200,7 +232,9 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.addEventListener('click', () => {
             inp.value = chip.query;
             autoResize();
-            form.dispatchEvent(new Event('submit'));
+            // requestSubmit() et non dispatchEvent(new Event('submit')) :
+            // l'événement synthétique non annulable rechargeait la page sous Firefox.
+            form.requestSubmit();
         });
         chipsContainer.appendChild(btn);
     });
@@ -216,7 +250,11 @@ document.addEventListener('DOMContentLoaded', () => {
     inp.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            if (!sendBtn.disabled) form.dispatchEvent(new Event('submit'));
+            // requestSubmit() émet un événement submit annulable, là où
+            // dispatchEvent(new Event('submit')) en produit un non-annulable :
+            // sous Firefox, le preventDefault du handler était alors ignoré et
+            // la page se rechargeait.
+            if (!sendBtn.disabled) form.requestSubmit();
         }
     });
 
@@ -378,7 +416,7 @@ document.addEventListener('DOMContentLoaded', () => {
         abortController = new AbortController();
 
         try {
-            const response = await fetch('/chat', {
+            const response = await fetch(window.CHAT_ENDPOINT || '/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ message: text, conversation_id: currentConversationId }),

@@ -1,11 +1,7 @@
 """Tests du reclassement Workers AI.
 
-Aucun accès réseau : le client HTTP est remplacé par un double qui rend la
-charge utile voulue, ou qui échoue, selon ce qu'on veut éprouver.
-
-Le point à ne jamais casser est la dégradation : le reranker est un bonus posé
-sur le chemin de la réponse à l'utilisateur, et aucune de ses pannes ne doit
-transformer une recherche correcte en recherche en erreur.
+Sans réseau. Le point à ne jamais casser est la dégradation : aucune panne du
+reranker ne doit transformer une recherche correcte en recherche en erreur.
 """
 
 from typing import Any

@@ -95,10 +95,13 @@ def callback() -> Response:
         code_verifier=session.pop("code_verifier", None),
     )
     credentials = flow.credentials
+    # Tolérance d'horloge : le token Google est parfois daté quelques secondes
+    # dans le futur, sans quoi la vérification lève « used too early » (500).
     info = id_token.verify_oauth2_token(
         credentials.id_token,
         Request(),
         CLIENT_CONFIG["web"]["client_id"],
+        clock_skew_in_seconds=10,
     )
 
     mail = info.get("email")
@@ -130,9 +133,8 @@ def callback() -> Response:
 
     db.session.commit()
 
-    # login_user() refuse un utilisateur dont `is_active` est faux (banni). Sans
-    # ce traitement, il repartirait vers "/" sans session et rebondirait sur le
-    # login sans jamais savoir pourquoi.
+    # login_user() refuse un banni (`is_active` faux) : sans ce traitement il
+    # rebondirait sur le login sans jamais savoir pourquoi.
     if not login_user(user):
         reason = user.ban_reason or "Aucun motif précisé."
         flash(f"Votre accès à TN-GPT a été suspendu. Motif : {reason}", "banned")

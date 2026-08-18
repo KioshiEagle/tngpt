@@ -35,10 +35,8 @@ _STALE_INGESTION = timedelta(minutes=30)
 _vector_store: VectorStore | None = None
 _vector_store_lock = threading.Lock()
 
-# Un dépôt groupé lance un thread par fichier. Sur deux cents mails, autant
-# d'ingestions simultanées noieraient Workers AI sous les 429 bien avant que son
-# backoff ne serve à quelque chose — et chaque échec coûte les embeddings déjà
-# calculés. Les threads restent créés d'un coup, mais n'avancent qu'à trois.
+# Un dépôt groupé lance un thread par fichier : sans ce sémaphore, deux cents
+# ingestions simultanées noieraient Workers AI sous les 429.
 _INGESTIONS = threading.BoundedSemaphore(3)
 
 
@@ -127,9 +125,8 @@ def scan_qdrant() -> dict[str, QdrantDocument]:
 def sync_from_qdrant() -> dict[str, int]:
     """Réconcilie le catalogue avec l'état réel de Qdrant.
 
-    Sert à l'amorçage (Qdrant contient déjà les documents ingérés par la
-    pipeline Drive, que le catalogue ne connaît pas) et au rattrapage d'une
-    désynchronisation.
+    Pour l'amorçage — Qdrant connaît déjà les documents de la pipeline Drive —
+    et le rattrapage d'une désynchronisation.
     """
     scanned = scan_qdrant()
     existing = {
@@ -157,9 +154,8 @@ def sync_from_qdrant() -> dict[str, int]:
         document.status = DOC_INDEXED
         document.error = None
 
-    # Documents catalogués mais introuvables dans Qdrant : on les signale au lieu
-    # de les supprimer, pour que la désynchronisation reste visible à l'écran.
-    # Une ingestion en cours n'est pas concernée : ses chunks n'existent pas encore.
+    # Catalogués mais introuvables dans Qdrant : signalés plutôt que supprimés,
+    # pour que la désynchronisation reste visible. Hors ingestion en cours.
     for source_id, document in existing.items():
         if source_id not in scanned and document.status != DOC_INDEXING:
             document.status = DOC_MISSING
@@ -185,10 +181,8 @@ def sync_from_qdrant() -> dict[str, int]:
 def reset_stale_ingestions() -> int:
     """Marque en échec les ingestions figées par un redémarrage du serveur.
 
-    Le travail se fait dans un thread : si le processus meurt en cours de route,
-    le document reste bloqué en « indexing » pour toujours. On le rattrape à la
-    consultation plutôt qu'au démarrage, pour ne pas toucher la base à l'import
-    (`flask db upgrade` s'exécute avant que les tables n'existent).
+    Rattrapé à la consultation et non au démarrage, pour ne pas toucher la base
+    à l'import — `flask db upgrade` court avant que les tables n'existent.
     """
     deadline = datetime.now(UTC) - _STALE_INGESTION
     stale = db.session.scalars(
@@ -231,9 +225,8 @@ def _ingest_worker(app: Flask, source_id: str, stored_path: Path) -> None:
                     stored_path, stored_path.parent, client=client
                 )
             elif suffix == ".eml":
-                # Aucun appel à Groq ici : clubs et résumé se lisent au motif,
-                # et un résumé inventé par un modèle serait plus nuisible
-                # qu'absent — le prompt interdit d'inventer.
+                # Aucun appel à Groq : clubs et résumé se lisent au motif,
+                # et un résumé inventé serait plus nuisible qu'absent.
                 catalogue, _ = load_catalogue()
                 markdown_path = convert_mail(stored_path, stored_path.parent, catalogue)
 
@@ -284,9 +277,8 @@ def start_ingestion(app: Flask, source_id: str, stored_path: Path) -> None:
 def delete_document(source_id: str) -> bool:
     """Supprime un document de Qdrant puis du catalogue.
 
-    Qdrant d'abord : si la suppression vectorielle échoue, la ligne reste au
-    catalogue et l'incohérence est visible, plutôt que d'avoir des chunks
-    orphelins toujours interrogeables mais invisibles à l'écran.
+    Qdrant d'abord : un échec laisse la ligne au catalogue, incohérence visible,
+    plutôt que des chunks orphelins interrogeables et invisibles.
     """
     document = db.session.get(Document, source_id)
     if document is None:

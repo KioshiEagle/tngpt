@@ -95,6 +95,11 @@
         <div class="chips" id="chips-container"></div>
     </main>
 
+    <script>
+        // Endpoint de chat de la page : /chat pour le TN-GPT normal, /ctf/<chal>/chat
+        // pour un challenge. Un défaut au cas où le template ne le fournirait pas.
+        window.CHAT_ENDPOINT = "{{ chat_endpoint | default('/chat') }}";
+    </script>
     <script src="{{ asset('marked.min.js') }}"></script>
     <script src="{{ asset('treasuremap.js') }}"></script>
     <script src="{{ asset('main.js') }}"></script>

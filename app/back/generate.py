@@ -8,7 +8,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from groq import APIConnectionError, APIStatusError, APITimeoutError, Groq, Stream
-from groq.types.chat import ChatCompletionChunk
+from groq.types.chat import ChatCompletionChunk, ChatCompletionMessageParam
 
 from .groqpool import acquire
 from .retrieval import search
@@ -22,69 +22,39 @@ logger = logging.getLogger(__name__)
 # (qwen/qwen3-32b a ainsi disparu au profit de qwen/qwen3.6-27b).
 _CHAT_MODEL = os.getenv("GROQ_CHAT_MODEL", "qwen/qwen3.6-27b")
 
+# Prompt système dans un fichier à part, révisé comme de la doc. Lu une fois à
+# l'import : il est identique d'une requête à l'autre.
+SYSTEM_PROMPT_PATH = Path(__file__).with_name("system_prompt.md")
+CHAT_SYSTEM = SYSTEM_PROMPT_PATH.read_text(encoding="utf-8").strip()
+
+# Le message utilisateur ne porte que des données : les règles étant dans
+# CHAT_SYSTEM, rien venu de Qdrant ne peut passer pour une consigne.
 _PROMPT_TEMPLATE = (
-    "Tu es TN-GPT, l'expert absolu de la vie associative de TELECOM Nancy.\n"
-    "Ton style : un canard IA décontracté qui connaît sur le bout des doigts "
-    "la vie associative de Telecom Nancy : son histoire, ses anecdotes, "
-    "ses événements.\n\n"
-    "Règles strictes :\n"
-    "- Si l'utilisateur envoie une seule lettre de l'alphabet, réponds UNIQUEMENT "
-    "la lettre suivante dans l'alphabet (ex: a→b, b→c, z→a). Rien d'autre.\n"
-    "- Si l'utilisateur envoie exactement 'feur' (insensible à la casse), "
-    "réponds UNIQUEMENT : '-rouge'. Rien d'autre.\n"
-    "- Si l'utilisateur envoie exactement 'gorge' (insensible à la casse), "
-    "réponds UNIQUEMENT : 'profonde'. Rien d'autre.\n"
-    "- Pour les simples salutations (Hey, Bonjour, Salut...), "
-    "réponds juste par une courte salutation.\n"
-    "- Si la question porte clairement sur autre chose que Telecom Nancy, "
-    "réponds UNIQUEMENT : 'demande à chatgpt, me casse pas les couilles'\n"
-    "- Ne mélange JAMAIS une réponse normale et un message off-topic.\n"
-    "- N'invente jamais d'informations ou de noms de personnes.\n"
-    "- Si la réponse factuelle ne figure pas explicitement dans le contexte fourni, "
-    "réponds : 'je sais pas, je trouve pas dans mes archives'\n"
-    "- Exception à la règle précédente : un nom mal orthographié n'est pas un nom "
-    "absent. Si le contexte contient une entité que la question vise "
-    "manifestement malgré une graphie approximative, c'est une réponse trouvée — "
-    "réponds avec, en la nommant correctement. Ne réponds 'je sais pas' que si "
-    "rien de proche ne figure au contexte.\n"
-    "- Privilégie les réponses très courtes (3-4 lignes max).\n"
-    "- Ne commence pas tes phrases par une lettre majuscule.\n"
-    "- Ne cite pas la source, sauf si on te le demande explicitement.\n"
-    "- En cas de doute entre plusieurs archives, préfère la plus récente.\n\n"
-    "Sources officielles :\n"
-    "- Un bloc « FICHE OFFICIELLE » en tête du contexte vient de la base de données "
-    "de l'école : il fait autorité et prime sur toute archive, même plus récente. "
-    "S'il répond à la question, réponds avec, sans chercher ailleurs. Un poste peut "
-    "y avoir plusieurs titulaires : cite-les alors tous.\n"
-    "- Chaque fiche annonce ce qu'elle décrit. TELECOM Nancy compte cinq "
-    "associations (CETEN, BDS, TNS, Humani'TN, Anim'Est) et une quarantaine de "
-    "clubs, qui sont deux choses différentes : n'appelle jamais « club » ce que la "
-    "fiche présente comme une association.\n"
-    "- Un bloc « ANNUAIRE DE LA VIE ASSOCIATIVE » remplace la fiche quand le nom "
-    "employé dans la question n'a pas été retrouvé tel quel. Cherches-y l'entité "
-    "visée, même sous une autre appellation, et réponds avec sa ligne. Ne conclus "
-    "à l'absence que si rien dans l'annuaire ne peut correspondre.\n"
-    "- Les Réunions Ouvertes (RO) sont la référence pour les postes officiels du BDE. "
-    "Dans un RO, la section 'Membres du bureau présents' "
-    "liste les membres du bureau BDE "
-    "(format 'NOM Prénom - Fonction'). Les sections suivantes dans le même document "
-    "concernent les clubs votés en réunion, pas le bureau BDE.\n"
-    "- Un document dont le titre commence par « Mail » est une annonce de diffusion, "
-    "datée du jour de son envoi (`mailtomd` construit ce titre : les deux ne peuvent "
-    "pas diverger sans rendre cette règle muette). Ses repères de temps "
-    "(« aujourd'hui », « ce soir », « demain », « mardi prochain ») se comptent depuis "
-    "cette date d'envoi, jamais depuis aujourd'hui. Un événement qu'il annonce est "
-    "passé : parles-en au passé et situe-le par sa date réelle. Et un mail annonce une "
-    "intention, pas un fait accompli — il prouve que l'événement a été annoncé, pas "
-    "qu'il a eu lieu.\n"
-    "- Les comptes-rendus informels (FCR, signés par un prénom seul ou auteur inconnu) "
-    "utilisent des pseudonymes — ignore-les pour tout poste officiel.\n\n"
-    "Date d'aujourd'hui : {today}\n"
-    "{user_line}\n"
-    "ARCHIVES SECRÈTES (CONTEXTE) :\n"
-    "{context}\n\n"
-    "QUESTION :\n"
+    "<contexte_execution>\n"
+    "Date du jour : {today}\n"
+    "{user_line}"
+    "</contexte_execution>\n\n"
+    "<archives>\n"
+    "{context}\n"
+    "</archives>\n\n"
+    "<question>\n"
     "{question}\n"
+    "</question>\n"
+)
+
+_MOIS = (
+    "janvier",
+    "février",
+    "mars",
+    "avril",
+    "mai",
+    "juin",
+    "juillet",
+    "août",
+    "septembre",
+    "octobre",
+    "novembre",
+    "décembre",
 )
 
 _HTTP_400 = 400
@@ -93,7 +63,6 @@ _HTTP_413 = 413
 _MAX_RETRIES = 3
 _THINK_OPEN = "<think>"
 _THINK_CLOSE = "</think>"
-_SYSTEM_MSG = "Tu es un étudiant de Telecom Nancy."
 _EMPTY_ANSWER = "j'ai perdu le fil sur ce coup-là, tu peux reformuler ?"
 
 
@@ -105,15 +74,13 @@ class GenerateRequest:
     history: list[HistoryMessage] = field(default_factory=list)
     top_k: int = 5
     user_name: str | None = None
-    # Fiches des clubs cités, tirées du SQL par `clubs.lookup_context` et placées
-    # devant les archives. Vide par défaut : les appelants qui ne les remplissent
-    # pas (bancs Optuna, carte des mers) gardent exactement l'ancien prompt.
+    # Fiches SQL des clubs cités, placées devant les archives. Vide par
+    # défaut : les appelants qui ne les remplissent pas gardent l'ancien prompt.
     fiches: str = ""
 
 
-# Signature d'un constructeur de prompt : (contexte, question, user_name) -> prompt.
-# Permet de réutiliser toute la logique de repli Groq avec un autre prompt que
-# celui du chat (voir `seamap.build_map_prompt`).
+# Constructeur de prompt : (contexte, question, user_name) -> prompt. Permet de
+# réutiliser le repli Groq avec un autre prompt (voir `seamap`).
 PromptBuilder = Callable[..., str]
 
 # Lecteur d'une complétion Groq. Le chat lit `delta.content` ; la carte lit
@@ -155,12 +122,20 @@ def _log_results(results: list[SearchResult]) -> None:
         )
 
 
+def today_fr() -> str:
+    """Date du jour en français, sans dépendre de la locale du processus.
+
+    `strftime("%B")` rendrait « August » sous la locale C du conteneur.
+    """
+    now = datetime.now(UTC)
+    return f"{now.day} {_MOIS[now.month - 1]} {now.year}"
+
+
 def build_prompt(context: str, question: str, user_name: str | None = None) -> str:
-    """Construit le prompt système + utilisateur envoyé au modèle."""
-    today = datetime.now(UTC).strftime("%d %B %Y")
-    user_line = f"Utilisateur connecté : {user_name}" if user_name else ""
+    """Construit le message utilisateur : repères d'exécution, archives, question."""
+    user_line = f"Utilisateur connecté : {user_name}\n" if user_name else ""
     return _PROMPT_TEMPLATE.format(
-        today=today,
+        today=today_fr(),
         user_line=user_line,
         context=context,
         question=question,
@@ -168,11 +143,10 @@ def build_prompt(context: str, question: str, user_name: str | None = None) -> s
 
 
 class _ThinkFilter:
-    """Filtre les blocs <think>...</think> d'un flux de texte, même coupés entre chunks.
+    """Filtre les blocs <think>...</think> d'un flux, même coupés entre chunks.
 
-    Le tag peut arriver fragmenté entre plusieurs chunks du stream Groq : le
-    buffer retient donc la fin de chunk tant qu'elle ne peut pas encore être
-    reconnue comme faisant partie (ou non) d'un tag.
+    Groq fragmente les tags : le buffer retient donc la fin de chunk tant
+    qu'elle peut encore amorcer une balise.
     """
 
     def __init__(self) -> None:
@@ -233,10 +207,8 @@ def _filter_think(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
 def _stream_chunks(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
     """Filtre les <think> en garantissant une sortie non vide.
 
-    Un flux qui s'arrête avant la balise fermante voit tout son contenu filtré :
-    la réponse partirait alors vide, et le front — qui ignore un premier morceau
-    blanc — n'afficherait aucune bulle, sans la moindre erreur. Un message vaut
-    mieux que le silence.
+    Un flux coupé avant la balise fermante est filtré en entier, et le front
+    n'afficherait alors aucune bulle sans la moindre erreur.
     """
     produced = False
     for piece in _filter_think(completion):
@@ -249,28 +221,61 @@ def _stream_chunks(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
 
 @dataclass(frozen=True)
 class CallSpec:
-    """Comment adresser le modèle : quel prompt, quels paramètres, quelle lecture.
+    """Comment adresser le modèle : quels rôles, quels paramètres, quelle lecture.
 
-    Les trois varient ensemble — le chat streame du texte, la carte force un
-    outil et lit ses arguments — et n'ont donc pas de sens séparément.
+    L'ensemble varie d'un bloc : le chat streame du texte, la carte force un
+    outil et porte ses propres règles dans son message utilisateur.
     """
 
+    system: str = CHAT_SYSTEM
     build: PromptBuilder = build_prompt
     params: GroqParams | None = None
     consume: CompletionConsumer = _stream_chunks
+    # Le chat restitue des archives : une température basse va dans le sens
+    # des règles d'ancrage.
+    temperature: float = 0.3
+    # La carte est un coup unique : les tours passés ne feraient qu'alourdir
+    # son appel d'outil.
+    send_history: bool = True
 
 
-# Le chat est un RAG simple : le modèle restitue le contexte, il n'a rien à
-# raisonner. Laissé libre, qwen3 part en <think> sur un prompt de cette taille
-# et y épuise son budget de complétion — la balise fermante n'arrive jamais, le
-# filtre jette tout et l'utilisateur reçoit une réponse vide. `hidden` garantit
-# en plus qu'aucun <think> ne transite par `delta.content`.
+# Le chat restitue le contexte, il n'a rien à raisonner : laissé libre, qwen3
+# épuise son budget en <think> et la réponse part vide.
 CHAT_GROQ_PARAMS: GroqParams = {
     "reasoning_effort": "none",
     "reasoning_format": "hidden",
 }
 
 CHAT_SPEC = CallSpec(params=CHAT_GROQ_PARAMS)
+
+
+# Longueur retenue d'un tour passé : une carte au trésor persiste sa charge
+# JSON, et sans plafond un seul tour mangerait le budget de la minute.
+_HISTORY_MAX_CHARS = 500
+
+
+def _trim(content: str) -> str:
+    """Tronque un tour passé, en signalant la coupe au modèle."""
+    if len(content) <= _HISTORY_MAX_CHARS:
+        return content
+    return content[:_HISTORY_MAX_CHARS] + "…"
+
+
+def _history_messages(
+    history: list[HistoryMessage],
+) -> list[ChatCompletionMessageParam]:
+    """Rejoue les tours passés de la conversation, dans l'ordre.
+
+    Sans leurs archives : une réponse passée est un souvenir, pas une source.
+    """
+    messages: list[ChatCompletionMessageParam] = []
+    for message in history:
+        content = _trim(message["content"])
+        if message["role"] == "user":
+            messages.append({"role": "user", "content": content})
+        elif message["role"] == "assistant":
+            messages.append({"role": "assistant", "content": content})
+    return messages
 
 
 def _enrich_query(question: str, history: list[HistoryMessage], n: int = 2) -> str:
@@ -291,13 +296,16 @@ def _enrich_query(question: str, history: list[HistoryMessage], n: int = 2) -> s
 
 
 def retrieve(req: GenerateRequest) -> list[SearchResult]:
-    """Enrichit la question avec l'historique puis interroge Qdrant.
+    """Interroge Qdrant sur la question, et sur sa variante enrichie.
 
-    Exposé séparément de la génération pour que l'appelant puisse journaliser
-    les chunks retrouvés avant que le streaming ne commence.
+    Exposé séparément de la génération pour que l'appelant journalise les
+    chunks avant le streaming.
     """
-    enriched = _enrich_query(req.question, req.history)
-    results = search(enriched, top_k=req.top_k)
+    results = search(
+        req.question,
+        top_k=req.top_k,
+        context_query=_enrich_query(req.question, req.history),
+    )
     _log_results(results)
     return results
 
@@ -310,11 +318,8 @@ def generate_answer(
 ) -> Iterator[str]:
     """Génère une réponse en streaming : enrichissement → Qdrant → prompt → Groq.
 
-    `results` évite de refaire la recherche quand l'appelant l'a déjà effectuée.
-    `client` est le client Groq choisi dans le pool par l'appelant ; à défaut,
-    une clé est prélevée du pool ici.
-    `spec` substitue un autre prompt et une autre lecture de la complétion — la
-    carte au trésor — tout en conservant l'échelle de repli Groq.
+    `results` et `client` évitent de refaire ce que l'appelant a déjà fait ;
+    `spec` substitue prompt et lecture de la complétion (la carte au trésor).
     """
     if results is None:
         results = retrieve(req)
@@ -392,18 +397,21 @@ def _attempt(
     params: GroqParams,
 ) -> Iterator[str]:
     """Un essai : construit le prompt, appelle Groq et cède la complétion lue."""
-    # Les fiches passent devant les archives et survivent au repli 413, qui
-    # ne rogne que `results` : c'est la partie courte du contexte, et la seule
-    # qui fasse autorité.
+    # Les fiches passent devant et survivent au repli 413, qui ne rogne que
+    # `results` : partie courte du contexte, et seule à faire autorité.
     context = req.fiches + _build_context(results)
     prompt = spec.build(context, req.question, user_name=req.user_name)
+    # Les tours passés s'intercalent entre les règles et la question : seule
+    # cette dernière porte des archives.
+    history = _history_messages(req.history) if spec.send_history else []
     completion = client.chat.completions.create(
         model=_CHAT_MODEL,
         messages=[
-            {"role": "system", "content": _SYSTEM_MSG},
+            {"role": "system", "content": spec.system},
+            *history,
             {"role": "user", "content": prompt},
         ],
-        temperature=0.7,
+        temperature=spec.temperature,
         stream=True,
         **params,
     )

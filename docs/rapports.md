@@ -91,3 +91,26 @@ le reclassement coûte entre 0,04 et 0,7 seconde par question.
 Les scripts qui ont produit ces rapports (`app/back/optuna_*.py`) importent
 encore `sentence-transformers` et ne sont plus exécutables en l'état : ils sont
 conservés pour mémoire, en attendant d'être repris ou retirés.
+
+## Le seuil de similarité, et pourquoi il a disparu
+
+`retrieval.py` portait un `SCORE_THRESHOLD = 0.5` calibré sur les embeddings
+Gemini, jamais remesuré après le passage à bge-m3. Remesuré sur 10 questions
+dont on sait quel chunk doit remonter :
+
+| Seuil | Cible atteinte | Bruit servi |
+|---|---:|---:|
+| 0,5 | 5/10 | 3,3 |
+| 0,4 | 7/10 | 4,0 |
+| 0,3 | 8/10 | 5,0 |
+| aucun | 8/10 | 5,0 |
+
+Il coupait la moitié des questions légitimes — toutes celles qui portent sur une
+personne, un nom propre étant un signal trop court face à des chunks de prose —
+sans arrêter le bruit pour autant : « comment tricoter une écharpe » score
+0,627, au-dessus de 8 des 10 questions valides. Les deux populations se
+recouvrent, aucun seuil ne les sépare.
+
+Le tri de pertinence revient donc au reranker et le refus du hors-sujet au
+prompt, qui s'en acquitte déjà. 0,3 donnant exactement le même résultat
+qu'aucun seuil, c'est la forme la plus honnête qui a été retenue : pas de seuil.

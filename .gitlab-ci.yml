@@ -94,7 +94,10 @@ deploy_to_server:
     # 2. Configuration temporaire de la clé privée de production
     - mkdir -p ~/.ssh && chmod 700 ~/.ssh
     - echo "$PROD_SSH_KEY" | base64 -d > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
-    - echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
+    # Clé d'hôte épinglée hors bande via $PROD_KNOWN_HOSTS (obtenue par
+    # `ssh-keyscan $PROD_URL` sur une machine de confiance) : on vérifie, sans skip.
+    - echo "$PROD_KNOWN_HOSTS" > ~/.ssh/known_hosts && chmod 644 ~/.ssh/known_hosts
+    - printf 'Host *\n\tStrictHostKeyChecking yes\n' > ~/.ssh/config && chmod 600 ~/.ssh/config
 
     # 3. Préparation du terrain sur le serveur distant (via SSH direct)
     - ssh -i ~/.ssh/id_ed25519 root@$PROD_URL "mkdir -p /opt/tngpt"

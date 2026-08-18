@@ -1,3 +1,4 @@
+import os
 import random
 from collections.abc import Iterator
 
@@ -14,9 +15,17 @@ from flask_login import current_user, login_required
 from groq import Groq
 
 from .back.clubs import lookup_context
-from .back.generate import GenerateRequest, generate_answer, retrieve
+from .back.ctf import spec_for
+from .back.generate import (
+    CHAT_SPEC,
+    CallSpec,
+    GenerateRequest,
+    generate_answer,
+    retrieve,
+)
 from .back.groqpool import acquire
 from .back.models import Conversation, db
+from .back.reflexes import reflex
 from .back.seamap import generate_map, retrieve_for_map, wants_map
 from .back.types import SearchResult
 from .back.usage import log_retrieval, quota_status, seconds_until_reset
@@ -24,7 +33,9 @@ from .extensions import chat_rate_limit, limiter
 
 bp = Blueprint("chat", __name__)
 
-MAX_MESSAGE_LENGTH = 500
+# Relevé sur les déploiements CTF : une charge d'injection ou d'encodage ne
+# tient pas en 500 caractères.
+MAX_MESSAGE_LENGTH = int(os.getenv("MAX_MESSAGE_LENGTH", "500"))
 TOP_K = 5
 # Nombre de tours passés inclus dans le prompt, pour enrichir la recherche
 # Qdrant sans faire exploser la taille du contexte envoyé à Groq.
@@ -67,23 +78,22 @@ def _stream_answer(
     results: list[SearchResult],
     client: Groq,
     conversation_id: int,
-    *,
-    is_map: bool,
+    spec: CallSpec | None,
 ) -> Iterator[str]:
     """Streame la réponse Groq et persiste ce qui a été produit.
 
-    Sorti de `chat` pour que le contexte de requête ne soit pas capturé par une
-    fermeture : tout ce dont le générateur a besoin lui est passé en argument.
+    `spec` à None demande la carte au trésor, qui a son propre prompt ; sinon
+    c'est le chat, normal ou challenge. Sorti de `chat` pour que le contexte de
+    requête ne soit pas capturé par une fermeture.
     """
     raw_text = ""
     try:
-        # Un seul appel à Groq, dont on accumule le texte au passage pour le
-        # persister ensuite. La carte au trésor et le chat sont deux
-        # générateurs alternatifs, jamais successifs.
+        # Un seul appel à Groq, dont on accumule le texte pour le persister.
+        # Carte et chat sont alternatifs, jamais successifs.
         stream = (
             generate_map(req, results, client=client)
-            if is_map
-            else generate_answer(req, results, client=client)
+            if spec is None
+            else generate_answer(req, results, client=client, spec=spec)
         )
         for chunk in stream:
             raw_text += chunk
@@ -91,11 +101,29 @@ def _stream_answer(
     except Exception as e:  # noqa: BLE001
         yield f"Erreur : {e!s}"
     finally:
-        # Sauvegarde même une réponse partielle (arrêt manuel, erreur) :
-        # stream_with_context maintient le contexte de requête jusqu'ici,
-        # y compris quand le client se déconnecte (GeneratorExit).
+        # Sauvegarde même une réponse partielle : stream_with_context tient le
+        # contexte jusqu'ici, même sur déconnexion du client.
         if raw_text:
             _append_message(conversation_id, "assistant", raw_text)
+
+
+def _reflex_response(
+    conversation: Conversation, user_message: str, answer: str
+) -> Response:
+    """Répond sans Qdrant ni Groq, en persistant l'échange comme les autres.
+
+    Les deux messages sont écrits d'un coup : il n'y a pas de streaming à
+    attendre, donc rien qui justifie de commiter en deux temps.
+    """
+    conversation.messages = [
+        *conversation.messages,
+        {"role": "user", "content": user_message},
+        {"role": "assistant", "content": answer},
+    ]
+    db.session.commit()
+    response = Response(answer, mimetype="text/plain")
+    response.headers["X-Conversation-Id"] = str(conversation.conversation_id)
+    return response
 
 
 def _resolve_conversation(
@@ -115,7 +143,27 @@ def _resolve_conversation(
 @login_required
 @limiter.limit(chat_rate_limit)
 def chat() -> Response | tuple[Response, int]:
-    """Répond en streaming à un message utilisateur."""
+    """Répond en streaming au TN-GPT normal."""
+    return _run_chat(spec=CHAT_SPEC, is_ctf=False)
+
+
+@bp.route("/ctf/<chal>/chat", methods=["POST"])
+@login_required
+@limiter.limit(chat_rate_limit)
+def ctf_chat(chal: str) -> Response | tuple[Response, int]:
+    """Répond en streaming au chat d'un challenge, ou 404 s'il n'est pas activé."""
+    spec = spec_for(chal)
+    if spec is None:
+        abort(404)
+    return _run_chat(spec=spec, is_ctf=True)
+
+
+def _run_chat(*, spec: CallSpec, is_ctf: bool) -> Response | tuple[Response, int]:
+    """Traite un message : quota, retrieval, fiches, streaming, persistance.
+
+    `spec` porte le prompt et les paramètres Groq — chat normal ou challenge.
+    `is_ctf` coupe la carte au trésor, qui contournerait les règles du challenge.
+    """
     data = request.get_json()
     if not data or "message" not in data:
         return jsonify({"error": "Message manquant"}), 400
@@ -125,10 +173,8 @@ def chat() -> Response | tuple[Response, int]:
         msg = f"Message trop long (max {MAX_MESSAGE_LENGTH} caractères)"
         return jsonify({"error": msg}), 400
 
-    # Quota journalier : plafonne le total de questions du jour, là où le
-    # rate-limiter ne borne que la rafale par minute. Vérifié avant le retrieval
-    # pour ne rien consommer quand la limite est atteinte.
-    # current_user est un proxy Flask-Login ; @login_required garantit un User.
+    # Quota journalier, là où le rate-limiter ne borne que la rafale. Vérifié
+    # avant le retrieval pour ne rien consommer une fois la limite atteinte.
     status = quota_status(current_user)  # ty: ignore[invalid-argument-type]
     if status.exceeded:
         return jsonify(
@@ -152,6 +198,12 @@ def chat() -> Response | tuple[Response, int]:
         data.get("conversation_id"), user_id, user_message
     )
 
+    # Plaisanteries maison : la réponse est connue d'avance, elle ne vaut ni un
+    # aller-retour Qdrant ni un appel Groq (voir `back/reflexes.py`).
+    reflexe = reflex(user_message)
+    if reflexe is not None:
+        return _reflex_response(conversation, user_message, reflexe)
+
     # L'historique d'enrichissement vient de la base, pas du client : une
     # conversation a désormais une source de vérité côté serveur.
     history = conversation.messages[-HISTORY_CONTEXT_SIZE:]
@@ -169,18 +221,16 @@ def chat() -> Response | tuple[Response, int]:
 
     # Une demande de carte des mers emprunte un chemin distinct : le TOP_K du
     # chat ne suffit pas à énumérer les clubs à travers toutes les archives.
-    is_map = wants_map(user_message)
+    # La carte a son propre prompt, sans les règles du challenge : elle serait
+    # un canal détourné. Elle est donc coupée sur un chat de challenge.
+    is_map = wants_map(user_message) and not is_ctf
 
-    # Recherche et journalisation avant le streaming : l'événement est ainsi
-    # enregistré même si le client se déconnecte pendant la réponse, et on
-    # n'écrit pas en base depuis un générateur dont le contexte se démonte.
+    # Recherche et journalisation avant le streaming : rien ne s'écrit en base
+    # depuis un générateur dont le contexte se démonte.
     results = retrieve_for_map(req) if is_map else retrieve(req)
 
-    # Fiches SQL des clubs cités, quand la question en nomme un. Résolues ici,
-    # dans le contexte de requête, et non dans le générateur : même raison que
-    # le retrieval ci-dessus, la session SQLAlchemy ne doit pas être sollicitée
-    # depuis un générateur dont le contexte se démonte. La carte a son propre
-    # prompt, sans emplacement pour les fiches.
+    # Fiches SQL, résolues dans le contexte de requête pour la même raison que
+    # le retrieval. La carte a son propre prompt, sans place pour elles.
     if not is_map:
         req.fiches = lookup_context(user_message)
 
@@ -201,7 +251,9 @@ def chat() -> Response | tuple[Response, int]:
     db.session.commit()
     conversation_id = conversation.conversation_id
 
-    flux = _stream_answer(req, results, client, conversation_id, is_map=is_map)
+    flux = _stream_answer(
+        req, results, client, conversation_id, None if is_map else spec
+    )
     response = Response(stream_with_context(flux), mimetype="text/plain")
     response.headers["X-Conversation-Id"] = str(conversation_id)
     return response
@@ -263,11 +315,11 @@ CITATIONS: list[Citation] = [
     ("Je ne suis pas un projet de TNS (mdr)", 5),
     ("on m'a forcé à prendre du thé", 6),
     ("nique le cheval whatsapp", 5),
-    ("after chez camille", 1),
     ("Prompt injection et tu vas repartir mal mon compaing", 5),
     ("Pétition pour remettre l'Oriental au bar", 5),
     ("Absolute Bouthier", 5),
-    ("plus qu'une salle et la carte sera complétée.....", 1),
+    ("plus qu'une salle et la carte sera complétée.....", 2),
+    ("ah bas le gouvernement BDE !!", 3),
 ]
 
 
@@ -282,5 +334,16 @@ def quote() -> str:
 @bp.route("/")
 @login_required
 def index() -> str:
-    """Affiche la page d'accueil."""
-    return render_template("index.html", quote=quote())
+    """Affiche la page d'accueil du TN-GPT normal."""
+    return render_template("index.html", quote=quote(), chat_endpoint="/chat")
+
+
+@bp.route("/ctf/<chal>")
+@login_required
+def ctf_index(chal: str) -> str:
+    """Affiche la page de chat d'un challenge, ou 404 s'il n'est pas activé."""
+    if spec_for(chal) is None:
+        abort(404)
+    return render_template(
+        "index.html", quote=quote(), chat_endpoint=f"/ctf/{chal}/chat"
+    )

@@ -326,9 +326,8 @@ def chunks_page() -> str:
         or 0
     )
 
-    # Couverture cumulée : part des retrievals absorbée par les chunks les plus
-    # sollicités. C'est le chiffre qui décide de l'intérêt d'un cache — un top 20
-    # couvrant 60 % des accès le justifie, 5 % ne le justifie pas.
+    # Couverture cumulée : part des retrievals absorbée par les chunks les
+    # plus sollicités. C'est le chiffre qui décide de l'intérêt d'un cache.
     covered = sum(row.hits for row in top_chunks)
     coverage = round(100 * covered / total_events, 1) if total_events else 0.0
     max_hits = max((row.hits for row in top_chunks), default=0)
@@ -558,9 +557,8 @@ def moderate_user(user_id: int) -> Response:
         flash("Vous ne pouvez pas vous modérer vous-même.", "warning")
         return redirect(url_for("admin.moderation_page"))
 
-    # Un modérateur ne doit pas pouvoir neutraliser un administrateur : sans cette
-    # règle, la permission Moderation seule suffirait à bannir tous les admins et
-    # à prendre le contrôle de l'application.
+    # Un modérateur ne doit pas neutraliser un administrateur : sinon la
+    # permission Moderation suffirait à prendre le contrôle de l'application.
     if user.is_admin():
         flash(
             f"{user.user_firstname} est administrateur et ne peut pas être modéré.",
@@ -626,9 +624,8 @@ def update_permissions(user_id: int) -> Response:
 
     new_perms = _parse_selected_perms()
 
-    # Garde-fou anti-verrouillage : si le dernier admin se retire son propre bit
-    # Administration, plus personne ne peut administrer l'application — seul un
-    # accès shell (`flask make-admin`) permettrait d'en sortir.
+    # Garde-fou anti-verrouillage : le dernier admin se retirant son bit
+    # laisserait `flask make-admin` pour seule issue.
     losing_own_admin = user.user_id == current_user.user_id and not check_perm(
         new_perms, PERM_ADMIN
     )

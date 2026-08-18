@@ -33,7 +33,6 @@ def rate_limit_key() -> str:
 
 limiter = Limiter(rate_limit_key, default_limits=[], storage_uri="memory://")
 
-# Protège les formulaires du panel admin : sans jeton CSRF, un admin visitant
-# une page malveillante pourrait être amené à accorder les droits admin à un
-# tiers à son insu. Les endpoints JSON du chat en sont exemptés (voir main.py).
+# Protège les formulaires du panel admin : sans jeton, un admin piégé pourrait
+# accorder les droits à un tiers. Endpoints JSON exemptés (voir main.py).
 csrf = CSRFProtect()
