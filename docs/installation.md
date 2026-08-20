@@ -105,6 +105,20 @@ L'application est disponible sur http://localhost:8501.
     process : une modification de `index.html` demande un redémarrage, ou un
     `--reload-extra-file app/front/templates/index.html`.
 
+!!! bug "macOS : worker tué en boucle au démarrage"
+    Sur macOS, un worker peut mourir dès son démarrage avec
+    `+[NSCharacterSet initialize] may have been in progress in another thread
+    when fork() was called`, suivi d'un `SIGKILL` et d'un redémarrage sans fin.
+    Le runtime Objective-C refuse qu'un `+initialize` entamé avant un `fork()`
+    se poursuive dans l'enfant, et gunicorn fabrique ses workers par `fork()`.
+
+    ```bash
+    OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES uv run gunicorn -w 1 --reload -b 127.0.0.1:8501 main:app
+    ```
+
+    Strictement local : l'image Docker tourne sous Linux, qui n'a pas de
+    runtime Objective-C, et n'est donc pas concernée.
+
 !!! warning "Un seul worker"
     `-w 1` n'est pas arbitraire : les migrations Alembic sont appliquées au
     démarrage du conteneur, ce qui ne serait pas sûr avec plusieurs workers
