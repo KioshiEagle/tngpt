@@ -32,7 +32,6 @@ const WRITING_PHRASES = [
 
 const ALL_CHIPS = [
     { label: 'carte des mers', query: 'Montre-moi la carte des mers des clubs de TELECOM Nancy' },
-    { label: 'salles libres', query: 'Salles libres maintenant' },
     { label: "Planning de l'inté", query: "Balance le planning de l'intégration 2026" },
     { label: 'lore TN', query: 'Lore de TELECOM Nancy' },
     { label: 'clubs & assos', query: 'Liste des clubs et associations à TELECOM Nancy' },
