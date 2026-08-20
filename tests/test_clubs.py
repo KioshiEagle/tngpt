@@ -7,6 +7,7 @@ fonctions pures du module sont couvertes.
 import pytest
 
 from app.back.clubs import (
+    BUDGET_ANNUAIRE,
     MAX_CANDIDATS,
     NATURE_ASSO,
     NATURE_CLUB,
@@ -354,7 +355,7 @@ def test_veut_annuaire_sur_une_question_associative(question: str) -> None:
     ],
 )
 def test_veut_pas_annuaire_hors_sujet(question: str) -> None:
-    """Une question étrangère à la vie associative ne paie pas les ~1350 tokens."""
+    """Une question étrangère à la vie associative ne paie pas l'annuaire."""
     assert not veut_annuaire(question, match_roles(question, _ROLES))
 
 
@@ -545,3 +546,65 @@ def test_format_fiches_vide_ne_produit_rien(fiches: list[Fiche]) -> None:
 def test_normalize_replie_accents_et_apostrophes() -> None:
     """La comparaison se fait sur une forme sans accent ni apostrophe courbe."""
     assert normalize("  Créa’TN   ") == normalize("crea'tn")  # noqa: RUF001
+
+
+# --- Budget de l'annuaire ------------------------------------------------------
+
+
+def _catalogue_volumineux(n: int) -> list[Entite]:
+    """`n` entités décrites, de quoi dépasser n'importe quel budget serré."""
+    return [
+        Entite(
+            entite_id=i,
+            nom=f"Club{i}",
+            slug=f"club{i}",
+            nature=NATURE_CLUB,
+            description="Description assez longue pour peser dans le bloc. " * 3,
+        )
+        for i in range(n)
+    ]
+
+
+def test_annuaire_degrade_les_bureaux_avant_les_descriptions() -> None:
+    """Les bureaux tombent en premier : ce bloc sert à identifier, pas à lister.
+
+    C'est aussi la moitié du poids de l'annuaire réel.
+    """
+    entites = _catalogue_volumineux(40)
+    bureaux = {e.cle: _BUREAU_TNS for e in entites}
+    # Budget calé juste sur le palier sans bureaux : trop serré pour le rendu
+    # complet, assez large pour garder les descriptions.
+    sans_bureaux = len(format_annuaire(entites, {}, budget=10**9))
+    rendu = format_annuaire(entites, bureaux, budget=sans_bureaux)
+    assert "Bureau :" not in rendu
+    assert "Description assez longue" in rendu
+
+
+def test_annuaire_ne_perd_jamais_une_entite() -> None:
+    """Même sous un budget intenable, les 40 entités sont toutes là.
+
+    Une entité absente ferait conclure au modèle qu'elle n'existe pas — plus
+    grave qu'un bloc trop long.
+    """
+    entites = _catalogue_volumineux(40)
+    bureaux = {e.cle: _BUREAU_TNS for e in entites}
+    rendu = format_annuaire(entites, bureaux, budget=10)
+    for entite in entites:
+        assert f"- {entite.nom} (club)" in rendu
+    # Dernier palier : plus de descriptions non plus.
+    assert "Description assez longue" not in rendu
+
+
+def test_annuaire_intact_sous_le_budget() -> None:
+    """Un annuaire qui tient dans le budget garde bureaux et descriptions."""
+    rendu = format_annuaire([_TNS], {_TNS.cle: _BUREAU_TNS})
+    assert "Bureau :" in rendu
+    assert "junior-entreprise" in rendu
+
+
+def test_budget_par_defaut_couvre_l_annuaire_sans_bureaux() -> None:
+    """Le budget est calé pour garder les descriptions du catalogue réel.
+
+    Mesuré : 45 entités décrites pèsent 5 666 caractères sans les bureaux.
+    """
+    assert BUDGET_ANNUAIRE > 5666  # noqa: PLR2004

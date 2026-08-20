@@ -372,7 +372,7 @@ def format_fiches(fiches: Sequence[Fiche]) -> str:
 
 
 # Repli sans reconnaissance : l'annuaire entier part au modèle, qui fait le
-# rapprochement. ~1350 tokens, d'où le garde-fou ci-dessous.
+# rapprochement. Coûteux, d'où le garde-fou ci-dessous et le budget plus bas.
 _CUE_ASSO = re.compile(r"\bclubs?\b|\bassos?\b|\bassociations?\b|\bbureaux?\b")
 
 _ENTETE_ANNUAIRE = (
@@ -407,30 +407,75 @@ def _abrege(texte: str) -> str:
     return coupe[: coupe.rfind(" ")].rstrip(",;:") + "…"
 
 
+# Plafond du bloc annuaire, en caractères. Les 45 entités avec descriptions et
+# bureaux pèsent 11 000 caractères, soit un tiers du plafond Groq par minute.
+BUDGET_ANNUAIRE = 6000
+
+
+def _rendu_annuaire(
+    entites: Sequence[Entite],
+    bureaux: Bureaux,
+    entete: str,
+    *,
+    abrege: bool,
+    avec_description: bool,
+) -> str:
+    """Rend l'annuaire à un niveau de détail donné, toutes les entités incluses."""
+    lignes = [
+        _ligne_annuaire(
+            entite, bureaux, abrege=abrege, avec_description=avec_description
+        )
+        for entite in entites
+    ]
+    if not lignes:
+        return ""
+    return f"{entete}\n" + "\n".join(lignes) + "\n\n"
+
+
 def format_annuaire(
     entites: Sequence[Entite],
     bureaux: Bureaux,
     entete: str = _ENTETE_ANNUAIRE,
     *,
     abrege: bool = True,
+    budget: int = BUDGET_ANNUAIRE,
 ) -> str:
     """Annuaire complet : une ligne par entité, avec sa description et son bureau.
 
     Exhaustif à dessein — c'est ce qui permet à la reconnaissance de rater sans
-    conséquence — et sur une ligne par entité, pour tenir dans le budget.
+    conséquence. Passé le budget, le bloc est donc dégradé et jamais tronqué :
+    les bureaux tombent d'abord (la moitié du poids, et ce bloc sert à
+    identifier une entité, pas à lister ses postes), les descriptions ensuite.
+    Une entité absente ferait conclure au modèle qu'elle n'existe pas.
     """
-    lignes = [_ligne_annuaire(entite, bureaux, abrege=abrege) for entite in entites]
-    if not lignes:
+    if not entites:
         return ""
-    return f"{entete}\n" + "\n".join(lignes) + "\n\n"
+    paliers = ((bureaux, True), ({}, True), ({}, False))
+    bloc = ""
+    for bur, avec_description in paliers:
+        bloc = _rendu_annuaire(
+            entites, bur, entete, abrege=abrege, avec_description=avec_description
+        )
+        if len(bloc) <= budget:
+            return bloc
+        logger.debug(
+            "Annuaire à %d caractères pour un budget de %d : palier suivant.",
+            len(bloc),
+            budget,
+        )
+    # Dernier palier rendu quoi qu'il pèse : les noms seuls sont le minimum
+    # utile, et il n'y a plus rien à retirer sans perdre une entité.
+    return bloc
 
 
-def _ligne_annuaire(entite: Entite, bureaux: Bureaux, *, abrege: bool) -> str:
+def _ligne_annuaire(
+    entite: Entite, bureaux: Bureaux, *, abrege: bool, avec_description: bool = True
+) -> str:
     """Une entrée d'annuaire : la nature, la description puis le bureau courant."""
     marque = "asso" if entite.nature == NATURE_ASSO else "club"
     ligne = f"- {entite.nom} ({marque})"
 
-    if entite.description:
+    if entite.description and avec_description:
         desc = _abrege(entite.description) if abrege else entite.description
         ligne += f" — {desc}"
 
