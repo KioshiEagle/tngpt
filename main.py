@@ -133,11 +133,13 @@ register_cli(app)
 
 if __name__ == "__main__":
     # `debug=False` explicite : sans lui Flask lit FLASK_DEBUG et rallume le
-    # débogueur. `extra_files` : le rechargeur ignore les fichiers non-Python.
+    # débogueur. `extra_files` : le rechargeur ignore les fichiers non-Python,
+    # et hors debug Jinja compile les templates une fois pour la vie du process.
+    templates = Path(app.template_folder or "").rglob("*.html")
     app.run(
         host="127.0.0.1",
         port=8501,
         debug=False,
         use_reloader=True,
-        extra_files=[SYSTEM_PROMPT_PATH],
+        extra_files=[SYSTEM_PROMPT_PATH, *templates],
     )
