@@ -86,5 +86,5 @@ Le projet est formaté avec [Ruff](https://docs.astral.sh/ruff/) ; active `sourc
 ---
 
 <div align="center">
-Fait par la <a href="https://ceten.fr">CETEN</a> et <a href="https://neuratn.ath0ms.fr">Neura'TN</a>.
+Fait par <a href="https://neuratn.ath0ms.fr">Neura'TN</a>.
 </div>
