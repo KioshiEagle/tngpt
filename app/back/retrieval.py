@@ -24,6 +24,9 @@ DECAY_RATE = 0.002
 # arrêter le bruit (voir docs/rapports.md).
 SCORE_THRESHOLD: float | None = None
 CANDIDATE_MULTIPLIER = 20
+# En deçà, les scores sont considérés tous égaux : les normaliser reviendrait à
+# étirer du bruit sur toute l'échelle.
+_ETENDUE_MINIMALE = 1e-9
 
 _client: QdrantClient | None = None
 
@@ -78,6 +81,20 @@ def _embargo_filter() -> models.Filter:
     )
 
 
+def _normalise(valeurs: list[float]) -> list[float]:
+    """Ramène des scores à [0, 1] par min-max ; 0.5 partout s'ils sont égaux.
+
+    Sans ça, mêler deux scores d'étendues très différentes rend les poids
+    déclarés fictifs (voir `_candidates`).
+    """
+    if not valeurs:
+        return []
+    bas, haut = min(valeurs), max(valeurs)
+    if haut - bas < _ETENDUE_MINIMALE:
+        return [0.5] * len(valeurs)
+    return [(v - bas) / (haut - bas) for v in valeurs]
+
+
 def _candidates(query: str, top_k: int, collection_name: str) -> list[SearchResult]:
     """Candidats hybrides pour une formulation, du meilleur au moins bon."""
     query_vector = embed_query(query)
@@ -91,12 +108,23 @@ def _candidates(query: str, top_k: int, collection_name: str) -> list[SearchResu
         with_vectors=False,
     )
 
+    # Les scores bge-m3 se tassent dans une bande étroite (0.64 à 0.73 sur une
+    # question type) là où la fraîcheur occupe tout [0, 1] : mêlés bruts, le
+    # 70/30 affiché donnait en réalité près de cinq fois plus de poids à la
+    # fraîcheur qu'au sens. Chaque terme est donc ramené à l'étendue du lot.
+    semantiques = [point.score for point in response.points]
+    fraicheurs = [
+        _freshness_score((point.payload or {}).get("date", ""))
+        for point in response.points
+    ]
+    cotes = _normalise(semantiques)
+
     results: list[SearchResult] = []
-    for point in response.points:
-        semantic = point.score
+    for point, semantic, freshness, cote in zip(
+        response.points, semantiques, fraicheurs, cotes, strict=True
+    ):
         payload = point.payload or {}
-        freshness = _freshness_score(payload.get("date", ""))
-        hybrid = FRESHNESS_ALPHA * semantic + (1 - FRESHNESS_ALPHA) * freshness
+        hybrid = FRESHNESS_ALPHA * cote + (1 - FRESHNESS_ALPHA) * freshness
 
         results.append(
             SearchResult(

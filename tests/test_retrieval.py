@@ -6,8 +6,10 @@ déportait le vecteur et Qdrant ne rendait plus rien sur Rozier.
 
 from datetime import UTC, datetime
 
+import pytest
+
 from app.back.mdtoqdrant import NO_EMBARGO, embargo_timestamp
-from app.back.retrieval import _embargo_filter, _interleave
+from app.back.retrieval import FRESHNESS_ALPHA, _embargo_filter, _interleave, _normalise
 from app.back.types import SearchResult
 
 
@@ -105,3 +107,47 @@ def test_filtre_borne_sur_maintenant() -> None:
         if getattr(c, "range", None) is not None
     )
     assert abs(borne - datetime.now(UTC).timestamp()) < _TOLERANCE_S
+
+
+# --- Normalisation des scores sémantiques ---------------------------------------
+
+
+def test_normalise_etire_sur_zero_un() -> None:
+    """Le meilleur candidat vaut 1, le pire 0, les autres au prorata."""
+    cotes = _normalise([0.64, 0.68, 0.72])
+    assert cotes[0] == 0.0
+    assert cotes[2] == 1.0
+    assert cotes[1] == pytest.approx(0.5)
+
+
+def test_normalise_scores_egaux() -> None:
+    """Tous égaux : rien à départager, 0.5 partout plutôt qu'une division par zéro."""
+    assert _normalise([0.7, 0.7, 0.7]) == [0.5, 0.5, 0.5]
+
+
+def test_normalise_liste_vide() -> None:
+    """Une recherche sans candidat ne doit pas lever."""
+    assert _normalise([]) == []
+
+
+def test_normalisation_redonne_leur_poids_aux_termes() -> None:
+    """Le 70/30 affiché doit être le 70/30 réel.
+
+    Mesuré sur la question du wifi : les scores bge-m3 tenaient dans 0.086
+    d'étendue quand la fraîcheur en occupait 0.949. Mêlés bruts, la fraîcheur
+    pesait 4,7 fois le sens, et le guide Eduroam — pourtant le meilleur
+    sémantiquement — tombait au 51e rang.
+    """
+    # Le bon document : meilleur sens, mais sans date (fraîcheur neutre à 0.5).
+    bon_sem, bon_fr = 0.6909, 0.5
+    # Un candidat hors sujet mais fraîchement crawlé.
+    autre_sem, autre_fr = 0.6640, 0.9531
+
+    brut_bon = FRESHNESS_ALPHA * bon_sem + (1 - FRESHNESS_ALPHA) * bon_fr
+    brut_autre = FRESHNESS_ALPHA * autre_sem + (1 - FRESHNESS_ALPHA) * autre_fr
+    assert brut_bon < brut_autre  # l'ancien calcul enterrait le bon document
+
+    cotes = _normalise([bon_sem, autre_sem])
+    norm_bon = FRESHNESS_ALPHA * cotes[0] + (1 - FRESHNESS_ALPHA) * bon_fr
+    norm_autre = FRESHNESS_ALPHA * cotes[1] + (1 - FRESHNESS_ALPHA) * autre_fr
+    assert norm_bon > norm_autre
