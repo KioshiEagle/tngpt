@@ -61,6 +61,10 @@ _HTTP_400 = 400
 _HTTP_429 = 429
 _HTTP_413 = 413
 _MAX_RETRIES = 3
+# Attente maximale qu'on s'autorise dans une requête. gunicorn tue un worker
+# après 30 s sans activité, et il est unique : dormir davantage gèlerait
+# l'application pour tout le monde avant de se faire tuer de toute façon.
+_MAX_WAIT_S = 8.0
 # En-tête plus une ligne : en deçà, le bloc de fiches n'a plus rien à céder.
 _FICHES_MIN_LIGNES = 2
 _THINK_OPEN = "<think>"
@@ -410,20 +414,54 @@ class _RetryOutcome:
     """Ce qu'il faut faire après une tentative d'appel Groq ratée."""
 
     retry: bool = False
-    backoff: bool = False
+    # Secondes à attendre avant l'essai suivant, 0 pour enchaîner.
+    wait_seconds: float = 0.0
     smaller_context: bool = False
     drop_params: bool = False
     error_message: str | None = None
 
 
+def _retry_after(e: APIStatusError) -> float | None:
+    """Délai réclamé par Groq en en-tête `retry-after`, en secondes."""
+    brut = e.response.headers.get("retry-after")
+    if not brut:
+        return None
+    try:
+        return float(brut)
+    except ValueError:
+        # Forme date HTTP : rare chez Groq, et sans intérêt à parser ici.
+        return None
+
+
+def _outcome_429(e: APIStatusError, attempt: int) -> _RetryOutcome:
+    """Repli sur quota dépassé : attendre si c'est court, renoncer sinon.
+
+    Groq réclame parfois une minute entière. L'attendre, worker unique et
+    bloquant, revient à couper le service à tout le monde puis à se faire tuer
+    par gunicorn avant même d'avoir réessayé : autant le dire tout de suite.
+    """
+    demande = _retry_after(e)
+    attente = demande if demande is not None else 2.0**attempt
+    if attente <= _MAX_WAIT_S:
+        return _RetryOutcome(retry=True, wait_seconds=attente)
+    logger.warning("Quota Groq dépassé, %.0f s réclamées : abandon.", attente)
+    return _RetryOutcome(
+        error_message=(
+            f"Trop de questions d'un coup, Groq me met en pause {attente:.0f} s. "
+            "Réessaie dans un instant."
+        )
+    )
+
+
 def _retry_for_status(
-    status: int, *, can_retry: bool, has_params: bool
+    e: APIStatusError, status: int, attempt: int, *, can_retry: bool, has_params: bool
 ) -> _RetryOutcome | None:
     """Repli applicable à un statut Groq. None si rien à retenter."""
+    if status == _HTTP_429:
+        # Traité même au dernier essai : c'est lui qui porte le message d'attente.
+        return _outcome_429(e, attempt) if can_retry else None
     if not can_retry:
         return None
-    if status == _HTTP_429:
-        return _RetryOutcome(retry=True, backoff=True)
     if status == _HTTP_413:
         return _RetryOutcome(retry=True, smaller_context=True)
     # Paramètres refusés (modèle configuré via GROQ_CHAT_MODEL qui ne les
@@ -443,7 +481,9 @@ def _classify_error(
     """Décide, pour une erreur Groq donnée, s'il faut réessayer et comment."""
     if isinstance(e, APIStatusError):
         outcome = _retry_for_status(
+            e,
             e.status_code,
+            attempt,
             can_retry=attempt < max_retries - 1,
             has_params=has_params,
         )
@@ -458,6 +498,11 @@ def _classify_error(
             error_message="Erreur avec Groq : délai d'attente dépassé."
         )
     if isinstance(e, APIConnectionError):
+        # Le SDK reprenait lui-même les coupures réseau ; il ne retente plus
+        # rien (voir groqpool), donc c'est à l'échelle de repli de le faire.
+        if attempt < max_retries - 1:
+            logger.warning("Connexion Groq impossible : nouvel essai.", exc_info=e)
+            return _RetryOutcome(retry=True, wait_seconds=2.0**attempt)
         logger.error("Erreur Groq : connexion impossible", exc_info=e)
         return _RetryOutcome(
             error_message="Erreur avec Groq : impossible de se connecter à l'API."
@@ -536,7 +581,6 @@ def _apply(
     outcome: _RetryOutcome,
     contexte: _Contexte,
     params: GroqParams,
-    attempt: int,
 ) -> tuple[_Contexte, GroqParams]:
     """Applique le repli décidé avant de relancer un essai."""
     if outcome.smaller_context:
@@ -559,8 +603,8 @@ def _apply(
             _CHAT_MODEL,
         )
         params = {}
-    if outcome.backoff:
-        time.sleep(2**attempt)
+    if outcome.wait_seconds:
+        time.sleep(outcome.wait_seconds)
     return contexte, params
 
 
@@ -586,8 +630,6 @@ def _stream_with_retries(
                 assert outcome.error_message is not None
                 yield outcome.error_message
                 return
-            contexte, current_params = _apply(
-                outcome, contexte, current_params, attempt
-            )
+            contexte, current_params = _apply(outcome, contexte, current_params)
         else:
             return

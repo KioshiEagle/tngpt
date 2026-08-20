@@ -15,12 +15,19 @@ _clients: dict[int | None, Groq] = {}
 _lock = threading.Lock()
 
 
+# Le SDK retente de lui-même, et sur un 429 il obéit à `retry-after` jusqu'à
+# 60 secondes : une attente pareille bloque le worker gunicorn, unique, qui se
+# fait tuer à 30 s en plein streaming. L'échelle de repli de `generate` prend
+# donc la main, avec un plafond d'attente tenable.
+_MAX_RETRIES = 0
+
+
 def _client_for(cache_id: int | None, secret: str) -> Groq:
     """Retourne un client Groq mémoïsé pour un secret donné."""
     with _lock:
         client = _clients.get(cache_id)
         if client is None:
-            client = Groq(api_key=secret)
+            client = Groq(api_key=secret, max_retries=_MAX_RETRIES)
             _clients[cache_id] = client
         return client
 
