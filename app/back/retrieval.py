@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from qdrant_client import QdrantClient, models
 
 from .embedding import embed_query
-from .reranking import rerank
+from .reranking import normalise, rerank
 from .types import SearchResult
 
 load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
@@ -24,9 +24,6 @@ DECAY_RATE = 0.002
 # arrêter le bruit (voir docs/rapports.md).
 SCORE_THRESHOLD: float | None = None
 CANDIDATE_MULTIPLIER = 20
-# En deçà, les scores sont considérés tous égaux : les normaliser reviendrait à
-# étirer du bruit sur toute l'échelle.
-_ETENDUE_MINIMALE = 1e-9
 
 _client: QdrantClient | None = None
 
@@ -81,22 +78,14 @@ def _embargo_filter() -> models.Filter:
     )
 
 
-def _normalise(valeurs: list[float]) -> list[float]:
-    """Ramène des scores à [0, 1] par min-max ; 0.5 partout s'ils sont égaux.
-
-    Sans ça, mêler deux scores d'étendues très différentes rend les poids
-    déclarés fictifs (voir `_candidates`).
-    """
-    if not valeurs:
-        return []
-    bas, haut = min(valeurs), max(valeurs)
-    if haut - bas < _ETENDUE_MINIMALE:
-        return [0.5] * len(valeurs)
-    return [(v - bas) / (haut - bas) for v in valeurs]
-
-
 def _candidates(query: str, top_k: int, collection_name: str) -> list[SearchResult]:
-    """Candidats hybrides pour une formulation, du meilleur au moins bon."""
+    """Candidats d'une formulation, du plus proche du sens au moins proche.
+
+    Triés sur le sens seul : c'est cet ordre qui remplit la short-list du
+    reranker, et la fraîcheur n'a pas à décider qui il verra. Elle est portée
+    par `score`, qui sert d'ordre de repli quand le reclassement manque, et
+    départage les pertinents une fois le reranker passé.
+    """
     query_vector = embed_query(query)
     response = get_client().query_points(
         collection_name=collection_name,
@@ -117,7 +106,7 @@ def _candidates(query: str, top_k: int, collection_name: str) -> list[SearchResu
         _freshness_score((point.payload or {}).get("date", ""))
         for point in response.points
     ]
-    cotes = _normalise(semantiques)
+    cotes = normalise(semantiques)
 
     results: list[SearchResult] = []
     for point, semantic, freshness, cote in zip(
@@ -137,7 +126,7 @@ def _candidates(query: str, top_k: int, collection_name: str) -> list[SearchResu
             )
         )
 
-    results.sort(key=lambda x: x["score"], reverse=True)
+    results.sort(key=lambda x: x["semantic_score"], reverse=True)
     return results
 
 

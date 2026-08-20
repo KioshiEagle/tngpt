@@ -9,7 +9,8 @@ from datetime import UTC, datetime
 import pytest
 
 from app.back.mdtoqdrant import NO_EMBARGO, embargo_timestamp
-from app.back.retrieval import FRESHNESS_ALPHA, _embargo_filter, _interleave, _normalise
+from app.back.reranking import normalise
+from app.back.retrieval import FRESHNESS_ALPHA, _embargo_filter, _interleave
 from app.back.types import SearchResult
 
 
@@ -114,7 +115,7 @@ def test_filtre_borne_sur_maintenant() -> None:
 
 def test_normalise_etire_sur_zero_un() -> None:
     """Le meilleur candidat vaut 1, le pire 0, les autres au prorata."""
-    cotes = _normalise([0.64, 0.68, 0.72])
+    cotes = normalise([0.64, 0.68, 0.72])
     assert cotes[0] == 0.0
     assert cotes[2] == 1.0
     assert cotes[1] == pytest.approx(0.5)
@@ -122,12 +123,12 @@ def test_normalise_etire_sur_zero_un() -> None:
 
 def test_normalise_scores_egaux() -> None:
     """Tous égaux : rien à départager, 0.5 partout plutôt qu'une division par zéro."""
-    assert _normalise([0.7, 0.7, 0.7]) == [0.5, 0.5, 0.5]
+    assert normalise([0.7, 0.7, 0.7]) == [0.5, 0.5, 0.5]
 
 
 def test_normalise_liste_vide() -> None:
     """Une recherche sans candidat ne doit pas lever."""
-    assert _normalise([]) == []
+    assert normalise([]) == []
 
 
 def test_normalisation_redonne_leur_poids_aux_termes() -> None:
@@ -147,7 +148,7 @@ def test_normalisation_redonne_leur_poids_aux_termes() -> None:
     brut_autre = FRESHNESS_ALPHA * autre_sem + (1 - FRESHNESS_ALPHA) * autre_fr
     assert brut_bon < brut_autre  # l'ancien calcul enterrait le bon document
 
-    cotes = _normalise([bon_sem, autre_sem])
+    cotes = normalise([bon_sem, autre_sem])
     norm_bon = FRESHNESS_ALPHA * cotes[0] + (1 - FRESHNESS_ALPHA) * bon_fr
     norm_autre = FRESHNESS_ALPHA * cotes[1] + (1 - FRESHNESS_ALPHA) * autre_fr
     assert norm_bon > norm_autre
