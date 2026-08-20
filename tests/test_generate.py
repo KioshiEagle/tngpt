@@ -17,8 +17,10 @@ from app.back.generate import (
     _FICHES_ECOURTEES,
     _HISTORY_MAX_CHARS,
     CHAT_SYSTEM,
+    RENVOI_HORS_PERIMETRE,
     _classify_error,
     _Contexte,
+    _filter_renvoi,
     _history_messages,
     _reduire_fiches,
     _stream_chunks,
@@ -339,3 +341,62 @@ def test_repli_garde_toujours_un_chunk() -> None:
     for _ in range(5):
         contexte = contexte.reduit()
     assert len(contexte.results) == 1
+
+
+# --- Renvoi hors périmètre ------------------------------------------------------
+
+
+def _renvoi(*fragments: str) -> str:
+    """Passe les fragments au filtre de renvoi et recolle la sortie."""
+    return "".join(_filter_renvoi(iter(fragments)))
+
+
+def test_renvoi_seul_conserve() -> None:
+    """Réponse entière : c'est son emploi légitime, il passe tel quel."""
+    assert _renvoi(RENVOI_HORS_PERIMETRE) == RENVOI_HORS_PERIMETRE
+
+
+def test_renvoi_seul_meme_fragmente() -> None:
+    """Groq découpe la formule en chunks : elle doit se reconstituer."""
+    moitie = len(RENVOI_HORS_PERIMETRE) // 2
+    fragments = (RENVOI_HORS_PERIMETRE[:moitie], RENVOI_HORS_PERIMETRE[moitie:])
+    assert _renvoi(*fragments) == RENVOI_HORS_PERIMETRE
+
+
+def test_renvoi_colle_a_une_reponse_retire() -> None:
+    """Le cas observé : « j'ai rien dans mes archives » suivi du renvoi.
+
+    La question portait sur le wifi de l'école, donc dans le périmètre : le
+    renvoi contredit la phrase qu'il suit.
+    """
+    sortie = _renvoi(
+        f"j'ai rien sur le wifi dans mes archives, Tobias. {RENVOI_HORS_PERIMETRE}"
+    )
+    assert RENVOI_HORS_PERIMETRE not in sortie
+    assert sortie.strip() == "j'ai rien sur le wifi dans mes archives, Tobias."
+
+
+def test_renvoi_colle_meme_a_cheval_sur_deux_chunks() -> None:
+    """La formule coupée entre deux chunks est retirée comme les autres."""
+    debut = f"j'ai pas ça. {RENVOI_HORS_PERIMETRE[:20]}"
+    sortie = _renvoi(debut, RENVOI_HORS_PERIMETRE[20:])
+    assert "chatgpt" not in sortie.lower()
+    assert sortie.strip() == "j'ai pas ça."
+
+
+def test_renvoi_en_tete_puis_texte_conserve() -> None:
+    """Le renvoi en tête reste : c'est la réponse, ce qui suit est du bavardage."""
+    sortie = _renvoi(f"{RENVOI_HORS_PERIMETRE} vraiment.")
+    assert sortie.startswith(RENVOI_HORS_PERIMETRE)
+
+
+def test_reponse_sans_renvoi_intacte() -> None:
+    """Une réponse ordinaire traverse le filtre sans être touchée."""
+    texte = "Le BDE organise la soirée de rentrée au BAM, comme chaque année."
+    assert _renvoi(texte) == texte
+
+
+def test_reponse_longue_intacte_par_morceaux() -> None:
+    """Le buffer de garde ne doit rien perdre en fin de flux."""
+    morceaux = ("Le BDS ", "gère le sport, ", "et le BDA la culture.")
+    assert _renvoi(*morceaux) == "".join(morceaux)

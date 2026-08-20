@@ -6,7 +6,12 @@ prompt normal au lieu de le remplacer : l'ancrage factuel reste en vigueur.
 
 from pathlib import Path
 
-from .generate import CHAT_GROQ_PARAMS, CHAT_SYSTEM, CallSpec
+from .generate import (
+    CHAT_GROQ_PARAMS,
+    CHAT_SYSTEM,
+    CallSpec,
+    _stream_chat_chunks,
+)
 
 BRAINROT_PROMPT_PATH = Path(__file__).with_name("brainrot_prompt.md")
 
@@ -24,4 +29,6 @@ BRAINROT_SPEC = CallSpec(
     system=BRAINROT_SYSTEM,
     params=CHAT_GROQ_PARAMS,
     temperature=BRAINROT_TEMPERATURE,
+    # Même prompt de base, donc même règle de renvoi à faire respecter.
+    consume=_stream_chat_chunks,
 )

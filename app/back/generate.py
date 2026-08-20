@@ -67,6 +67,11 @@ _THINK_OPEN = "<think>"
 _THINK_CLOSE = "</think>"
 _EMPTY_ANSWER = "j'ai perdu le fil sur ce coup-là, tu peux reformuler ?"
 
+# Renvoi hors périmètre. Le prompt le réserve aux questions étrangères à
+# l'école, où il constitue la réponse entière ; ailleurs il contredit la phrase
+# qu'il suit. Le modèle l'y colle quand même, d'où ce filtre (voir _Renvoi).
+RENVOI_HORS_PERIMETRE = "demande à chatgpt, me casse pas les couilles"
+
 
 @dataclass
 class GenerateRequest:
@@ -206,6 +211,68 @@ def _filter_think(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
     yield from think_filter.flush()
 
 
+class _Renvoi:
+    """Retire le renvoi hors périmètre quand il n'est pas toute la réponse.
+
+    Légitime seul, il est faux accolé à un « j'ai pas ça en archive » : la
+    question porte alors bien sur l'école, et le renvoi dit le contraire. Le
+    buffer retient la fin de chunk pouvant amorcer la formule, comme `_ThinkFilter`.
+    """
+
+    def __init__(self) -> None:
+        self._buf = ""
+        self._emis = False
+        self._garde = len(RENVOI_HORS_PERIMETRE) - 1
+
+    def feed(self, text: str) -> Iterator[str]:
+        """Ajoute du texte et cède ce qui est prêt, renvoi illégitime retiré."""
+        self._buf += text
+        yield from self._vider()
+        if len(self._buf) > self._garde:
+            sortie, self._buf = self._buf[: -self._garde], self._buf[-self._garde :]
+            yield from self._ceder(sortie)
+
+    def flush(self) -> Iterator[str]:
+        """Cède la fin du buffer en fin de stream."""
+        yield from self._vider()
+        reste, self._buf = self._buf, ""
+        yield from self._ceder(reste)
+
+    def _vider(self) -> Iterator[str]:
+        """Traite chaque occurrence de la formule présente dans le buffer."""
+        idx = self._buf.lower().find(RENVOI_HORS_PERIMETRE)
+        while idx != -1:
+            avant = self._buf[:idx]
+            fin = idx + len(RENVOI_HORS_PERIMETRE)
+            # Rien d'utile avant : c'est bien la réponse entière, on la garde.
+            if not self._emis and not avant.strip():
+                yield from self._ceder(self._buf[:fin])
+            else:
+                logger.warning(
+                    "Renvoi hors périmètre retiré : il suivait %d caractères.",
+                    len(avant.strip()),
+                )
+                yield from self._ceder(avant)
+            self._buf = self._buf[fin:]
+            idx = self._buf.lower().find(RENVOI_HORS_PERIMETRE)
+
+    def _ceder(self, texte: str) -> Iterator[str]:
+        """Cède un segment en notant si de la réponse a déjà été produite."""
+        if not texte:
+            return
+        if texte.strip():
+            self._emis = True
+        yield texte
+
+
+def _filter_renvoi(pieces: Iterator[str]) -> Iterator[str]:
+    """Passe un flux déjà nettoyé de ses <think> au filtre de renvoi."""
+    filtre = _Renvoi()
+    for piece in pieces:
+        yield from filtre.feed(piece)
+    yield from filtre.flush()
+
+
 def _stream_chunks(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
     """Filtre les <think> en garantissant une sortie non vide.
 
@@ -248,7 +315,13 @@ CHAT_GROQ_PARAMS: GroqParams = {
     "reasoning_format": "hidden",
 }
 
-CHAT_SPEC = CallSpec(params=CHAT_GROQ_PARAMS)
+
+def _stream_chat_chunks(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
+    """Lecture du chat : blocs <think> filtrés, puis renvoi hors périmètre."""
+    return _filter_renvoi(_stream_chunks(completion))
+
+
+CHAT_SPEC = CallSpec(params=CHAT_GROQ_PARAMS, consume=_stream_chat_chunks)
 
 
 # Longueur retenue d'un tour passé : une carte au trésor persiste sa charge
