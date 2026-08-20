@@ -14,6 +14,7 @@ from flask import (
 from flask_login import current_user, login_required
 from groq import Groq
 
+from .back.brainrot import BRAINROT_SPEC
 from .back.clubs import lookup_context
 from .back.ctf import spec_for
 from .back.generate import (
@@ -162,11 +163,17 @@ def _run_chat(*, spec: CallSpec, is_ctf: bool) -> Response | tuple[Response, int
     """Traite un message : quota, retrieval, fiches, streaming, persistance.
 
     `spec` porte le prompt et les paramètres Groq — chat normal ou challenge.
-    `is_ctf` coupe la carte au trésor, qui contournerait les règles du challenge.
+    `is_ctf` coupe la carte au trésor et le mode brainrot, qui contourneraient
+    les règles du challenge.
     """
     data = request.get_json()
     if not data or "message" not in data:
         return jsonify({"error": "Message manquant"}), 400
+
+    # Toggle du front : le brainrot n'est qu'une autre voix sur le même chat,
+    # donc un autre spec. Coupé sur un challenge, dont il écraserait le prompt.
+    if not is_ctf and data.get("brainrot"):
+        spec = BRAINROT_SPEC
 
     user_message = data["message"]
     if len(user_message) > MAX_MESSAGE_LENGTH:
