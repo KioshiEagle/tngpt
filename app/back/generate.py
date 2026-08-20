@@ -61,6 +61,8 @@ _HTTP_400 = 400
 _HTTP_429 = 429
 _HTTP_413 = 413
 _MAX_RETRIES = 3
+# En-tête plus une ligne : en deçà, le bloc de fiches n'a plus rien à céder.
+_FICHES_MIN_LIGNES = 2
 _THINK_OPEN = "<think>"
 _THINK_CLOSE = "</think>"
 _EMPTY_ANSWER = "j'ai perdu le fil sur ce coup-là, tu peux reformuler ?"
@@ -389,18 +391,55 @@ def _classify_error(
     return _RetryOutcome(error_message=f"Erreur inattendue : {e!s}")
 
 
+# Marque laissée à la place des lignes coupées : sans elle, le modèle conclut
+# de l'absence d'une entité qu'elle n'existe pas.
+_FICHES_ECOURTEES = "(liste écourtée : le contexte dépassait la taille acceptée)"
+
+
+@dataclass(frozen=True)
+class _Contexte:
+    """La part du prompt que le repli 413 peut rogner : fiches puis archives."""
+
+    fiches: str
+    results: list[SearchResult]
+
+    def rendu(self) -> str:
+        """Le bloc de contexte tel qu'il part devant la question."""
+        return self.fiches + _build_context(self.results)
+
+    def reduit(self) -> "_Contexte":
+        """Moitié moins de fiches et moitié moins d'archives."""
+        return _Contexte(
+            fiches=_reduire_fiches(self.fiches),
+            results=self.results[: max(1, len(self.results) // 2)],
+        )
+
+
+def _reduire_fiches(fiches: str) -> str:
+    """Coupe le bloc de fiches en deux, sur des lignes entières.
+
+    L'en-tête est gardé : c'est lui qui dit au modèle ce qu'il lit et d'où ça
+    vient. Une coupe au caractère près produirait une fiche tronquée en plein
+    nom, plus trompeuse qu'une fiche absente.
+    """
+    if not fiches:
+        return ""
+    lignes = fiches.rstrip("\n").splitlines()
+    if len(lignes) <= _FICHES_MIN_LIGNES:
+        return fiches
+    garde = max(_FICHES_MIN_LIGNES, len(lignes) // 2)
+    return "\n".join([*lignes[:garde], _FICHES_ECOURTEES]) + "\n\n"
+
+
 def _attempt(
     req: GenerateRequest,
-    results: list[SearchResult],
+    contexte: _Contexte,
     client: Groq,
     spec: CallSpec,
     params: GroqParams,
 ) -> Iterator[str]:
     """Un essai : construit le prompt, appelle Groq et cède la complétion lue."""
-    # Les fiches passent devant et survivent au repli 413, qui ne rogne que
-    # `results` : partie courte du contexte, et seule à faire autorité.
-    context = req.fiches + _build_context(results)
-    prompt = spec.build(context, req.question, user_name=req.user_name)
+    prompt = spec.build(contexte.rendu(), req.question, user_name=req.user_name)
     # Les tours passés s'intercalent entre les règles et la question : seule
     # cette dernière porte des archives.
     history = _history_messages(req.history) if spec.send_history else []
@@ -420,13 +459,24 @@ def _attempt(
 
 def _apply(
     outcome: _RetryOutcome,
-    results: list[SearchResult],
+    contexte: _Contexte,
     params: GroqParams,
     attempt: int,
-) -> tuple[list[SearchResult], GroqParams]:
+) -> tuple[_Contexte, GroqParams]:
     """Applique le repli décidé avant de relancer un essai."""
     if outcome.smaller_context:
-        results = results[: max(1, len(results) // 2)]
+        reduit = contexte.reduit()
+        logger.warning(
+            "Contexte refusé par Groq : %d → %d caractères "
+            "(fiches %d → %d, archives %d → %d chunks).",
+            len(contexte.rendu()),
+            len(reduit.rendu()),
+            len(contexte.fiches),
+            len(reduit.fiches),
+            len(contexte.results),
+            len(reduit.results),
+        )
+        contexte = reduit
     if outcome.drop_params:
         logger.warning(
             "Groq refuse %s pour %s : nouvel essai sans ces paramètres.",
@@ -436,7 +486,7 @@ def _apply(
         params = {}
     if outcome.backoff:
         time.sleep(2**attempt)
-    return results, params
+    return contexte, params
 
 
 def _stream_with_retries(
@@ -446,12 +496,12 @@ def _stream_with_retries(
     spec: CallSpec = CHAT_SPEC,
 ) -> Iterator[str]:
     """Appelle Groq avec repli (429 : backoff, 413 : moins de contexte)."""
-    current_results = results
+    contexte = _Contexte(fiches=req.fiches, results=results)
     current_params: GroqParams = spec.params if spec.params is not None else {}
 
     for attempt in range(_MAX_RETRIES):
         try:
-            yield from _attempt(req, current_results, client, spec, current_params)
+            yield from _attempt(req, contexte, client, spec, current_params)
         except Exception as e:  # noqa: BLE001
             outcome = _classify_error(
                 e, attempt, _MAX_RETRIES, has_params=bool(current_params)
@@ -461,8 +511,8 @@ def _stream_with_retries(
                 assert outcome.error_message is not None
                 yield outcome.error_message
                 return
-            current_results, current_params = _apply(
-                outcome, current_results, current_params, attempt
+            contexte, current_params = _apply(
+                outcome, contexte, current_params, attempt
             )
         else:
             return
