@@ -712,10 +712,13 @@ body {
     position: relative;
 }
 
-.theme-toggle {
+/* Interrupteur du pied de sidebar, partagé par le thème et le brainrot :
+   l'état se lit sur la position du curseur, plus sur l'étiquette. */
+.switch-row {
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: space-between;
+    gap: 10px;
     width: 100%;
     background: none;
     border: 1px solid var(--border);
@@ -728,32 +731,30 @@ body {
     text-align: left;
     transition: background 0.12s, color 0.12s;
 }
-.theme-toggle:hover { background: rgba(0, 0, 0, 0.05); color: var(--text-main); }
+.switch-row:hover { background: rgba(0, 0, 0, 0.05); color: var(--text-main); }
+.switch-row:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
-/* Même gabarit que le toggle de thème : c'est le bouton voisin. Allumé, il
-   se teinte de l'accent pour que l'état se lise sans relire l'étiquette. */
-.brainrot-toggle {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 7px 10px;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 11px;
-    cursor: pointer;
-    color: var(--text-muted);
-    text-align: left;
-    transition: background 0.12s, color 0.12s, border-color 0.12s;
+.switch-track {
+    flex: none;
+    width: 28px;
+    height: 16px;
+    border-radius: 999px;
+    background: var(--border);
+    transition: background 0.12s;
 }
-.brainrot-toggle:hover { background: rgba(0, 0, 0, 0.05); color: var(--text-main); }
-.brainrot-toggle.active {
-    border-color: var(--primary);
-    color: var(--primary);
-    background: var(--primary-light);
+
+.switch-knob {
+    display: block;
+    width: 12px;
+    height: 12px;
+    margin: 2px;
+    border-radius: 50%;
+    background: var(--bg);
+    transition: transform 0.12s;
 }
+
+.switch-row[aria-checked="true"] .switch-track { background: var(--primary); }
+.switch-row[aria-checked="true"] .switch-knob { transform: translateX(12px); }
 
 .user-tab {
     display: flex;

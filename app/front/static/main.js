@@ -182,18 +182,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const convList = document.getElementById('conv-list');
 
     // --- Theme toggle ---
-    function updateThemeLabel() {
+    // L'étiquette est fixe : c'est aria-checked qui porte l'état, pour le
+    // lecteur d'écran comme pour le CSS de l'interrupteur.
+    function updateThemeSwitch() {
         const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-        themeToggle.textContent = isDark ? '☀ mode clair' : '☾ mode sombre';
+        themeToggle.setAttribute('aria-checked', String(isDark));
     }
-    updateThemeLabel();
+    updateThemeSwitch();
 
     themeToggle.addEventListener('click', () => {
         const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
         const next = isDark ? 'light' : 'dark';
         document.documentElement.setAttribute('data-theme', next);
         localStorage.setItem('theme', next);
-        updateThemeLabel();
+        updateThemeSwitch();
         // La carte peint avec des variables CSS : elle suit le thème sans
         // qu'on ait à la redessiner.
     });
@@ -202,18 +204,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // Persisté comme le thème : le mode survit à la navigation entre convs.
     let brainrot = localStorage.getItem('brainrot') === 'on';
 
-    function updateBrainrotLabel() {
-        if (!brainrotToggle) return;
-        brainrotToggle.textContent = brainrot ? '🧠 brainrot : ON' : '🧠 brainrot : off';
-        brainrotToggle.setAttribute('aria-pressed', String(brainrot));
-        brainrotToggle.classList.toggle('active', brainrot);
+    function updateBrainrotSwitch() {
+        brainrotToggle?.setAttribute('aria-checked', String(brainrot));
     }
-    updateBrainrotLabel();
+    updateBrainrotSwitch();
 
     brainrotToggle?.addEventListener('click', () => {
         brainrot = !brainrot;
         localStorage.setItem('brainrot', brainrot ? 'on' : 'off');
-        updateBrainrotLabel();
+        updateBrainrotSwitch();
     });
 
     // --- User menu ---

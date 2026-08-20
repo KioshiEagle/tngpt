@@ -35,9 +35,15 @@
         <nav class="conv-list" id="conv-list"></nav>
 
         <div class="sidebar-footer">
-            <button class="theme-toggle" id="theme-toggle" aria-label="Changer le thème"></button>
+            <button class="switch-row" id="theme-toggle" role="switch" aria-checked="false">
+                <span>mode sombre</span>
+                <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
+            </button>
             {% if chat_endpoint | default('/chat') == '/chat' %}
-            <button class="brainrot-toggle" id="brainrot-toggle" aria-pressed="false" aria-label="Activer le mode brainrot"></button>
+            <button class="switch-row" id="brainrot-toggle" role="switch" aria-checked="false">
+                <span>mode brainrot</span>
+                <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
+            </button>
             {% endif %}
             <div class="user-menu" id="user-menu">
                 <div class="user-menu-header">
