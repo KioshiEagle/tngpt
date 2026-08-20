@@ -10,6 +10,14 @@ const THINKING_PHRASES = [
     "Je demande du café à TNS...",
     "Je cours chercher une flutte au BDA...",
     "Je fais semblant de comprendre...",
+    "Je commande une oasis PCF au bar...",
+    "Je pentest l'infra du bar...",
+    "Je répare l'infra d'Anim'Est...",
+    "Je demande les poids à Neura'TN...",
+    "Je commande la switch 2 de Gaming...",
+    "All'In sur la réponse...",
+    "Je prends l'apéro à Oeno...",
+    "Je demande l'autorisation à l'admin...",
 ];
 
 const SLOW_PHRASE = "Ouh hihi ha, ouh hihi ha...";
