@@ -730,6 +730,31 @@ body {
 }
 .theme-toggle:hover { background: rgba(0, 0, 0, 0.05); color: var(--text-main); }
 
+/* Même gabarit que le toggle de thème : c'est le bouton voisin. Allumé, il
+   se teinte de l'accent pour que l'état se lise sans relire l'étiquette. */
+.brainrot-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    cursor: pointer;
+    color: var(--text-muted);
+    text-align: left;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.brainrot-toggle:hover { background: rgba(0, 0, 0, 0.05); color: var(--text-main); }
+.brainrot-toggle.active {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: var(--primary-light);
+}
+
 .user-tab {
     display: flex;
     align-items: center;

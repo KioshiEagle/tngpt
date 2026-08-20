@@ -175,6 +175,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const duckyImg = document.getElementById('sidebar-ducky');
     const scrollBtn = document.getElementById('scroll-btn');
     const themeToggle = document.getElementById('theme-toggle');
+    const brainrotToggle = document.getElementById('brainrot-toggle');
     const hamburger = document.getElementById('hamburger');
     const sidebar = document.getElementById('sidebar');
     const backdrop = document.getElementById('sidebar-backdrop');
@@ -195,6 +196,24 @@ document.addEventListener('DOMContentLoaded', () => {
         updateThemeLabel();
         // La carte peint avec des variables CSS : elle suit le thème sans
         // qu'on ait à la redessiner.
+    });
+
+    // --- Mode brainrot ---
+    // Persisté comme le thème : le mode survit à la navigation entre convs.
+    let brainrot = localStorage.getItem('brainrot') === 'on';
+
+    function updateBrainrotLabel() {
+        if (!brainrotToggle) return;
+        brainrotToggle.textContent = brainrot ? '🧠 brainrot : ON' : '🧠 brainrot : off';
+        brainrotToggle.setAttribute('aria-pressed', String(brainrot));
+        brainrotToggle.classList.toggle('active', brainrot);
+    }
+    updateBrainrotLabel();
+
+    brainrotToggle?.addEventListener('click', () => {
+        brainrot = !brainrot;
+        localStorage.setItem('brainrot', brainrot ? 'on' : 'off');
+        updateBrainrotLabel();
     });
 
     // --- User menu ---
@@ -419,7 +438,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch(window.CHAT_ENDPOINT || '/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: text, conversation_id: currentConversationId }),
+                body: JSON.stringify({ message: text, conversation_id: currentConversationId, brainrot }),
                 signal: abortController.signal,
             });
 

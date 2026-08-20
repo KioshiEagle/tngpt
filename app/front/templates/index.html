@@ -36,6 +36,9 @@
 
         <div class="sidebar-footer">
             <button class="theme-toggle" id="theme-toggle" aria-label="Changer le thème"></button>
+            {% if chat_endpoint | default('/chat') == '/chat' %}
+            <button class="brainrot-toggle" id="brainrot-toggle" aria-pressed="false" aria-label="Activer le mode brainrot"></button>
+            {% endif %}
             <div class="user-menu" id="user-menu">
                 <div class="user-menu-header">
                     {% if current_user.user_picture %}
