@@ -20,6 +20,7 @@ Ce qu'il y a dedans :
 
 - **Chat en streaming**, adossé à une recherche hybride dans Qdrant puis à un reclassement Workers AI.
 - **Carte des mers** — les clubs et assos dessinés en carte au trésor quand la question s'y prête.
+- **Mode brainrot** — un toggle, et la même info ressort en langue de commentaire TikTok.
 - **Panel admin** — catalogue de documents, permissions par bitmask, quotas journaliers, pool de clés Groq.
 - **Challenges CTF** — trois épreuves de prompt injection servies à côté du chat normal.
 
