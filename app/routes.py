@@ -311,31 +311,32 @@ def delete_conversation(conversation_id: int) -> Response:
     return jsonify({"message": "Conversation supprimée"})
 
 
-Citation = tuple[str, int]
-CITATIONS: list[Citation] = [
-    ("Qu'avez-vous à dire pour votre défense ?", 5),
-    ("Envie de jiguer, pas vous ?", 7),
-    ("En date avec Crazy François", 5),
-    ("* en train de barboter dans l'évier cancéreux du bar *", 7),
-    ("on vient de me barouder aled", 5),
-    ("ici ça bz", 5),
-    ("Je ne suis pas un projet de TNS (mdr)", 5),
-    ("on m'a forcé à prendre du thé", 6),
-    ("nique le cheval whatsapp", 5),
-    ("Prompt injection et tu vas repartir mal mon compaing", 5),
-    ("Pétition pour remettre l'Oriental au bar", 5),
-    ("Absolute Bouthier", 5),
-    ("plus qu'une salle et la carte sera complétée.....", 2),
-    ("ah bas le gouvernement BDE !!", 3),
+CITATIONS: list[str] = [
+    "Envie de jiguer, pas vous ?",
+    "En date avec Crazy François",
+    "* en train de barboter dans l'évier cancéreux du bar *",
+    "on vient de me barouder aled",
+    "ici ça bz",
+    "Je ne suis pas un projet de TNS",
+    "on m'a forcé à prendre du thé",
+    "nique le cheval whatsapp",
+    "Prompt injection et tu vas repartir mal mon compaing",
+    "Pétition pour remettre l'Oriental au bar",
+    "Absolute Bouthier",
+    "plus qu'une salle et la carte sera complétée.....",
+    "ah bas le gouvernement BDE !!",
+    "je me sens Gaulois",
+    "Envie de faire de la robotique ? venez à Tek",
+    "imagine Créa'TN fait plus d'argent que TNS",
+    "Anim'Est si on inverse les lettres ça fait femboy",
+    "le code du BDE c'est :",
 ]
 
 
 @bp.route("/quote", methods=["GET"])
 def quote() -> str:
-    """Retourne une citation aléatoire pondérée."""
-    quotes = [c[0] for c in CITATIONS]
-    weights = [c[1] for c in CITATIONS]
-    return random.choices(quotes, weights=weights, k=1)[0]  # nosec
+    """Retourne une citation aléatoire, toutes équiprobables."""
+    return random.choice(CITATIONS)  # nosec
 
 
 @bp.route("/")
