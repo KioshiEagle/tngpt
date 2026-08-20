@@ -676,15 +676,6 @@ body {
 .send.stop-mode:hover { opacity: 1; color: #e11d48; }
 
 .hint { font-size: 13px; color: var(--text-muted); margin-top: 8px; font-family: 'IBM Plex Mono', monospace; }
-.hint kbd {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 11px;
-    background: var(--bg-sidebar);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 1px 4px;
-    color: var(--text-muted);
-}
 
 .thinking-text {
     background: none !important;
