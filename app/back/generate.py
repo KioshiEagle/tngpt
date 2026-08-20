@@ -252,7 +252,9 @@ class _Renvoi:
                     "Renvoi hors périmètre retiré : il suivait %d caractères.",
                     len(avant.strip()),
                 )
-                yield from self._ceder(avant)
+                # rstrip : l'espace qui précédait la formule pendrait sinon
+                # en fin de réponse, seule trace visible de la coupe.
+                yield from self._ceder(avant.rstrip())
             self._buf = self._buf[fin:]
             idx = self._buf.lower().find(RENVOI_HORS_PERIMETRE)
 

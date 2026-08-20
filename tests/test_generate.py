@@ -373,7 +373,8 @@ def test_renvoi_colle_a_une_reponse_retire() -> None:
         f"j'ai rien sur le wifi dans mes archives, Tobias. {RENVOI_HORS_PERIMETRE}"
     )
     assert RENVOI_HORS_PERIMETRE not in sortie
-    assert sortie.strip() == "j'ai rien sur le wifi dans mes archives, Tobias."
+    # Sans rstrip, l'espace qui précédait la formule resterait en fin de bulle.
+    assert sortie == "j'ai rien sur le wifi dans mes archives, Tobias."
 
 
 def test_renvoi_colle_meme_a_cheval_sur_deux_chunks() -> None:
