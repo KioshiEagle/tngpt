@@ -4,7 +4,10 @@ Motivés par « et guillaume rozier ? » en second tour : la requête enrichie
 déportait le vecteur et Qdrant ne rendait plus rien sur Rozier.
 """
 
-from app.back.retrieval import _interleave
+from datetime import UTC, datetime
+
+from app.back.mdtoqdrant import NO_EMBARGO, embargo_timestamp
+from app.back.retrieval import _embargo_filter, _interleave
 from app.back.types import SearchResult
 
 
@@ -54,3 +57,51 @@ def test_sans_seconde_formulation_rien_ne_change() -> None:
     """Premier message d'une conversation : l'ordre hybride passe intact."""
     question = [_chunk("q1"), _chunk("q2")]
     assert _ids(_interleave(question, [])) == ["q1", "q2"]
+
+
+# --- Embargo -----------------------------------------------------------------
+
+# Le filtre est un OU à deux branches : champ absent, ou borne dépassée.
+_BRANCHES_DU_FILTRE = 2
+# Marge entre la borne calculée et l'horloge du test.
+_TOLERANCE_S = 5
+
+
+def test_embargo_timestamp_absent() -> None:
+    """Sans date d'ouverture, le document est visible tout de suite."""
+    assert embargo_timestamp("") == NO_EMBARGO
+
+
+def test_embargo_timestamp_date_lisible() -> None:
+    """Une date AAAA-MM-JJ est convertie en secondes Unix UTC."""
+    attendu = int(datetime(2026, 8, 31, tzinfo=UTC).timestamp())
+    assert embargo_timestamp("2026-08-31") == attendu
+
+
+def test_embargo_timestamp_date_illisible() -> None:
+    """Une date illisible vaut un embargo absent, pas un embargo éternel.
+
+    Le document serait sinon invisible pour toujours, sans rien pour le dire.
+    """
+    assert embargo_timestamp("31 août") == NO_EMBARGO
+
+
+def test_filtre_laisse_passer_les_documents_sans_champ() -> None:
+    """Le filtre est un OU : le corpus ingéré avant le champ reste visible."""
+    filtre = _embargo_filter()
+    assert filtre.must is None
+    assert filtre.should is not None
+    conditions = list(filtre.should)
+    assert len(conditions) == _BRANCHES_DU_FILTRE
+    assert any(getattr(c, "is_empty", None) is not None for c in conditions)
+
+
+def test_filtre_borne_sur_maintenant() -> None:
+    """La borne haute du filtre est l'instant présent, à la seconde près."""
+    filtre = _embargo_filter()
+    borne = next(
+        c.range.lte
+        for c in (filtre.should or [])
+        if getattr(c, "range", None) is not None
+    )
+    assert abs(borne - datetime.now(UTC).timestamp()) < _TOLERANCE_S

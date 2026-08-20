@@ -6,7 +6,7 @@ from itertools import zip_longest
 from pathlib import Path
 
 from dotenv import load_dotenv
-from qdrant_client import QdrantClient
+from qdrant_client import QdrantClient, models
 
 from .embedding import embed_query
 from .reranking import rerank
@@ -57,12 +57,34 @@ def _freshness_score(date_str: str) -> float:
         return 0.5
 
 
+def _embargo_filter() -> models.Filter:
+    """Écarte les documents dont la date d'ouverture n'est pas encore passée.
+
+    Les deux conditions sont en `should` (OU) parce que le champ est récent :
+    tout ce qui a été ingéré avant lui n'en porte pas, et un `must` sur la
+    borne ferait disparaître le corpus entier.
+    """
+    maintenant = int(datetime.now(UTC).timestamp())
+    return models.Filter(
+        should=[
+            models.IsEmptyCondition(
+                is_empty=models.PayloadField(key="visible_from_ts")
+            ),
+            models.FieldCondition(
+                key="visible_from_ts",
+                range=models.Range(lte=maintenant),
+            ),
+        ]
+    )
+
+
 def _candidates(query: str, top_k: int, collection_name: str) -> list[SearchResult]:
     """Candidats hybrides pour une formulation, du meilleur au moins bon."""
     query_vector = embed_query(query)
     response = get_client().query_points(
         collection_name=collection_name,
         query=query_vector,
+        query_filter=_embargo_filter(),
         limit=top_k * CANDIDATE_MULTIPLIER,
         score_threshold=SCORE_THRESHOLD,
         with_payload=True,
