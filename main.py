@@ -12,7 +12,6 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.back.admin import admin_bp
 from app.back.auth import auth_bp
-from app.back.generate import SYSTEM_PROMPT_PATH
 from app.back.models import User, db
 from app.back.permissions import login_manager
 from app.cli import register_cli
@@ -21,8 +20,10 @@ from app.routes import bp
 
 load_dotenv()
 
+# INFO par défaut : en DEBUG, chaque question déverse ses chunks Qdrant dans
+# les logs — volume et contenu des archives que la prod n'a pas à écrire.
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=os.environ.get("LOG_LEVEL", "INFO").upper(),
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     datefmt="%H:%M:%S",
 )
@@ -130,16 +131,3 @@ register_cli(app)
 
 # Schéma géré par Alembic : `create_all()` crée les tables manquantes mais
 # n'ajoute jamais une colonne, et laisserait le schéma diverger en silence.
-
-if __name__ == "__main__":
-    # `debug=False` explicite : sans lui Flask lit FLASK_DEBUG et rallume le
-    # débogueur. `extra_files` : le rechargeur ignore les fichiers non-Python,
-    # et hors debug Jinja compile les templates une fois pour la vie du process.
-    templates = Path(app.template_folder or "").rglob("*.html")
-    app.run(
-        host="127.0.0.1",
-        port=8501,
-        debug=False,
-        use_reloader=True,
-        extra_files=[SYSTEM_PROMPT_PATH, *templates],
-    )

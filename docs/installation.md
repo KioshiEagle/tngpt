@@ -31,7 +31,8 @@ cp env.example .env
 | Variable | Description |
 |---|---|
 | `FLASK_SECRET_KEY` | Clé de signature des sessions/cookies. Génère la tienne : `python -c "import secrets; print(secrets.token_hex(32))"` |
-| `FLASK_DEBUG` | `True` en local, `False` en production. Ne pilote plus que `OAUTHLIB_INSECURE_TRANSPORT`, sans quoi l'OAuth Google refuse le http local — le débogueur Werkzeug, lui, a été retiré du serveur de développement |
+| `OAUTH_ALLOW_HTTP` | `true` en local uniquement. Autorise oauthlib à échanger le jeton hors https, sans quoi la connexion sur `http://localhost` est refusée. À laisser vide en production |
+| `LOG_LEVEL` | Niveau de journalisation, `INFO` par défaut. `DEBUG` déverse les chunks Qdrant de chaque question dans les logs |
 | `DEFAULT_DAILY_QUOTA` | Quota de questions par jour par défaut (les administrateurs n'y sont pas soumis) |
 | `DATABASE_URL` | Connexion PostgreSQL, obligatoire — l'app refuse de démarrer sans elle (pas de repli SQLite) |
 | `POSTGRES_PASSWORD` | Mot de passe Postgres utilisé par `docker-compose.yml` |
@@ -89,11 +90,25 @@ Dans ce cas, laisse `QDRANT_API_KEY` vide dans `.env`.
 
 ## 8. Lancement et premier administrateur
 
+L'application tourne sous gunicorn, en local comme en production — il n'y a
+pas de serveur de développement :
+
 ```bash
-uv run python main.py
+uv run gunicorn -w 1 -b 127.0.0.1:8501 main:app
 ```
 
 L'application est disponible sur http://localhost:8501.
+
+!!! tip "Itérer sans relancer à la main"
+    `--reload` fait redémarrer gunicorn à chaque modification d'un fichier
+    Python. Les templates Jinja, eux, sont compilés une fois pour la vie du
+    process : une modification de `index.html` demande un redémarrage, ou un
+    `--reload-extra-file app/front/templates/index.html`.
+
+!!! warning "Un seul worker"
+    `-w 1` n'est pas arbitraire : les migrations Alembic sont appliquées au
+    démarrage du conteneur, ce qui ne serait pas sûr avec plusieurs workers
+    concurrents.
 
 Aucun utilisateur n'a de droits admin à la création. Connecte-toi une première
 fois via Google OAuth pour créer ton compte, puis élève-le :

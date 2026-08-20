@@ -40,7 +40,9 @@ SCOPES = [
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 
-if os.environ.get("FLASK_DEBUG", "").lower() in ("1", "true"):
+# oauthlib refuse un échange de jeton hors https, y compris sur localhost que
+# Google autorise pourtant. Seul cas d'usage : se connecter en développement.
+if os.environ.get("OAUTH_ALLOW_HTTP", "").lower() in ("1", "true"):
     os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
 
 

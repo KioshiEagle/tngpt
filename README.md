@@ -38,10 +38,11 @@ cp env.example .env          # puis remplis les valeurs (voir le guide d'install
 docker compose up -d db      # PostgreSQL
 uv run flask db upgrade      # schéma
 
-uv run python main.py
+uv run gunicorn -w 1 -b 127.0.0.1:8501 main:app
 ```
 
-L'application écoute sur http://localhost:8501. Connecte-toi une première fois, puis élève ton compte :
+L'application écoute sur http://localhost:8501. Il n'y a plus de serveur de
+développement : le local tourne sous le même serveur que la production. Connecte-toi une première fois, puis élève ton compte :
 
 ```bash
 uv run flask make-admin ton.adresse@telecomnancy.net
