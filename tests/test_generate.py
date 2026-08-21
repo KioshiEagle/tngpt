@@ -14,15 +14,21 @@ from groq.types.chat import ChatCompletionChunk
 
 from app.back.generate import (
     _EMPTY_ANSWER,
+    _FICHES_ECOURTEES,
     _HISTORY_MAX_CHARS,
     CHAT_SYSTEM,
+    RENVOI_HORS_PERIMETRE,
     _classify_error,
+    _Contexte,
+    _filter_renvoi,
     _history_messages,
+    _reduire_fiches,
     _stream_chunks,
     _ThinkFilter,
     build_prompt,
     today_fr,
 )
+from app.back.types import SearchResult
 
 if TYPE_CHECKING:
     from app.back.types import HistoryMessage
@@ -208,15 +214,59 @@ def test_stream_chunks_ne_rend_jamais_une_reponse_vide() -> None:
 # --- Échelle de repli Groq ---------------------------------------------------
 
 
-def _erreur(code: int) -> APIStatusError:
-    reponse = httpx.Response(code, request=httpx.Request("POST", "http://groq.test"))
+def _erreur(code: int, entetes: dict[str, str] | None = None) -> APIStatusError:
+    reponse = httpx.Response(
+        code,
+        request=httpx.Request("POST", "http://groq.test"),
+        headers=entetes or {},
+    )
     return APIStatusError("boom", response=reponse, body=None)
 
 
 def test_429_attend_puis_retente() -> None:
-    """Rate limit Groq : on temporise avant de reprendre."""
+    """Rate limit Groq sans en-tête : on temporise avant de reprendre."""
     outcome = _classify_error(_erreur(429), 0, 3)
-    assert (outcome.retry, outcome.backoff) == (True, True)
+    assert outcome.retry is True
+    assert outcome.wait_seconds > 0
+
+
+def test_429_respecte_le_delai_demande() -> None:
+    """Groq sait quand il rouvrira : son `retry-after` prime sur notre backoff."""
+    outcome = _classify_error(_erreur(429, {"retry-after": "5"}), 0, 3)
+    assert outcome.retry is True
+    assert outcome.wait_seconds == 5  # noqa: PLR2004
+
+
+def test_429_trop_long_renonce_au_lieu_d_attendre() -> None:
+    """Une attente hors budget est refusée, pas subie.
+
+    Le worker gunicorn est unique et bloquant : dormir 34 s couperait le
+    service à tout le monde, puis se ferait tuer à 30 s sans avoir réessayé.
+    """
+    outcome = _classify_error(_erreur(429, {"retry-after": "34"}), 0, 3)
+    assert outcome.retry is False
+    assert outcome.error_message
+    assert "34" in outcome.error_message
+
+
+def test_429_delai_illisible_retombe_sur_le_backoff() -> None:
+    """Un `retry-after` en date HTTP ne doit pas faire exploser la classification."""
+    entetes = {"retry-after": "Wed, 21 Oct 2026 07:28:00 GMT"}
+    outcome = _classify_error(_erreur(429, entetes), 0, 3)
+    assert outcome.retry is True
+    assert outcome.wait_seconds > 0
+
+
+def test_connexion_coupee_retentee_puis_abandonnee() -> None:
+    """Le SDK ne reprend plus les coupures réseau : l'échelle s'en charge.
+
+    Retentée tant qu'il reste des essais, message d'erreur au dernier.
+    """
+    coupure = APIConnectionError(request=httpx.Request("POST", "http://groq.test"))
+    assert _classify_error(coupure, 0, 3).retry is True
+    dernier = _classify_error(coupure, 2, 3)
+    assert dernier.retry is False
+    assert dernier.error_message
 
 
 def test_413_retente_avec_moins_de_contexte() -> None:
@@ -254,7 +304,148 @@ def test_derniere_tentative_ne_retente_plus() -> None:
     ],
 )
 def test_erreurs_non_http_donnent_toujours_un_message(erreur: Exception) -> None:
-    """`_stream_with_retries` fait un `assert` dessus : il ne doit jamais manquer."""
-    outcome = _classify_error(erreur, 0, 3)
+    """`_stream_with_retries` fait un `assert` dessus : il ne doit jamais manquer.
+
+    Vérifié au dernier essai : c'est là que l'échelle rend la main, et donc là
+    que l'absence de message ferait tomber l'assertion.
+    """
+    outcome = _classify_error(erreur, 2, 3)
     assert outcome.retry is False
     assert outcome.error_message
+
+
+# --- Repli 413 : ce que le contexte cède ---------------------------------------
+
+
+def _bloc_fiches(n: int) -> str:
+    """Un bloc d'annuaire : un en-tête suivi de `n` entrées."""
+    lignes = "\n".join(f"- Club{i} (club) — description" for i in range(n))
+    return f"ANNUAIRE DE LA VIE ASSOCIATIVE — fait autorité.\n{lignes}\n\n"
+
+
+def _chunks(n: int) -> list[SearchResult]:
+    """`n` résultats de recherche minimaux."""
+    return [
+        SearchResult(
+            point_id=str(i),
+            content="x" * 100,
+            metadata={"title": f"doc{i}"},
+            score=0.5,
+            semantic_score=0.5,
+            freshness_score=0.5,
+        )
+        for i in range(n)
+    ]
+
+
+def test_fiches_absentes_ne_cassent_rien() -> None:
+    """Sans fiches, il n'y a rien à rogner."""
+    assert _reduire_fiches("") == ""
+
+
+def test_fiches_minimales_intactes() -> None:
+    """En-tête plus une entrée : en deçà, le bloc n'a plus rien à céder."""
+    bloc = _bloc_fiches(1)
+    assert _reduire_fiches(bloc) == bloc
+
+
+def test_fiches_coupees_gardent_l_entete() -> None:
+    """L'en-tête dit au modèle ce qu'il lit et d'où ça vient : il reste.
+
+    La coupe se fait sur des lignes entières — un nom tronqué en plein milieu
+    serait plus trompeur qu'une entrée absente.
+    """
+    reduit = _reduire_fiches(_bloc_fiches(20))
+    assert reduit.startswith("ANNUAIRE DE LA VIE ASSOCIATIVE")
+    entrees = [ligne for ligne in reduit.splitlines() if ligne.startswith("- Club")]
+    assert len(entrees) < 20  # noqa: PLR2004
+    assert all(ligne.endswith("description") for ligne in entrees)
+
+
+def test_coupe_des_fiches_signalee() -> None:
+    """La coupe est signalée dans le bloc.
+
+    Sans marque, le modèle conclurait de l'absence d'une entité qu'elle
+    n'existe pas.
+    """
+    assert _FICHES_ECOURTEES in _reduire_fiches(_bloc_fiches(20))
+
+
+def test_repli_rogne_les_deux_parts() -> None:
+    """Le repli 413 réduit les fiches ET les archives.
+
+    N'agir que sur `results` laissait le repli sans effet sur une question de
+    club, où les fiches pèsent le plus lourd.
+    """
+    contexte = _Contexte(fiches=_bloc_fiches(20), results=_chunks(4))
+    reduit = contexte.reduit()
+    assert len(reduit.fiches) < len(contexte.fiches)
+    assert len(reduit.results) < len(contexte.results)
+
+
+def test_repli_garde_toujours_un_chunk() -> None:
+    """Répété, le repli ne vide jamais le contexte de ses archives."""
+    contexte = _Contexte(fiches=_bloc_fiches(20), results=_chunks(4))
+    for _ in range(5):
+        contexte = contexte.reduit()
+    assert len(contexte.results) == 1
+
+
+# --- Renvoi hors périmètre ------------------------------------------------------
+
+
+def _renvoi(*fragments: str) -> str:
+    """Passe les fragments au filtre de renvoi et recolle la sortie."""
+    return "".join(_filter_renvoi(iter(fragments)))
+
+
+def test_renvoi_seul_conserve() -> None:
+    """Réponse entière : c'est son emploi légitime, il passe tel quel."""
+    assert _renvoi(RENVOI_HORS_PERIMETRE) == RENVOI_HORS_PERIMETRE
+
+
+def test_renvoi_seul_meme_fragmente() -> None:
+    """Groq découpe la formule en chunks : elle doit se reconstituer."""
+    moitie = len(RENVOI_HORS_PERIMETRE) // 2
+    fragments = (RENVOI_HORS_PERIMETRE[:moitie], RENVOI_HORS_PERIMETRE[moitie:])
+    assert _renvoi(*fragments) == RENVOI_HORS_PERIMETRE
+
+
+def test_renvoi_colle_a_une_reponse_retire() -> None:
+    """Le cas observé : « j'ai rien dans mes archives » suivi du renvoi.
+
+    La question portait sur le wifi de l'école, donc dans le périmètre : le
+    renvoi contredit la phrase qu'il suit.
+    """
+    sortie = _renvoi(
+        f"j'ai rien sur le wifi dans mes archives, Tobias. {RENVOI_HORS_PERIMETRE}"
+    )
+    assert RENVOI_HORS_PERIMETRE not in sortie
+    # Sans rstrip, l'espace qui précédait la formule resterait en fin de bulle.
+    assert sortie == "j'ai rien sur le wifi dans mes archives, Tobias."
+
+
+def test_renvoi_colle_meme_a_cheval_sur_deux_chunks() -> None:
+    """La formule coupée entre deux chunks est retirée comme les autres."""
+    debut = f"j'ai pas ça. {RENVOI_HORS_PERIMETRE[:20]}"
+    sortie = _renvoi(debut, RENVOI_HORS_PERIMETRE[20:])
+    assert "chatgpt" not in sortie.lower()
+    assert sortie.strip() == "j'ai pas ça."
+
+
+def test_renvoi_en_tete_puis_texte_conserve() -> None:
+    """Le renvoi en tête reste : c'est la réponse, ce qui suit est du bavardage."""
+    sortie = _renvoi(f"{RENVOI_HORS_PERIMETRE} vraiment.")
+    assert sortie.startswith(RENVOI_HORS_PERIMETRE)
+
+
+def test_reponse_sans_renvoi_intacte() -> None:
+    """Une réponse ordinaire traverse le filtre sans être touchée."""
+    texte = "Le BDE organise la soirée de rentrée au BAM, comme chaque année."
+    assert _renvoi(texte) == texte
+
+
+def test_reponse_longue_intacte_par_morceaux() -> None:
+    """Le buffer de garde ne doit rien perdre en fin de flux."""
+    morceaux = ("Le BDS ", "gère le sport, ", "et le BDA la culture.")
+    assert _renvoi(*morceaux) == "".join(morceaux)

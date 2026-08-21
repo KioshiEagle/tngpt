@@ -10,6 +10,14 @@ const THINKING_PHRASES = [
     "Je demande du café à TNS...",
     "Je cours chercher une flutte au BDA...",
     "Je fais semblant de comprendre...",
+    "Je commande une oasis PCF au bar...",
+    "Je pentest l'infra du bar...",
+    "Je répare l'infra d'Anim'Est...",
+    "Je demande les poids à Neura'TN...",
+    "Je commande la switch 2 de Gaming...",
+    "All'In sur la réponse...",
+    "Je prends l'apéro à Oeno...",
+    "Je demande l'autorisation à l'admin...",
 ];
 
 const SLOW_PHRASE = "Ouh hihi ha, ouh hihi ha...";
@@ -24,7 +32,6 @@ const WRITING_PHRASES = [
 
 const ALL_CHIPS = [
     { label: 'carte des mers', query: 'Montre-moi la carte des mers des clubs de TELECOM Nancy' },
-    { label: 'salles libres', query: 'Salles libres maintenant' },
     { label: "Planning de l'inté", query: "Balance le planning de l'intégration 2026" },
     { label: 'lore TN', query: 'Lore de TELECOM Nancy' },
     { label: 'clubs & assos', query: 'Liste des clubs et associations à TELECOM Nancy' },
@@ -175,26 +182,44 @@ document.addEventListener('DOMContentLoaded', () => {
     const duckyImg = document.getElementById('sidebar-ducky');
     const scrollBtn = document.getElementById('scroll-btn');
     const themeToggle = document.getElementById('theme-toggle');
+    const brainrotToggle = document.getElementById('brainrot-toggle');
     const hamburger = document.getElementById('hamburger');
     const sidebar = document.getElementById('sidebar');
     const backdrop = document.getElementById('sidebar-backdrop');
     const convList = document.getElementById('conv-list');
 
     // --- Theme toggle ---
-    function updateThemeLabel() {
+    // L'étiquette est fixe : c'est aria-checked qui porte l'état, pour le
+    // lecteur d'écran comme pour le CSS de l'interrupteur.
+    function updateThemeSwitch() {
         const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-        themeToggle.textContent = isDark ? '☀ mode clair' : '☾ mode sombre';
+        themeToggle.setAttribute('aria-checked', String(isDark));
     }
-    updateThemeLabel();
+    updateThemeSwitch();
 
     themeToggle.addEventListener('click', () => {
         const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
         const next = isDark ? 'light' : 'dark';
         document.documentElement.setAttribute('data-theme', next);
         localStorage.setItem('theme', next);
-        updateThemeLabel();
+        updateThemeSwitch();
         // La carte peint avec des variables CSS : elle suit le thème sans
         // qu'on ait à la redessiner.
+    });
+
+    // --- Mode brainrot ---
+    // Persisté comme le thème : le mode survit à la navigation entre convs.
+    let brainrot = localStorage.getItem('brainrot') === 'on';
+
+    function updateBrainrotSwitch() {
+        brainrotToggle?.setAttribute('aria-checked', String(brainrot));
+    }
+    updateBrainrotSwitch();
+
+    brainrotToggle?.addEventListener('click', () => {
+        brainrot = !brainrot;
+        localStorage.setItem('brainrot', brainrot ? 'on' : 'off');
+        updateBrainrotSwitch();
     });
 
     // --- User menu ---
@@ -419,7 +444,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch(window.CHAT_ENDPOINT || '/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: text, conversation_id: currentConversationId }),
+                body: JSON.stringify({ message: text, conversation_id: currentConversationId, brainrot }),
                 signal: abortController.signal,
             });
 

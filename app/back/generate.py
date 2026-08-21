@@ -61,9 +61,20 @@ _HTTP_400 = 400
 _HTTP_429 = 429
 _HTTP_413 = 413
 _MAX_RETRIES = 3
+# Attente maximale qu'on s'autorise dans une requête. gunicorn tue un worker
+# après 30 s sans activité, et il est unique : dormir davantage gèlerait
+# l'application pour tout le monde avant de se faire tuer de toute façon.
+_MAX_WAIT_S = 8.0
+# En-tête plus une ligne : en deçà, le bloc de fiches n'a plus rien à céder.
+_FICHES_MIN_LIGNES = 2
 _THINK_OPEN = "<think>"
 _THINK_CLOSE = "</think>"
 _EMPTY_ANSWER = "j'ai perdu le fil sur ce coup-là, tu peux reformuler ?"
+
+# Renvoi hors périmètre. Le prompt le réserve aux questions étrangères à
+# l'école, où il constitue la réponse entière ; ailleurs il contredit la phrase
+# qu'il suit. Le modèle l'y colle quand même, d'où ce filtre (voir _Renvoi).
+RENVOI_HORS_PERIMETRE = "demande à chatgpt, me casse pas les couilles"
 
 
 @dataclass
@@ -204,6 +215,70 @@ def _filter_think(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
     yield from think_filter.flush()
 
 
+class _Renvoi:
+    """Retire le renvoi hors périmètre quand il n'est pas toute la réponse.
+
+    Légitime seul, il est faux accolé à un « j'ai pas ça en archive » : la
+    question porte alors bien sur l'école, et le renvoi dit le contraire. Le
+    buffer retient la fin de chunk pouvant amorcer la formule, comme `_ThinkFilter`.
+    """
+
+    def __init__(self) -> None:
+        self._buf = ""
+        self._emis = False
+        self._garde = len(RENVOI_HORS_PERIMETRE) - 1
+
+    def feed(self, text: str) -> Iterator[str]:
+        """Ajoute du texte et cède ce qui est prêt, renvoi illégitime retiré."""
+        self._buf += text
+        yield from self._vider()
+        if len(self._buf) > self._garde:
+            sortie, self._buf = self._buf[: -self._garde], self._buf[-self._garde :]
+            yield from self._ceder(sortie)
+
+    def flush(self) -> Iterator[str]:
+        """Cède la fin du buffer en fin de stream."""
+        yield from self._vider()
+        reste, self._buf = self._buf, ""
+        yield from self._ceder(reste)
+
+    def _vider(self) -> Iterator[str]:
+        """Traite chaque occurrence de la formule présente dans le buffer."""
+        idx = self._buf.lower().find(RENVOI_HORS_PERIMETRE)
+        while idx != -1:
+            avant = self._buf[:idx]
+            fin = idx + len(RENVOI_HORS_PERIMETRE)
+            # Rien d'utile avant : c'est bien la réponse entière, on la garde.
+            if not self._emis and not avant.strip():
+                yield from self._ceder(self._buf[:fin])
+            else:
+                logger.warning(
+                    "Renvoi hors périmètre retiré : il suivait %d caractères.",
+                    len(avant.strip()),
+                )
+                # rstrip : l'espace qui précédait la formule pendrait sinon
+                # en fin de réponse, seule trace visible de la coupe.
+                yield from self._ceder(avant.rstrip())
+            self._buf = self._buf[fin:]
+            idx = self._buf.lower().find(RENVOI_HORS_PERIMETRE)
+
+    def _ceder(self, texte: str) -> Iterator[str]:
+        """Cède un segment en notant si de la réponse a déjà été produite."""
+        if not texte:
+            return
+        if texte.strip():
+            self._emis = True
+        yield texte
+
+
+def _filter_renvoi(pieces: Iterator[str]) -> Iterator[str]:
+    """Passe un flux déjà nettoyé de ses <think> au filtre de renvoi."""
+    filtre = _Renvoi()
+    for piece in pieces:
+        yield from filtre.feed(piece)
+    yield from filtre.flush()
+
+
 def _stream_chunks(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
     """Filtre les <think> en garantissant une sortie non vide.
 
@@ -246,7 +321,13 @@ CHAT_GROQ_PARAMS: GroqParams = {
     "reasoning_format": "hidden",
 }
 
-CHAT_SPEC = CallSpec(params=CHAT_GROQ_PARAMS)
+
+def _stream_chat_chunks(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
+    """Lecture du chat : blocs <think> filtrés, puis renvoi hors périmètre."""
+    return _filter_renvoi(_stream_chunks(completion))
+
+
+CHAT_SPEC = CallSpec(params=CHAT_GROQ_PARAMS, consume=_stream_chat_chunks)
 
 
 # Longueur retenue d'un tour passé : une carte au trésor persiste sa charge
@@ -333,20 +414,54 @@ class _RetryOutcome:
     """Ce qu'il faut faire après une tentative d'appel Groq ratée."""
 
     retry: bool = False
-    backoff: bool = False
+    # Secondes à attendre avant l'essai suivant, 0 pour enchaîner.
+    wait_seconds: float = 0.0
     smaller_context: bool = False
     drop_params: bool = False
     error_message: str | None = None
 
 
+def _retry_after(e: APIStatusError) -> float | None:
+    """Délai réclamé par Groq en en-tête `retry-after`, en secondes."""
+    brut = e.response.headers.get("retry-after")
+    if not brut:
+        return None
+    try:
+        return float(brut)
+    except ValueError:
+        # Forme date HTTP : rare chez Groq, et sans intérêt à parser ici.
+        return None
+
+
+def _outcome_429(e: APIStatusError, attempt: int) -> _RetryOutcome:
+    """Repli sur quota dépassé : attendre si c'est court, renoncer sinon.
+
+    Groq réclame parfois une minute entière. L'attendre, worker unique et
+    bloquant, revient à couper le service à tout le monde puis à se faire tuer
+    par gunicorn avant même d'avoir réessayé : autant le dire tout de suite.
+    """
+    demande = _retry_after(e)
+    attente = demande if demande is not None else 2.0**attempt
+    if attente <= _MAX_WAIT_S:
+        return _RetryOutcome(retry=True, wait_seconds=attente)
+    logger.warning("Quota Groq dépassé, %.0f s réclamées : abandon.", attente)
+    return _RetryOutcome(
+        error_message=(
+            f"Trop de questions d'un coup, Groq me met en pause {attente:.0f} s. "
+            "Réessaie dans un instant."
+        )
+    )
+
+
 def _retry_for_status(
-    status: int, *, can_retry: bool, has_params: bool
+    e: APIStatusError, status: int, attempt: int, *, can_retry: bool, has_params: bool
 ) -> _RetryOutcome | None:
     """Repli applicable à un statut Groq. None si rien à retenter."""
+    if status == _HTTP_429:
+        # Traité même au dernier essai : c'est lui qui porte le message d'attente.
+        return _outcome_429(e, attempt) if can_retry else None
     if not can_retry:
         return None
-    if status == _HTTP_429:
-        return _RetryOutcome(retry=True, backoff=True)
     if status == _HTTP_413:
         return _RetryOutcome(retry=True, smaller_context=True)
     # Paramètres refusés (modèle configuré via GROQ_CHAT_MODEL qui ne les
@@ -366,7 +481,9 @@ def _classify_error(
     """Décide, pour une erreur Groq donnée, s'il faut réessayer et comment."""
     if isinstance(e, APIStatusError):
         outcome = _retry_for_status(
+            e,
             e.status_code,
+            attempt,
             can_retry=attempt < max_retries - 1,
             has_params=has_params,
         )
@@ -381,6 +498,11 @@ def _classify_error(
             error_message="Erreur avec Groq : délai d'attente dépassé."
         )
     if isinstance(e, APIConnectionError):
+        # Le SDK reprenait lui-même les coupures réseau ; il ne retente plus
+        # rien (voir groqpool), donc c'est à l'échelle de repli de le faire.
+        if attempt < max_retries - 1:
+            logger.warning("Connexion Groq impossible : nouvel essai.", exc_info=e)
+            return _RetryOutcome(retry=True, wait_seconds=2.0**attempt)
         logger.error("Erreur Groq : connexion impossible", exc_info=e)
         return _RetryOutcome(
             error_message="Erreur avec Groq : impossible de se connecter à l'API."
@@ -389,18 +511,55 @@ def _classify_error(
     return _RetryOutcome(error_message=f"Erreur inattendue : {e!s}")
 
 
+# Marque laissée à la place des lignes coupées : sans elle, le modèle conclut
+# de l'absence d'une entité qu'elle n'existe pas.
+_FICHES_ECOURTEES = "(liste écourtée : le contexte dépassait la taille acceptée)"
+
+
+@dataclass(frozen=True)
+class _Contexte:
+    """La part du prompt que le repli 413 peut rogner : fiches puis archives."""
+
+    fiches: str
+    results: list[SearchResult]
+
+    def rendu(self) -> str:
+        """Le bloc de contexte tel qu'il part devant la question."""
+        return self.fiches + _build_context(self.results)
+
+    def reduit(self) -> "_Contexte":
+        """Moitié moins de fiches et moitié moins d'archives."""
+        return _Contexte(
+            fiches=_reduire_fiches(self.fiches),
+            results=self.results[: max(1, len(self.results) // 2)],
+        )
+
+
+def _reduire_fiches(fiches: str) -> str:
+    """Coupe le bloc de fiches en deux, sur des lignes entières.
+
+    L'en-tête est gardé : c'est lui qui dit au modèle ce qu'il lit et d'où ça
+    vient. Une coupe au caractère près produirait une fiche tronquée en plein
+    nom, plus trompeuse qu'une fiche absente.
+    """
+    if not fiches:
+        return ""
+    lignes = fiches.rstrip("\n").splitlines()
+    if len(lignes) <= _FICHES_MIN_LIGNES:
+        return fiches
+    garde = max(_FICHES_MIN_LIGNES, len(lignes) // 2)
+    return "\n".join([*lignes[:garde], _FICHES_ECOURTEES]) + "\n\n"
+
+
 def _attempt(
     req: GenerateRequest,
-    results: list[SearchResult],
+    contexte: _Contexte,
     client: Groq,
     spec: CallSpec,
     params: GroqParams,
 ) -> Iterator[str]:
     """Un essai : construit le prompt, appelle Groq et cède la complétion lue."""
-    # Les fiches passent devant et survivent au repli 413, qui ne rogne que
-    # `results` : partie courte du contexte, et seule à faire autorité.
-    context = req.fiches + _build_context(results)
-    prompt = spec.build(context, req.question, user_name=req.user_name)
+    prompt = spec.build(contexte.rendu(), req.question, user_name=req.user_name)
     # Les tours passés s'intercalent entre les règles et la question : seule
     # cette dernière porte des archives.
     history = _history_messages(req.history) if spec.send_history else []
@@ -420,13 +579,23 @@ def _attempt(
 
 def _apply(
     outcome: _RetryOutcome,
-    results: list[SearchResult],
+    contexte: _Contexte,
     params: GroqParams,
-    attempt: int,
-) -> tuple[list[SearchResult], GroqParams]:
+) -> tuple[_Contexte, GroqParams]:
     """Applique le repli décidé avant de relancer un essai."""
     if outcome.smaller_context:
-        results = results[: max(1, len(results) // 2)]
+        reduit = contexte.reduit()
+        logger.warning(
+            "Contexte refusé par Groq : %d → %d caractères "
+            "(fiches %d → %d, archives %d → %d chunks).",
+            len(contexte.rendu()),
+            len(reduit.rendu()),
+            len(contexte.fiches),
+            len(reduit.fiches),
+            len(contexte.results),
+            len(reduit.results),
+        )
+        contexte = reduit
     if outcome.drop_params:
         logger.warning(
             "Groq refuse %s pour %s : nouvel essai sans ces paramètres.",
@@ -434,9 +603,9 @@ def _apply(
             _CHAT_MODEL,
         )
         params = {}
-    if outcome.backoff:
-        time.sleep(2**attempt)
-    return results, params
+    if outcome.wait_seconds:
+        time.sleep(outcome.wait_seconds)
+    return contexte, params
 
 
 def _stream_with_retries(
@@ -446,12 +615,12 @@ def _stream_with_retries(
     spec: CallSpec = CHAT_SPEC,
 ) -> Iterator[str]:
     """Appelle Groq avec repli (429 : backoff, 413 : moins de contexte)."""
-    current_results = results
+    contexte = _Contexte(fiches=req.fiches, results=results)
     current_params: GroqParams = spec.params if spec.params is not None else {}
 
     for attempt in range(_MAX_RETRIES):
         try:
-            yield from _attempt(req, current_results, client, spec, current_params)
+            yield from _attempt(req, contexte, client, spec, current_params)
         except Exception as e:  # noqa: BLE001
             outcome = _classify_error(
                 e, attempt, _MAX_RETRIES, has_params=bool(current_params)
@@ -461,8 +630,6 @@ def _stream_with_retries(
                 assert outcome.error_message is not None
                 yield outcome.error_message
                 return
-            current_results, current_params = _apply(
-                outcome, current_results, current_params, attempt
-            )
+            contexte, current_params = _apply(outcome, contexte, current_params)
         else:
             return

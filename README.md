@@ -1,165 +1,92 @@
-TN-GPT 🦆
-TN-GPT est l'assistant intelligent dédié aux étudiants de TELECOM Nancy.
-Que ce soit pour réviser des points de cours complexes ou déterrer les anecdotes les plus sombres du lore de l'école (merci le Mini Tel'), TN-GPT retrouve l'info et te répond comme un pote de promo.
+<div align="center">
 
-## 🧱 Prérequis
+<img src="app/front/static/ducky_cassis.webp" alt="TN-GPT" width="180">
 
-- [uv](https://docs.astral.sh/uv/) (gestion des dépendances Python)
-- [Docker](https://docs.docker.com/get-docker/) + Docker Compose (base PostgreSQL)
-- Un compte [Qdrant Cloud](https://qdrant.tech/) (ou une instance locale) pour la base vectorielle
-- Un projet [Google Cloud Console](https://console.cloud.google.com/) pour l'authentification OAuth (et, en option, l'accès à Google Drive pour l'ingestion automatique)
-- Une clé API [Groq](https://console.groq.com/) pour la génération des réponses
+# TN-GPT
 
-## 🚀 Installation
+**L'assistant de la vie étudiante de TELECOM Nancy.**
 
-1. Cloner le projet
+Un RAG qui répond sur les archives de l'école — et qui parle comme un pote de promo, pas comme un service client.
+
+</div>
+
+---
+
+## Ce que c'est
+
+TN-GPT retrouve l'info dans les archives de TELECOM Nancy (comptes rendus, plannings, mails d'assos, lore du Mini Tel') et répond en s'appuyant **uniquement** sur elles : pas de connaissance propre, donc pas d'invention sur un corpus que personne ne peut vérifier.
+
+Ce qu'il y a dedans :
+
+- **Chat en streaming**, adossé à une recherche hybride dans Qdrant puis à un reclassement Workers AI.
+- **Carte des mers** — les clubs et assos dessinés en carte au trésor quand la question s'y prête.
+- **Mode brainrot** — un toggle, et la même info ressort en langue de commentaire TikTok.
+- **Panel admin** — catalogue de documents, permissions par bitmask, quotas journaliers, pool de clés Groq.
+- **Challenges CTF** — trois épreuves de prompt injection servies à côté du chat normal.
+
+L'accès est restreint aux comptes `@telecomnancy.net` via OAuth Google.
+
+## Démarrage rapide
+
+Prérequis : [uv](https://docs.astral.sh/uv/), [Docker](https://docs.docker.com/get-docker/), une instance Qdrant, un projet Google Cloud (OAuth) et une clé [Groq](https://console.groq.com/).
 
 ```bash
-git clone <url-du-repo>
-cd tn-gpt
-```
-
-2. Synchroniser les dépendances
-
-```bash
+git clone <url-du-repo> && cd tn-gpt
 uv sync
+
+cp env.example .env          # puis remplis les valeurs (voir le guide d'installation)
+docker compose up -d db      # PostgreSQL
+uv run flask db upgrade      # schéma
+
+uv run gunicorn -w 1 -b 127.0.0.1:8501 main:app
 ```
 
-## ⚙️ Configuration
-
-### 1. Fichier `.env`
-
-Copie `.env.example` en `.env` à la racine du projet, puis remplis les valeurs :
-
-```bash
-cp .env.example .env
-```
-
-Détail des variables :
-
-| Variable | Description |
-|---|---|
-| `FLASK_SECRET_KEY` | Clé de signature des sessions/cookies. Génère la tienne : `python -c "import secrets; print(secrets.token_hex(32))"` |
-| `FLASK_DEBUG` | `True` en local, `False` en production. Ne pilote plus que `OAUTHLIB_INSECURE_TRANSPORT`, sans quoi l'OAuth Google refuse le http local — le débogueur Werkzeug, lui, a été retiré du serveur de développement |
-| `DEFAULT_DAILY_QUOTA` | Quota de questions par jour par défaut (les administrateurs n'y sont pas soumis) |
-| `DATABASE_URL` | Connexion PostgreSQL, obligatoire — l'app refuse de démarrer sans elle (pas de repli SQLite) |
-| `POSTGRES_PASSWORD` | Mot de passe Postgres utilisé par `docker-compose.yml` |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Identifiants OAuth Google (voir ci-dessous) |
-| `GROQ_API_KEY` | Clé Groq de repli, utilisée si le pool de clés en base (panel admin) est vide |
-| `GROQ_CHAT_MODEL` | Modèle utilisé pour générer les réponses du chat (défaut `qwen/qwen3.6-27b`) |
-| `GROQ_METADATA_MODEL` | Modèle utilisé pour l'extraction de métadonnées à l'ingestion (défaut `llama-3.1-8b-instant`) |
-| `QDRANT_URL` / `QDRANT_API_KEY` | Connexion à la base vectorielle Qdrant |
-| `DRIVE_FOLDER_IDS` | IDs des dossiers Google Drive contenant les PDF sources, séparés par des virgules (optionnel, pipeline d'ingestion automatique uniquement) |
-
-### 2. Authentification Google OAuth (obligatoire)
-
-L'accès à l'application est restreint aux comptes `@telecomnancy.net`.
-
-1. Sur la [Google Cloud Console](https://console.cloud.google.com/), crée un projet (ou réutilise-en un).
-2. Va dans *APIs & Services > Identifiants* et crée un *ID client OAuth 2.0* de type **Application Web**.
-3. Ajoute l'URI de redirection autorisée : `http://localhost:8501/auth/callback` (adapte le domaine en production).
-4. Reporte `client_id` et `client_secret` dans `.env` (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`).
-
-### 3. Fichier `service-account.json` (optionnel — ingestion automatique Drive)
-
-Nécessaire uniquement pour l'ingestion automatique de PDF depuis Google Drive (`app/back/ingest.py`). Le panel admin permet aussi un dépôt manuel par glisser-déposer, qui n'en a pas besoin.
-
-1. Sur la même Google Cloud Console, active l'API **Google Drive**.
-2. Crée une clé de compte de service (*Identifiants > Créer des identifiants > Compte de service*), format JSON.
-3. Renomme le fichier téléchargé en `service-account.json` et place-le dans `app/back/`.
-4. Partage le(s) dossier(s) Drive source avec l'adresse e-mail du compte de service, puis renseigne leurs IDs dans `DRIVE_FOLDER_IDS`.
-
-### 4. Base de données PostgreSQL
-
-Lance uniquement la base via Docker Compose (le service `db`) :
-
-```bash
-docker compose up -d db
-```
-
-Applique ensuite le schéma avec les migrations Alembic :
-
-```bash
-uv run flask db upgrade
-```
-
-### 5. Base vectorielle Qdrant
-
-Utilise une instance [Qdrant Cloud](https://qdrant.tech/) (renseigne `QDRANT_URL`/`QDRANT_API_KEY`), ou lance une instance locale :
-
-```bash
-docker run -p 6333:6333 qdrant/qdrant
-```
-
-Dans ce cas, laisse `QDRANT_API_KEY` vide dans `.env`.
-
-### 6. Premier administrateur
-
-Aucun utilisateur n'a de droits admin à la création. Connecte-toi une première fois via Google OAuth (étape suivante) pour créer ton compte, puis élève-le :
+L'application écoute sur http://localhost:8501. Il n'y a plus de serveur de
+développement : le local tourne sous le même serveur que la production. Connecte-toi une première fois, puis élève ton compte :
 
 ```bash
 uv run flask make-admin ton.adresse@telecomnancy.net
 ```
 
-Les administrateurs suivants peuvent être désignés depuis le panel admin (`/admin`). Une clé Groq peut aussi y être ajoutée au pool — sans cela, `GROQ_API_KEY` sert de repli.
+Le détail des variables d'environnement, de la configuration OAuth et de l'ingestion Drive est dans [docs/installation.md](docs/installation.md).
 
-## 🛠️ Lancement
+## Architecture
+
+PostgreSQL est le **plan de contrôle** (utilisateurs, quotas, journal d'usage, catalogue) ; Qdrant est le **plan de données** (les chunks et leurs vecteurs).
+
+```mermaid
+flowchart LR
+    User["Navigateur"] --> Flask["Flask<br/>auth · chat · admin"]
+
+    Flask --> Retrieval["Recherche hybride<br/>+ reclassement"]
+    Retrieval <--> QD[("Qdrant<br/>chunks + vecteurs")]
+    Retrieval --> CF["Workers AI<br/>embeddings · reranker"]
+
+    Flask --> Generate["Génération<br/>prompt + archives"]
+    Generate --> Groq["Groq<br/>réponse streamée"]
+    Groq --> Flask
+
+    Flask <--> PG[("PostgreSQL<br/>users · quotas<br/>journal · catalogue")]
+
+    Drive["Google Drive<br/>PDF sources"] --> Ingest["Ingestion<br/>PDF → Markdown → chunks"]
+    Ingest --> QD
+    Ingest --> PG
+```
+
+Le détail des composants, le trajet complet d'une question et la chaîne d'ingestion sont dans [docs/architecture.md](docs/architecture.md).
+
+## Contribuer
+
+Avant de commit, rejoue la CI en local — lint, complexité, docstrings, secrets, audit de dépendances et tests :
 
 ```bash
-uv run python main.py
+./ci_local.sh
 ```
 
-L'application est disponible sur http://localhost:8501.
+Le projet est formaté avec [Ruff](https://docs.astral.sh/ruff/) ; active `source.fixAll.ruff` et `source.organizeImports.ruff` à la sauvegarde dans ton éditeur.
 
-## 📥 Ingestion des documents
+---
 
-Deux façons d'alimenter la base de connaissances :
-
-- **Glisser-déposer** dans le panel admin (`/admin/catalog`) — pas de configuration Drive nécessaire.
-- **Pipeline automatique** depuis Google Drive (nécessite `service-account.json` et `DRIVE_FOLDER_IDS`) :
-
-```bash
-uv run python app/back/ingest.py
-```
-
-Les PDF sont convertis en Markdown, découpés en chunks et indexés dans Qdrant ; leurs métadonnées sont extraites via Groq et le catalogue est tenu à jour dans PostgreSQL.
-
-## ✅ Vérifications avant de commit
-
-Le script [run_ci.sh](run_ci.sh) rejoue en local les vérifications de la pipeline CI (lint, sécurité, tests) :
-
-```bash
-./run_ci.sh
-```
-
-Utilise l'extension Ruff pour VS Code pour appliquer directement les bonnes pratiques du projet (`.vscode/settings.json` ou paramètres utilisateur) :
-
-```json
-"editor.formatOnSave": true,
-"editor.codeActionsOnSave": {
-    "source.fixAll.ruff": "always",
-    "source.organizeImports.ruff": "always"
-},
-
-"files.trimTrailingWhitespace": true,
-"files.insertFinalNewline": true,
-"files.trimFinalNewlines": true,
-
-"[python]": {
-    "editor.defaultFormatter": "charliermarsh.ruff",
-    "editor.formatOnSave": true
-},
-
-"ruff.nativeServer": "on",
-"ruff.organizeImports": true,
-"ruff.fixAll": true
-```
-
-## 🏗️ Architecture
-
-Voir [docs/architecture.md](docs/architecture.md) pour le détail des composants, du trajet d'une question et de la pipeline d'ingestion.
-
-- **Authentification** : OAuth Google restreint aux comptes `@telecomnancy.net`.
-- **Retrieval** : recherche sémantique via embeddings Cloudflare Workers AI dans Qdrant.
-- **Génération** : Groq (modèle configurable via `GROQ_CHAT_MODEL`), avec un pool de clés API réparties.
-- **Contrôle** : PostgreSQL porte les utilisateurs, permissions, quotas, journal d'usage et catalogue de documents.
+<div align="center">
+Fait par <a href="https://neuratn.ath0ms.fr">Neura'TN</a>.
+</div>

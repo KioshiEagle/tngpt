@@ -6,9 +6,13 @@ import re
 from datetime import date
 from pathlib import Path
 
-import pymupdf4llm
 from dotenv import load_dotenv
 from groq import APIConnectionError, APIStatusError, APITimeoutError, Groq
+
+# pymupdf4llm conseille pymupdf-layout d'un print() à l'import : ce paquet est
+# justement écarté (voir la borne pymupdf4llm du pyproject).
+os.environ.setdefault("PYMUPDF_SUGGEST_LAYOUT_ANALYZER", "0")
+import pymupdf4llm
 
 _env_client: Groq | None = None
 

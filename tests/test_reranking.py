@@ -150,13 +150,83 @@ def test_reordonne_selon_le_classement_rendu(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_attache_le_score_du_reranker(monkeypatch: pytest.MonkeyPatch) -> None:
-    """`rerank_score` accompagne les chunks reclassés, sans écraser `score`."""
+    """`rerank_score` garde la note brute, `score` porte la fusion des rangs.
+
+    Les deux candidats ont la même fraîcheur : le mieux reclassé cumule donc le
+    rang 0 de pertinence et le rang 0 de fraîcheur.
+    """
     monkeypatch.setattr(
         reranking, "get_client", _client_qui_rend(_payload((2, 8.0), (0, 0.1)))
     )
     premier = reranking.rerank("q", _CANDIDATS, top_k=1)[0]
     assert premier["rerank_score"] == pytest.approx(8.0)
-    assert premier["score"] == pytest.approx(0.7)
+    k = reranking._RRF_K
+    attendu = 1 / k + reranking.POIDS_FRAICHEUR / k
+    assert premier["score"] == pytest.approx(attendu)
+
+
+def test_fusion_bornee_a_la_tete_du_reclassement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """La fraîcheur ne repêche pas ce que le reranker a jugé sans rapport.
+
+    Au-delà de `_FUSION_MAX`, les scores du reranker frôlent zéro : réordonner
+    cette queue ferait remonter des pages fraîchement crawlées hors sujet.
+    """
+    frais_hors_sujet = _chunk("frais", "Collecte d'objets connectés.", 0.5)
+    frais_hors_sujet["freshness_score"] = 0.99
+    candidats = [
+        _chunk(str(i), f"chunk pertinent {i}", 0.9)
+        for i in range(reranking._FUSION_MAX)
+    ]
+    candidats.append(frais_hors_sujet)
+    # Le hors-sujet est bon dernier au reranker, donc hors de la fusion.
+    notes = [(i, 0.9 - i * 0.01) for i in range(reranking._FUSION_MAX)]
+    notes.append((reranking._FUSION_MAX, 0.001))
+    monkeypatch.setattr(reranking, "get_client", _client_qui_rend(_payload(*notes)))
+    sortie = reranking.rerank("q", candidats, top_k=reranking._FUSION_MAX + 1)
+    assert sortie[-1]["point_id"] == "frais"
+
+
+def test_fraicheur_departage_deux_chunks_aussi_pertinents(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """À pertinence quasi égale, le plus récent passe devant.
+
+    C'est le rôle rendu à la fraîcheur : arbitrer entre pertinents, là où elle
+    filtrait auparavant l'entrée du reranker.
+    """
+    vieux = _chunk("vieux", "Compte rendu de 2018.", 0.70)
+    recent = _chunk("recent", "Compte rendu de 2026.", 0.70)
+    recent["freshness_score"] = 0.9
+    vieux["freshness_score"] = 0.01
+    monkeypatch.setattr(
+        reranking,
+        "get_client",
+        # Le vieux est jugé très légèrement plus pertinent par le reranker.
+        _client_qui_rend(_payload((0, 0.91), (1, 0.88))),
+    )
+    sortie = reranking.rerank("q", [vieux, recent], top_k=2)
+    assert [c["point_id"] for c in sortie] == ["recent", "vieux"]
+
+
+def test_pertinence_franche_resiste_a_la_fraicheur(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Un document nettement plus pertinent ne se fait pas doubler par un récent.
+
+    La fraîcheur départage, elle ne décide pas : sinon on refait le défaut
+    inverse, où un document hors sujet mais fraîchement crawlé remonte.
+    """
+    hors_sujet = _chunk("recent", "Collecte d'objets connectés.", 0.65)
+    hors_sujet["freshness_score"] = 0.95
+    bon = _chunk("bon", "Guide de configuration Eduroam.", 0.69)
+    bon["freshness_score"] = 0.5
+    monkeypatch.setattr(
+        reranking, "get_client", _client_qui_rend(_payload((1, 0.90), (0, 0.05)))
+    )
+    sortie = reranking.rerank("q", [hors_sujet, bon], top_k=2)
+    assert [c["point_id"] for c in sortie] == ["bon", "recent"]
 
 
 def test_un_chunk_non_rendu_nest_pas_perdu(monkeypatch: pytest.MonkeyPatch) -> None:

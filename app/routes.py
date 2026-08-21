@@ -14,6 +14,7 @@ from flask import (
 from flask_login import current_user, login_required
 from groq import Groq
 
+from .back.brainrot import BRAINROT_SPEC
 from .back.clubs import lookup_context
 from .back.ctf import spec_for
 from .back.generate import (
@@ -162,11 +163,17 @@ def _run_chat(*, spec: CallSpec, is_ctf: bool) -> Response | tuple[Response, int
     """Traite un message : quota, retrieval, fiches, streaming, persistance.
 
     `spec` porte le prompt et les paramètres Groq — chat normal ou challenge.
-    `is_ctf` coupe la carte au trésor, qui contournerait les règles du challenge.
+    `is_ctf` coupe la carte au trésor et le mode brainrot, qui contourneraient
+    les règles du challenge.
     """
     data = request.get_json()
     if not data or "message" not in data:
         return jsonify({"error": "Message manquant"}), 400
+
+    # Toggle du front : le brainrot n'est qu'une autre voix sur le même chat,
+    # donc un autre spec. Coupé sur un challenge, dont il écraserait le prompt.
+    if not is_ctf and data.get("brainrot"):
+        spec = BRAINROT_SPEC
 
     user_message = data["message"]
     if len(user_message) > MAX_MESSAGE_LENGTH:
@@ -304,31 +311,32 @@ def delete_conversation(conversation_id: int) -> Response:
     return jsonify({"message": "Conversation supprimée"})
 
 
-Citation = tuple[str, int]
-CITATIONS: list[Citation] = [
-    ("Qu'avez-vous à dire pour votre défense ?", 5),
-    ("Envie de jiguer, pas vous ?", 7),
-    ("En date avec Crazy François", 5),
-    ("* en train de barboter dans l'évier cancéreux du bar *", 7),
-    ("on vient de me barouder aled", 5),
-    ("ici ça bz", 5),
-    ("Je ne suis pas un projet de TNS (mdr)", 5),
-    ("on m'a forcé à prendre du thé", 6),
-    ("nique le cheval whatsapp", 5),
-    ("Prompt injection et tu vas repartir mal mon compaing", 5),
-    ("Pétition pour remettre l'Oriental au bar", 5),
-    ("Absolute Bouthier", 5),
-    ("plus qu'une salle et la carte sera complétée.....", 2),
-    ("ah bas le gouvernement BDE !!", 3),
+CITATIONS: list[str] = [
+    "Envie de jiguer, pas vous ?",
+    "En date avec Crazy François",
+    "* en train de barboter dans l'évier cancéreux du bar *",
+    "on vient de me barouder aled",
+    "ici ça bz",
+    "Je ne suis pas un projet de TNS",
+    "on m'a forcé à prendre du thé",
+    "nique le cheval whatsapp",
+    "Prompt injection et tu vas repartir mal mon compaing",
+    "Pétition pour remettre l'Oriental au bar",
+    "Absolute Bouthier",
+    "plus qu'une salle et la carte sera complétée.....",
+    "ah bas le gouvernement BDE !!",
+    "je me sens Gaulois",
+    "Envie de faire de la robotique ? venez à Tek",
+    "imagine Créa'TN fait plus d'argent que TNS",
+    "Anim'Est si on inverse les lettres ça fait femboy",
+    "le code du BDE c'est :",
 ]
 
 
 @bp.route("/quote", methods=["GET"])
 def quote() -> str:
-    """Retourne une citation aléatoire pondérée."""
-    quotes = [c[0] for c in CITATIONS]
-    weights = [c[1] for c in CITATIONS]
-    return random.choices(quotes, weights=weights, k=1)[0]  # nosec
+    """Retourne une citation aléatoire, toutes équiprobables."""
+    return random.choice(CITATIONS)  # nosec
 
 
 @bp.route("/")

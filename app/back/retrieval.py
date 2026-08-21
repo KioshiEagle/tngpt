@@ -6,10 +6,10 @@ from itertools import zip_longest
 from pathlib import Path
 
 from dotenv import load_dotenv
-from qdrant_client import QdrantClient
+from qdrant_client import QdrantClient, models
 
 from .embedding import embed_query
-from .reranking import rerank
+from .reranking import normalise, rerank
 from .types import SearchResult
 
 load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
@@ -57,24 +57,63 @@ def _freshness_score(date_str: str) -> float:
         return 0.5
 
 
+def _embargo_filter() -> models.Filter:
+    """Écarte les documents dont la date d'ouverture n'est pas encore passée.
+
+    Les deux conditions sont en `should` (OU) parce que le champ est récent :
+    tout ce qui a été ingéré avant lui n'en porte pas, et un `must` sur la
+    borne ferait disparaître le corpus entier.
+    """
+    maintenant = int(datetime.now(UTC).timestamp())
+    return models.Filter(
+        should=[
+            models.IsEmptyCondition(
+                is_empty=models.PayloadField(key="visible_from_ts")
+            ),
+            models.FieldCondition(
+                key="visible_from_ts",
+                range=models.Range(lte=maintenant),
+            ),
+        ]
+    )
+
+
 def _candidates(query: str, top_k: int, collection_name: str) -> list[SearchResult]:
-    """Candidats hybrides pour une formulation, du meilleur au moins bon."""
+    """Candidats d'une formulation, du plus proche du sens au moins proche.
+
+    Triés sur le sens seul : c'est cet ordre qui remplit la short-list du
+    reranker, et la fraîcheur n'a pas à décider qui il verra. Elle est portée
+    par `score`, qui sert d'ordre de repli quand le reclassement manque, et
+    départage les pertinents une fois le reranker passé.
+    """
     query_vector = embed_query(query)
     response = get_client().query_points(
         collection_name=collection_name,
         query=query_vector,
+        query_filter=_embargo_filter(),
         limit=top_k * CANDIDATE_MULTIPLIER,
         score_threshold=SCORE_THRESHOLD,
         with_payload=True,
         with_vectors=False,
     )
 
+    # Les scores bge-m3 se tassent dans une bande étroite (0.64 à 0.73 sur une
+    # question type) là où la fraîcheur occupe tout [0, 1] : mêlés bruts, le
+    # 70/30 affiché donnait en réalité près de cinq fois plus de poids à la
+    # fraîcheur qu'au sens. Chaque terme est donc ramené à l'étendue du lot.
+    semantiques = [point.score for point in response.points]
+    fraicheurs = [
+        _freshness_score((point.payload or {}).get("date", ""))
+        for point in response.points
+    ]
+    cotes = normalise(semantiques)
+
     results: list[SearchResult] = []
-    for point in response.points:
-        semantic = point.score
+    for point, semantic, freshness, cote in zip(
+        response.points, semantiques, fraicheurs, cotes, strict=True
+    ):
         payload = point.payload or {}
-        freshness = _freshness_score(payload.get("date", ""))
-        hybrid = FRESHNESS_ALPHA * semantic + (1 - FRESHNESS_ALPHA) * freshness
+        hybrid = FRESHNESS_ALPHA * cote + (1 - FRESHNESS_ALPHA) * freshness
 
         results.append(
             SearchResult(
@@ -87,7 +126,7 @@ def _candidates(query: str, top_k: int, collection_name: str) -> list[SearchResu
             )
         )
 
-    results.sort(key=lambda x: x["score"], reverse=True)
+    results.sort(key=lambda x: x["semantic_score"], reverse=True)
     return results
 
 

@@ -4,6 +4,7 @@ import os
 import re
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from qdrant_client import QdrantClient, models
@@ -13,6 +14,29 @@ from .embedding import embed_documents
 
 # Bumper cette version force la re-ingestion de tous les documents
 _CHUNK_VERSION = "v5-clean"
+
+# Documents sous embargo : `visible_from` dans le frontmatter (AAAA-MM-JJ) fixe
+# la date d'ouverture, filtrée à la recherche (voir retrieval._embargo_filter).
+# 0 = visible tout de suite, valeur des documents qui n'en portent pas.
+NO_EMBARGO = 0
+
+
+def embargo_timestamp(visible_from: str) -> int:
+    """Convertit une date d'ouverture AAAA-MM-JJ en secondes Unix, 0 si absente.
+
+    Une date illisible vaut un embargo absent : la recherche verrait sinon un
+    document indisponible pour toujours, sans rien pour le signaler.
+    """
+    if not visible_from:
+        return NO_EMBARGO
+    try:
+        jour = datetime.fromisoformat(visible_from)
+    except ValueError:
+        print(f"⚠️  visible_from illisible ({visible_from!r}) : embargo ignoré.")
+        return NO_EMBARGO
+    if jour.tzinfo is None:
+        jour = jour.replace(tzinfo=UTC)
+    return int(jour.timestamp())
 
 
 def _file_hash(content: str) -> str:
@@ -43,6 +67,8 @@ class IngestResult:
     author: str
     chunk_count: int
     file_hash: str
+    # Secondes Unix avant lesquelles le document reste hors des recherches.
+    visible_from_ts: int = NO_EMBARGO
 
 
 class VectorStore:
@@ -61,6 +87,11 @@ class VectorStore:
             collection_name=self.collection,
             field_name="date",
             field_schema=models.PayloadSchemaType.KEYWORD,
+        )
+        self.client.create_payload_index(
+            collection_name=self.collection,
+            field_name="visible_from_ts",
+            field_schema=models.PayloadSchemaType.INTEGER,
         )
 
     def delete_source(self, source_id: str) -> None:
@@ -93,6 +124,7 @@ class VectorStore:
         title = meta.get("title", source_id)
         date = meta.get("date", "")
         author = meta.get("author", "Inconnu")
+        visible_from_ts = embargo_timestamp(meta.get("visible_from", ""))
 
         print(f"📤 Ingestion sémantique : {title or source_id}")
         chunks = get_hybrid_chunks(body, chunk_size=800, chunk_overlap=240)
@@ -116,6 +148,7 @@ class VectorStore:
                     "title": title,
                     "date": date,
                     "author": author,
+                    "visible_from_ts": visible_from_ts,
                 },
             )
             for i, (text, embedding) in enumerate(zip(chunks, embeddings, strict=False))
@@ -135,6 +168,7 @@ class VectorStore:
             author=author,
             chunk_count=len(chunks),
             file_hash=_file_hash(content),
+            visible_from_ts=visible_from_ts,
         )
 
     def upload_directory(self, md_dir: Path, log_file: Path) -> None:

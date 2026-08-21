@@ -676,15 +676,6 @@ body {
 .send.stop-mode:hover { opacity: 1; color: #e11d48; }
 
 .hint { font-size: 13px; color: var(--text-muted); margin-top: 8px; font-family: 'IBM Plex Mono', monospace; }
-.hint kbd {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 11px;
-    background: var(--bg-sidebar);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 1px 4px;
-    color: var(--text-muted);
-}
 
 .thinking-text {
     background: none !important;
@@ -712,10 +703,13 @@ body {
     position: relative;
 }
 
-.theme-toggle {
+/* Interrupteur du pied de sidebar, partagé par le thème et le brainrot :
+   l'état se lit sur la position du curseur, plus sur l'étiquette. */
+.switch-row {
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: space-between;
+    gap: 10px;
     width: 100%;
     background: none;
     border: 1px solid var(--border);
@@ -728,7 +722,30 @@ body {
     text-align: left;
     transition: background 0.12s, color 0.12s;
 }
-.theme-toggle:hover { background: rgba(0, 0, 0, 0.05); color: var(--text-main); }
+.switch-row:hover { background: rgba(0, 0, 0, 0.05); color: var(--text-main); }
+.switch-row:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+.switch-track {
+    flex: none;
+    width: 28px;
+    height: 16px;
+    border-radius: 999px;
+    background: var(--border);
+    transition: background 0.12s;
+}
+
+.switch-knob {
+    display: block;
+    width: 12px;
+    height: 12px;
+    margin: 2px;
+    border-radius: 50%;
+    background: var(--bg);
+    transition: transform 0.12s;
+}
+
+.switch-row[aria-checked="true"] .switch-track { background: var(--primary); }
+.switch-row[aria-checked="true"] .switch-knob { transform: translateX(12px); }
 
 .user-tab {
     display: flex;
