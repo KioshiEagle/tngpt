@@ -88,3 +88,127 @@
 2026-08-21 17:12:26,929 INFO HTTP Request: POST https://4098007e-b474-4cbe-8d3f-24fa37fcc564.europe-west3-0.gcp.cloud.qdrant.io:6333/collections/documents/points/query "HTTP/1.1 200 OK"
 2026-08-21 17:12:27,592 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-reranker-base "HTTP/1.1 200 OK"
 2026-08-21 17:12:27,633 INFO Cadence openai/gpt-oss-120b : attente 57 s
+2026-08-21 22:12:57,651 INFO setup plugin alembic.autogenerate.schemas
+2026-08-21 22:12:57,652 INFO setup plugin alembic.autogenerate.tables
+2026-08-21 22:12:57,652 INFO setup plugin alembic.autogenerate.types
+2026-08-21 22:12:57,652 INFO setup plugin alembic.autogenerate.constraints
+2026-08-21 22:12:57,652 INFO setup plugin alembic.autogenerate.defaults
+2026-08-21 22:12:57,652 INFO setup plugin alembic.autogenerate.comments
+2026-08-21 22:12:57,652 INFO setup plugin alembic.autogenerate.checkconstraint_byname
+2026-08-21 22:12:58,426 INFO 125 mesure(s) à faire, 23 déjà en base
+Traceback (most recent call last):
+  File "/Users/tobiasnobile/dev/perso/tngpt/.venv/lib/python3.13/site-packages/httpx/_transports/default.py", line 101, in map_httpcore_exceptions
+    yield
+  File "/Users/tobiasnobile/dev/perso/tngpt/.venv/lib/python3.13/site-packages/httpx/_transports/default.py", line 250, in handle_request
+    resp = self._pool.handle_request(req)
+  File "/Users/tobiasnobile/dev/perso/tngpt/.venv/lib/python3.13/site-packages/httpcore/_sync/connection_pool.py", line 256, in handle_request
+    raise exc from None
+  File "/Users/tobiasnobile/dev/perso/tngpt/.venv/lib/python3.13/site-packages/httpcore/_sync/connection_pool.py", line 236, in handle_request
+    response = connection.handle_request(
+        pool_request.request
+    )
+  File "/Users/tobiasnobile/dev/perso/tngpt/.venv/lib/python3.13/site-packages/httpcore/_sync/connection.py", line 101, in handle_request
+    raise exc
+  File "/Users/tobiasnobile/dev/perso/tngpt/.venv/lib/python3.13/site-packages/httpcore/_sync/connection.py", line 78, in handle_request
+    stream = self._connect(request)
+  File "/Users/tobiasnobile/dev/perso/tngpt/.venv/lib/python3.13/site-packages/httpcore/_sync/connection.py", line 124, in _connect
+    stream = self._network_backend.connect_tcp(**kwargs)
+  File "/Users/tobiasnobile/dev/perso/tngpt/.venv/lib/python3.13/site-packages/httpcore/_backends/sync.py", line 207, in connect_tcp
+    with map_exceptions(exc_map):
+         ~~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/tobiasnobile/.local/share/uv/python/cpython-3.13.5-macos-aarch64-none/lib/python3.13/contextlib.py", line 162, in __exit__
+    self.gen.throw(value)
+    ~~~~~~~~~~~~~~^^^^^^^
+  File "/Users/tobiasnobile/dev/perso/tngpt/.venv/lib/python3.13/site-packages/httpcore/_exceptions.py", line 14, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore.ConnectError: [Errno 8] nodename nor servname provided, or not known
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/tobiasnobile/dev/perso/tngpt/benchmarks/bench_generation.py", line 431, in <module>
+    main()
+    ~~~~^^
+  File "/Users/tobiasnobile/dev/perso/tngpt/benchmarks/bench_generation.py", line 427, in main
+    _boucle(args)
+    ~~~~~~~^^^^^^
+  File "/Users/tobiasnobile/dev/perso/tngpt/benchmarks/bench_generation.py", line 360, in _boucle
+    contextes[question] = contexte_de(question)
+                          ~~~~~~~~~~~^^^^^^^^^^
+  File "/Users/tobiasnobile/dev/perso/tngpt/benchmarks/bench_generation.py", line 115, in contexte_de
+    resultats = search(question, top_k=TOP_K)
+  File "/Users/tobiasnobile/dev/perso/tngpt/app/back/retrieval.py", line 164, in search
+    results = _candidates(query, top_k, collection_name)
+  File "/Users/tobiasnobile/dev/perso/tngpt/app/back/retrieval.py", line 89, in _candidates
+    query_vector = embed_query(query)
+  File "/Users/tobiasnobile/dev/perso/tngpt/app/back/embedding.py", line 101, in embed_query
+    return _embed([text])[0]
+           ~~~~~~^^^^^^^^
+  File "/Users/tobiasnobile/dev/perso/tngpt/app/back/embedding.py", line 87, in _embed
+    payload = _post(texts[start : start + BATCH_SIZE])
+  File "/Users/tobiasnobile/dev/perso/tngpt/app/back/embedding.py", line 59, in _post
+    response = get_client().post(MODEL, json={"text": batch})
+  File "/Users/tobiasnobile/dev/perso/tngpt/.venv/lib/python3.13/site-packages/httpx/_client.py", line 1144, in post
+    return self.request(
+           ~~~~~~~~~~~~^
+        "POST",
+        ^^^^^^^
+    ...<11 lines>...
+        extensions=extensions,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/tobiasnobile/dev/perso/tngpt/.venv/lib/python3.13/site-packages/httpx/_client.py", line 825, in request
+    return self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/tobiasnobile/dev/perso/tngpt/.venv/lib/python3.13/site-packages/httpx/_client.py", line 914, in send
+    response = self._send_handling_auth(
+        request,
+    ...<2 lines>...
+        history=[],
+    )
+  File "/Users/tobiasnobile/dev/perso/tngpt/.venv/lib/python3.13/site-packages/httpx/_client.py", line 942, in _send_handling_auth
+    response = self._send_handling_redirects(
+        request,
+        follow_redirects=follow_redirects,
+        history=history,
+    )
+  File "/Users/tobiasnobile/dev/perso/tngpt/.venv/lib/python3.13/site-packages/httpx/_client.py", line 979, in _send_handling_redirects
+    response = self._send_single_request(request)
+  File "/Users/tobiasnobile/dev/perso/tngpt/.venv/lib/python3.13/site-packages/httpx/_client.py", line 1014, in _send_single_request
+    response = transport.handle_request(request)
+  File "/Users/tobiasnobile/dev/perso/tngpt/.venv/lib/python3.13/site-packages/httpx/_transports/default.py", line 249, in handle_request
+    with map_httpcore_exceptions():
+         ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/tobiasnobile/.local/share/uv/python/cpython-3.13.5-macos-aarch64-none/lib/python3.13/contextlib.py", line 162, in __exit__
+    self.gen.throw(value)
+    ~~~~~~~~~~~~~~^^^^^^^
+  File "/Users/tobiasnobile/dev/perso/tngpt/.venv/lib/python3.13/site-packages/httpx/_transports/default.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ConnectError: [Errno 8] nodename nor servname provided, or not known
+2026-08-21 22:42:54,857 INFO setup plugin alembic.autogenerate.schemas
+2026-08-21 22:42:54,857 INFO setup plugin alembic.autogenerate.tables
+2026-08-21 22:42:54,857 INFO setup plugin alembic.autogenerate.types
+2026-08-21 22:42:54,857 INFO setup plugin alembic.autogenerate.constraints
+2026-08-21 22:42:54,857 INFO setup plugin alembic.autogenerate.defaults
+2026-08-21 22:42:54,857 INFO setup plugin alembic.autogenerate.comments
+2026-08-21 22:42:54,857 INFO setup plugin alembic.autogenerate.checkconstraint_byname
+2026-08-21 22:42:55,655 INFO 125 mesure(s) à faire, 23 déjà en base
+2026-08-21 22:42:56,174 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-m3 "HTTP/1.1 200 OK"
+2026-08-21 22:42:56,358 INFO HTTP Request: POST https://4098007e-b474-4cbe-8d3f-24fa37fcc564.europe-west3-0.gcp.cloud.qdrant.io:6333/collections/documents/points/query "HTTP/1.1 200 OK"
+2026-08-21 22:42:56,879 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-reranker-base "HTTP/1.1 200 OK"
+2026-08-21 22:42:57,414 WARNING Cerebras inutilisable (HTTP 402) — le candidat repart sur Groq. {"message":"Payment required to access this resource. Visit your billing tab.","type":"payment_required_error","param":"
+2026-08-21 22:42:58,863 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-08-21 22:43:00,525 INFO reste 124 | yo balance une carte des clubs | openai/gpt-oss-120b : 6466 tokens (0 en cache) {'fidelite': 0.9, 'pertinence': 0.8, 'completude': 0.9, 'ton': 0.7}
+2026-08-21 22:43:00,657 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-m3 "HTTP/1.1 200 OK"
+2026-08-21 22:43:00,722 INFO HTTP Request: POST https://4098007e-b474-4cbe-8d3f-24fa37fcc564.europe-west3-0.gcp.cloud.qdrant.io:6333/collections/documents/points/query "HTTP/1.1 200 OK"
+2026-08-21 22:43:01,311 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-reranker-base "HTTP/1.1 200 OK"
+2026-08-21 22:43:01,345 INFO Cadence openai/gpt-oss-120b : attente 58 s
+2026-08-21 22:43:59,960 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-08-21 22:44:01,545 INFO reste 123 | génère une carte des clubs avec le CETEN | openai/gpt-oss-120b : 5406 tokens (0 en cache) {'fidelite': 0.8, 'pertinence': 0.9, 'completude': 0.7, 'ton': 0.6}
+2026-08-21 22:44:01,749 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-m3 "HTTP/1.1 200 OK"
+2026-08-21 22:44:01,903 INFO HTTP Request: POST https://4098007e-b474-4cbe-8d3f-24fa37fcc564.europe-west3-0.gcp.cloud.qdrant.io:6333/collections/documents/points/query "HTTP/1.1 200 OK"
+2026-08-21 22:44:02,308 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-reranker-base "HTTP/1.1 200 OK"
+2026-08-21 22:44:02,329 INFO Cadence openai/gpt-oss-120b : attente 59 s

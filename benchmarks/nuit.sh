@@ -19,6 +19,28 @@ if ! mkdir "$VERROU" 2>/dev/null; then
 fi
 trap 'rmdir "$VERROU" 2>/dev/null || true' EXIT INT TERM
 
+# launchd rattrape la tâche au réveil, parfois avant que le Wi-Fi soit
+# remonté : la première requête mourait alors sur un DNS injoignable.
+i=0
+while [ "$i" -lt 60 ]; do
+    ping -c1 -t2 api.groq.com >/dev/null 2>&1 && break
+    i=$((i + 1))
+    sleep 10
+done
+if [ "$i" -ge 60 ]; then
+    journal "pas de réseau après 10 min, on renonce pour cette nuit"
+    exit 0
+fi
+[ "$i" -gt 0 ] && journal "réseau revenu après $((i * 10))s d'attente"
+
+# Borne dure à 7 h : un démarrage rattrapé tard le matin ferait sinon tourner
+# le banc en pleine journée, contre la production.
+FIN=$(date -j -f "%H:%M:%S" "07:00:00" "+%s")
+MAINTENANT=$(date +%s)
+[ "$FIN" -le "$MAINTENANT" ] && FIN=$((FIN + 86400))
+RESTE=$((FIN - MAINTENANT))
+[ "$RESTE" -lt "$DUREE" ] && DUREE="$RESTE"
+
 journal "démarrage pour ${DUREE}s"
 
 # macOS n'a pas `timeout` : un chien de garde tue le banc à l'heure dite.
