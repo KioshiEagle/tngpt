@@ -38,16 +38,20 @@
                                 </div>
                             </td>
 
-                            <td class="admin-quota-usage">
-                                {% if row.limit is none %}
-                                    <span class="admin-cell-muted">{{ row.used }} question(s) — illimité</span>
-                                {% else %}
-                                    <span class="admin-meter" title="{{ row.used }} / {{ row.limit }}">
-                                        <span class="admin-meter-fill {% if row.remaining == 0 %}admin-meter-fill--full{% endif %}"
-                                              style="width: {{ row.pct }}%;"></span>
-                                    </span>
-                                    <span class="admin-meter-label">{{ row.used }} / {{ row.limit }}</span>
-                                {% endif %}
+                            <td>
+                                {# La mise en ligne vit dans un div, jamais sur le td :
+                                   un td en flex quitte le tableau et désaligne sa bordure. #}
+                                <div class="admin-quota-usage">
+                                    {% if row.limit is none %}
+                                        <span class="admin-cell-muted">{{ row.used }} question(s) — illimité</span>
+                                    {% else %}
+                                        <span class="admin-meter" title="{{ row.used }} / {{ row.limit }}">
+                                            <span class="admin-meter-fill {% if row.remaining == 0 %}admin-meter-fill--full{% endif %}"
+                                                  style="width: {{ row.pct }}%;"></span>
+                                        </span>
+                                        <span class="admin-meter-label">{{ row.used }} / {{ row.limit }}</span>
+                                    {% endif %}
+                                </div>
                             </td>
 
                             <td class="admin-td-num">
