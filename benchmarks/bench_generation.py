@@ -251,21 +251,38 @@ def juger(contexte: str, question: str, reponse: str) -> dict[str, float]:
         "temperature": 0.0,
         "max_tokens": 300,
     }
-    reponse_http = requests.post(
-        url,
-        headers={"Authorization": f"Bearer {os.environ['CLOUDFLARE_API_TOKEN']}"},
-        json=charge,
-        timeout=90,
-    )
-    reponse_http.raise_for_status()
-    brut = reponse_http.json()["result"]["response"]
+    # Le juge n'est pas la mesure : s'il tombe — quota de neurons épuisé,
+    # réseau — on garde la génération et on note plus tard, plutôt que de
+    # perdre la nuit sur une exception.
+    try:
+        reponse_http = requests.post(
+            url,
+            headers={"Authorization": f"Bearer {os.environ['CLOUDFLARE_API_TOKEN']}"},
+            json=charge,
+            timeout=90,
+        )
+        reponse_http.raise_for_status()
+        charge_recue = reponse_http.json()["result"]
+    except (requests.RequestException, KeyError, ValueError):
+        logger.warning("Juge indisponible : mesure conservée sans notes.")
+        return {}
+
+    neurons = (charge_recue.get("usage") or {}).get("neurons")
+    if neurons:
+        logger.debug("juge : %.1f neurons", neurons)
+    brut = charge_recue["response"]
     trouve = re.search(r"\{.*\}", brut, re.DOTALL)
     if trouve is None:
         logger.warning("Juge illisible : %s", brut[:200])
         return {}
+    try:
+        notes = json.loads(trouve.group())
+    except ValueError:
+        logger.warning("Juge illisible : %s", brut[:200])
+        return {}
     return {
         cle: float(valeur)
-        for cle, valeur in json.loads(trouve.group()).items()
+        for cle, valeur in notes.items()
         if isinstance(valeur, int | float)
     }
 

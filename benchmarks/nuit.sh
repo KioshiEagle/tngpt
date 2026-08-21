@@ -44,7 +44,9 @@ RESTE=$((FIN - MAINTENANT))
 journal "démarrage pour ${DUREE}s"
 
 # macOS n'a pas `timeout` : un chien de garde tue le banc à l'heure dite.
-.venv/bin/python -m benchmarks.bench_generation \
+# `caffeinate` porté par le banc lui-même : la machine reste éveillée tant
+# qu'il travaille, et se rendort d'elle-même quand il a fini.
+caffeinate -is .venv/bin/python -m benchmarks.bench_generation \
     --questions 145 \
     --modeles openai/gpt-oss-120b \
     --sortie bench_generation.jsonl >> benchmarks/campagne.log 2>&1 &
