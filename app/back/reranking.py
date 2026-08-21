@@ -143,7 +143,7 @@ def _ordonner(
     par_pertinence = sorted(classement, key=lambda paire: paire[1], reverse=True)
     tete, queue = par_pertinence[:_FUSION_MAX], par_pertinence[_FUSION_MAX:]
 
-    chunks = [dict(shortlist[indice]) for indice, _ in tete]
+    chunks = [shortlist[indice].copy() for indice, _ in tete]
     rangs_fraicheur = _rangs([c["freshness_score"] for c in chunks])
 
     for rang_p, (chunk, (_, score), rang_f) in enumerate(
@@ -165,10 +165,10 @@ def _ordonner(
     # La queue reste derrière, dans l'ordre du reranker : la fraîcheur n'a pas
     # à repêcher ce qu'il a jugé sans rapport.
     for indice, score in queue:
-        reste = dict(shortlist[indice])
+        reste = shortlist[indice].copy()
         reste["rerank_score"] = round(score, 6)
         chunks.append(reste)
-    return chunks  # ty: ignore[invalid-return-type]
+    return chunks
 
 
 def rerank(query: str, results: list[SearchResult], top_k: int) -> list[SearchResult]:

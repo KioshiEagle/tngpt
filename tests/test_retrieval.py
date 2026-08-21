@@ -7,6 +7,7 @@ déportait le vecteur et Qdrant ne rendait plus rien sur Rozier.
 from datetime import UTC, datetime
 
 import pytest
+from qdrant_client import models
 
 from app.back.mdtoqdrant import NO_EMBARGO, embargo_timestamp
 from app.back.reranking import normalise
@@ -105,8 +106,9 @@ def test_filtre_borne_sur_maintenant() -> None:
     borne = next(
         c.range.lte
         for c in (filtre.should or [])
-        if getattr(c, "range", None) is not None
+        if isinstance(c, models.FieldCondition) and isinstance(c.range, models.Range)
     )
+    assert borne is not None
     assert abs(borne - datetime.now(UTC).timestamp()) < _TOLERANCE_S
 
 
