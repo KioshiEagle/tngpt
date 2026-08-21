@@ -20,11 +20,11 @@ import requests
 from dotenv import load_dotenv
 from groq import APIStatusError, Groq
 
-from .clubs import lookup_context
-from .generate import CHAT_SYSTEM, _Contexte, build_prompt
-from .retrieval import search
+from app.back.clubs import lookup_context
+from app.back.generate import CHAT_SYSTEM, _Contexte, build_prompt
+from app.back.retrieval import search
 
-load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 logger = logging.getLogger(__name__)
 

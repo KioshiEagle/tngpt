@@ -66,7 +66,7 @@ target-version = "py313"
 # plus (pandas et sentence-transformers ne sont plus installés) et portaient à
 # eux seuls 334 des 335 violations ruff, ce qui rendait le stage lint rouge en
 # permanence. À supprimer ou à sortir du package quand on reprendra l'Optuna.
-extend-exclude = ["migrations", "app/back/optuna*.py"]
+extend-exclude = ["migrations", "benchmarks/optuna*.py"]
 
 [tool.ruff.lint]
 select = ["ALL","RUF100"]
@@ -88,7 +88,7 @@ docstring-code-format = true
 [tool.ty.src]
 # Migrations Alembic : auto-générées, non type-checkées.
 # Bancs Optuna : voir la note sous [tool.ruff], même exclusion temporaire.
-exclude = ["migrations", "app/back/optuna*.py"]
+exclude = ["migrations", "benchmarks/optuna*.py"]
 
 [tool.ty.rules]
 unsupported-base = "ignore"
@@ -98,14 +98,14 @@ unsupported-base = "ignore"
 # des migrations de données, sans la moindre entrée utilisateur. Déjà hors de
 # ruff et de ty pour la même raison.
 # Bancs Optuna : voir la note sous [tool.ruff], même exclusion temporaire.
-exclude_dirs = [".venv","tests","__pycache__",".ruf_cache",".uv-cache","migrations","app/back/optuna_rag_benchmark.py","app/back/optuna_retrieval_benchmark.py","app/back/optuna3.py"]
+exclude_dirs = [".venv","tests","__pycache__",".ruf_cache",".uv-cache","migrations","benchmarks/optuna_rag_benchmark.py","benchmarks/optuna_retrieval_benchmark.py","benchmarks/optuna3.py"]
 skips = ["B101"]
 
 [tool.complexipy]
 max-complexity-allowed = 15
 failed = true
 # Bancs Optuna : voir la note sous [tool.ruff], même exclusion temporaire.
-exclude = ["app/back/optuna_rag_benchmark.py", "app/back/optuna_retrieval_benchmark.py", "app/back/optuna3.py"]
+exclude = ["benchmarks/optuna_rag_benchmark.py", "benchmarks/optuna_retrieval_benchmark.py", "benchmarks/optuna3.py"]
 
 [tool.pydoclint]
 exclude = [
