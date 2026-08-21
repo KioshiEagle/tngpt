@@ -44,3 +44,6 @@ Mails*/
 
 # CTF : les documents rendus portent le token et le flag en clair.
 ctf/*.rendu.md
+
+# Résultats bruts de benchmark : volumineux et rejouables
+*.jsonl
