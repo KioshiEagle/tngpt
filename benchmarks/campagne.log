@@ -1,0 +1,25 @@
+2026-08-21 16:39:37,116 INFO setup plugin alembic.autogenerate.schemas
+2026-08-21 16:39:37,116 INFO setup plugin alembic.autogenerate.tables
+2026-08-21 16:39:37,116 INFO setup plugin alembic.autogenerate.types
+2026-08-21 16:39:37,116 INFO setup plugin alembic.autogenerate.constraints
+2026-08-21 16:39:37,116 INFO setup plugin alembic.autogenerate.defaults
+2026-08-21 16:39:37,116 INFO setup plugin alembic.autogenerate.comments
+2026-08-21 16:39:37,116 INFO setup plugin alembic.autogenerate.checkconstraint_byname
+2026-08-21 16:39:37,820 INFO 284 mesure(s) à faire, 6 déjà en base
+2026-08-21 16:39:38,250 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-m3 "HTTP/1.1 200 OK"
+2026-08-21 16:39:38,435 INFO HTTP Request: POST https://4098007e-b474-4cbe-8d3f-24fa37fcc564.europe-west3-0.gcp.cloud.qdrant.io:6333/collections/documents/points/query "HTTP/1.1 200 OK"
+2026-08-21 16:39:39,773 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-reranker-base "HTTP/1.1 200 OK"
+2026-08-21 16:39:40,018 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+2026-08-21 16:39:40,019 WARNING qwen/qwen3.6-27b à court de quota, repris dans 1745 s
+2026-08-21 16:39:40,813 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-08-21 16:39:42,024 INFO reste 283 | qui est le president du BDE cette annee  | openai/gpt-oss-120b : 5094 tokens (0 en cache) {'fidelite': 0.9, 'pertinence': 0.8, 'completude': 0.7, 'ton': 0.9}
+2026-08-21 16:39:42,150 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-m3 "HTTP/1.1 200 OK"
+2026-08-21 16:39:42,199 INFO HTTP Request: POST https://4098007e-b474-4cbe-8d3f-24fa37fcc564.europe-west3-0.gcp.cloud.qdrant.io:6333/collections/documents/points/query "HTTP/1.1 200 OK"
+2026-08-21 16:39:42,757 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-reranker-base "HTTP/1.1 200 OK"
+2026-08-21 16:39:42,779 INFO Cadence openai/gpt-oss-120b : attente 59 s
+2026-08-21 16:40:42,809 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-08-21 16:40:43,960 INFO reste 282 | c'est quoi le Mini Tel ? | openai/gpt-oss-120b : 5032 tokens (0 en cache) {'fidelite': 0.9, 'pertinence': 0.8, 'completude': 0.7, 'ton': 0.8}
+2026-08-21 16:40:44,215 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-m3 "HTTP/1.1 200 OK"
+2026-08-21 16:40:44,538 INFO HTTP Request: POST https://4098007e-b474-4cbe-8d3f-24fa37fcc564.europe-west3-0.gcp.cloud.qdrant.io:6333/collections/documents/points/query "HTTP/1.1 200 OK"
+2026-08-21 16:40:44,919 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-reranker-base "HTTP/1.1 200 OK"
+2026-08-21 16:40:44,935 INFO Cadence openai/gpt-oss-120b : attente 59 s

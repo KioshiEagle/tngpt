@@ -5,10 +5,10 @@ modèles : on compare des générateurs, pas des pipelines de recherche.
 """
 
 import argparse
+import hashlib
 import json
 import logging
 import os
-import random
 import re
 import time
 from dataclasses import dataclass, field
@@ -37,6 +37,10 @@ JUGE = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
 TOP_K = 5
 TEMPERATURE = 0.3
 
+# Groq décompte du quota par minute l'estimation « entrée + max_tokens » :
+# sans plafond explicite, la réserve de sortie fait passer l'appel en 429.
+MAX_TOKENS = 1000
+
 # 8 000 tokens/minute par modèle sur le tier gratuit, ~7 600 par appel : un
 # appel par minute et par modèle, les deux quotas étant indépendants.
 ATTENTE_PAR_MODELE = 62.0
@@ -46,6 +50,9 @@ _ABANDON_APRES = 3
 
 # En deçà, la clé normalisée est trop courte pour distinguer deux questions.
 _CLE_MIN = 6
+
+# Plafond d'une sieste : on se réveille pour reprendre la main régulièrement.
+_SOMMEIL_MAX = 900.0
 
 
 @dataclass
@@ -106,6 +113,7 @@ def generer(client: Groq, modele: str, prompt: str) -> dict[str, Any]:
             {"role": "user", "content": prompt},
         ],
         temperature=TEMPERATURE,
+        max_tokens=MAX_TOKENS,
         **_params(modele),
     )
     usage = completion.usage
@@ -171,75 +179,126 @@ def juger(contexte: str, question: str, reponse: str) -> dict[str, float]:
     }
 
 
-def _deja_faites(sortie: Path) -> set[str]:
-    """Questions déjà traitées : une reprise ne les rejoue pas."""
+def _deja_faites(sortie: Path) -> set[tuple[str, str]]:
+    """Couples (question, modèle) déjà mesurés : une reprise ne les rejoue pas."""
     if not sortie.exists():
         return set()
     faites = set()
     for ligne in sortie.read_text(encoding="utf-8").splitlines():
         if ligne.strip():
-            faites.add(json.loads(ligne)["question"])
+            entree = json.loads(ligne)
+            faites.add((entree["question"], entree["modele"]))
     return faites
 
 
-def _une_question(
-    client: Groq, cadence: Cadence, question: str, ordre: list[str]
-) -> dict[str, Any]:
-    """Contexte commun, une génération par modèle, puis notation à l'aveugle."""
-    contexte = contexte_de(question)
-    entree: dict[str, Any] = {"question": question, "modeles": {}}
+def _pause_demandee(erreur: APIStatusError) -> float:
+    """Secondes à patienter, lues dans le message du 429 puis dans l'en-tête."""
+    trouve = re.search(r"try again in (?:(\d+)m)?([\d.]+)s", str(erreur))
+    if trouve:
+        minutes = float(trouve.group(1) or 0)
+        return minutes * 60 + float(trouve.group(2)) + 5
+    entete = erreur.response.headers.get("retry-after")
+    return float(entete) + 5 if entete else 300.0
 
-    for modele in ordre:
-        cadence.attendre(modele)
-        sortie = generer(client, modele, build_prompt(contexte, question))
-        sortie["notes"] = juger(contexte, question, sortie["reponse"])
-        entree["modeles"][modele] = sortie
-        logger.info(
-            "  %s : %d tokens (%d en cache), notes %s",
-            modele,
-            sortie["tokens_entree"],
-            sortie["tokens_caches"],
-            sortie["notes"],
-        )
-    return entree
+
+def _mesurer(
+    client: Groq, cadence: Cadence, question: str, contexte: str, modele: str
+) -> dict[str, Any]:
+    """Une génération et sa notation, pour un seul modèle."""
+    cadence.attendre(modele)
+    sortie = generer(client, modele, build_prompt(contexte, question))
+    sortie["notes"] = juger(contexte, question, sortie["reponse"])
+    return sortie
+
+
+def _choisir(restantes: list[tuple[str, str]], reprise: dict[str, float]) -> int | None:
+    """Rang de la première tâche dont le modèle n'est pas à court de quota."""
+    maintenant = time.time()
+    return next(
+        (
+            i
+            for i, (_, modele) in enumerate(restantes)
+            if reprise.get(modele, 0.0) <= maintenant
+        ),
+        None,
+    )
+
+
+def _patienter(restantes: list[tuple[str, str]], reprise: dict[str, float]) -> None:
+    """Dort jusqu'au réveil du modèle le plus proche, par tranches bornées."""
+    prochain = min(reprise[modele] for _, modele in restantes)
+    delai = max(5.0, min(prochain - time.time(), _SOMMEIL_MAX))
+    logger.info("Tous les modèles à court de quota — pause de %.0f s", delai)
+    time.sleep(delai)
 
 
 def _boucle(args: argparse.Namespace) -> None:
-    """Parcourt les questions restantes et journalise chaque comparaison."""
+    """Avance modèle par modèle : celui qui a du quota continue sans l'autre."""
     # Réessais du SDK coupés : ils masqueraient les 429 qu'on veut compter.
     client = Groq(api_key=os.environ["GROQ_API_KEY"], max_retries=0)
     cadence = Cadence()
 
     faites = _deja_faites(args.sortie)
-    a_faire = [q for q in questions(args.questions) if q not in faites]
-    logger.info("%d question(s) à traiter, %d déjà faites", len(a_faire), len(faites))
+    restantes = [
+        (question, modele)
+        for question in questions(args.questions)
+        for modele in (BASELINE, CANDIDAT)
+        if (question, modele) not in faites
+    ]
+    logger.info("%d mesure(s) à faire, %d déjà en base", len(restantes), len(faites))
 
-    quota_epuise = 0
+    # Un contexte par question, partagé par les deux modèles : sans ça on
+    # comparerait des recherches et non des générateurs.
+    contextes: dict[str, str] = {}
+    reprise: dict[str, float] = {}
+
     with args.sortie.open("a", encoding="utf-8") as flux:
-        for rang, question in enumerate(a_faire, 1):
-            logger.info("[%d/%d] %s", rang, len(a_faire), question[:70])
-            # L'ordre alterne : le premier appelé profite d'un cache plus chaud.
-            ordre = [BASELINE, CANDIDAT]
-            random.shuffle(ordre)
+        while restantes:
+            rang = _choisir(restantes, reprise)
+            if rang is None:
+                _patienter(restantes, reprise)
+                continue
+
+            question, modele = restantes.pop(rang)
+            if question not in contextes:
+                contextes[question] = contexte_de(question)
+            contexte = contextes[question]
+
             try:
-                entree = _une_question(client, cadence, question, ordre)
+                sortie = _mesurer(client, cadence, question, contexte, modele)
             except APIStatusError as erreur:
                 if erreur.status_code != _HTTP_429:
                     raise
-                quota_epuise += 1
-                logger.warning(
-                    "429 (%d/%d) : quota probablement épuisé",
-                    quota_epuise,
-                    _ABANDON_APRES,
-                )
-                if quota_epuise >= _ABANDON_APRES:
-                    logger.warning("Quota journalier atteint — reprise demain.")
-                    break
-                time.sleep(120)
+                delai = _pause_demandee(erreur)
+                reprise[modele] = time.time() + delai
+                restantes.append((question, modele))
+                logger.warning("%s à court de quota, repris dans %.0f s", modele, delai)
                 continue
-            quota_epuise = 0
-            flux.write(json.dumps(entree, ensure_ascii=False) + "\n")
+
+            flux.write(
+                json.dumps(
+                    {
+                        "question": question,
+                        "modele": modele,
+                        "contexte_sha": hashlib.sha256(contexte.encode()).hexdigest()[
+                            :16
+                        ],
+                        **sortie,
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
             flux.flush()
+            logger.info(
+                "reste %d | %s | %s : %d tokens (%d en cache) %s",
+                len(restantes),
+                question[:40],
+                modele,
+                sortie["tokens_entree"],
+                sortie["tokens_caches"],
+                sortie["notes"],
+            )
 
     logger.info("Terminé. Résultats dans %s", args.sortie)
 
