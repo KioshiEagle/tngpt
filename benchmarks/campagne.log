@@ -34,3 +34,57 @@
 2026-08-21 17:04:59,727 INFO HTTP Request: POST https://4098007e-b474-4cbe-8d3f-24fa37fcc564.europe-west3-0.gcp.cloud.qdrant.io:6333/collections/documents/points/query "HTTP/1.1 200 OK"
 2026-08-21 17:05:00,197 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-reranker-base "HTTP/1.1 200 OK"
 2026-08-21 17:05:00,223 INFO Cadence openai/gpt-oss-120b : attente 59 s
+2026-08-21 17:05:59,614 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-08-21 17:06:04,074 INFO reste 129 | génère une carte des clubs | openai/gpt-oss-120b : 6571 tokens (0 en cache) {'fidelite': 0.0, 'pertinence': 0.0, 'completude': 0.0, 'ton': 0.0}
+2026-08-21 17:06:04,390 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-m3 "HTTP/1.1 200 OK"
+2026-08-21 17:06:04,556 INFO HTTP Request: POST https://4098007e-b474-4cbe-8d3f-24fa37fcc564.europe-west3-0.gcp.cloud.qdrant.io:6333/collections/documents/points/query "HTTP/1.1 200 OK"
+2026-08-21 17:06:04,980 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-reranker-base "HTTP/1.1 200 OK"
+2026-08-21 17:06:04,997 INFO Cadence openai/gpt-oss-120b : attente 56 s
+2026-08-21 17:07:01,590 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-08-21 17:07:03,094 INFO reste 128 | qui est le président du BDE ? | openai/gpt-oss-120b : 4847 tokens (0 en cache) {'fidelite': 1.0, 'pertinence': 1.0, 'completude': 0.8, 'ton': 0.9}
+2026-08-21 17:07:03,367 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-m3 "HTTP/1.1 200 OK"
+2026-08-21 17:07:03,563 INFO HTTP Request: POST https://4098007e-b474-4cbe-8d3f-24fa37fcc564.europe-west3-0.gcp.cloud.qdrant.io:6333/collections/documents/points/query "HTTP/1.1 200 OK"
+2026-08-21 17:07:03,930 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-reranker-base "HTTP/1.1 200 OK"
+2026-08-21 17:07:03,942 INFO Cadence openai/gpt-oss-120b : attente 59 s
+2026-08-21 17:08:03,710 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-08-21 17:08:07,716 INFO reste 127 | qui est le trésorier du BDE ? | openai/gpt-oss-120b : 4932 tokens (3840 en cache) {'fidelite': 1.0, 'pertinence': 1.0, 'completude': 1.0, 'ton': 0.8}
+2026-08-21 17:08:07,904 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-m3 "HTTP/1.1 200 OK"
+2026-08-21 17:08:08,045 INFO HTTP Request: POST https://4098007e-b474-4cbe-8d3f-24fa37fcc564.europe-west3-0.gcp.cloud.qdrant.io:6333/collections/documents/points/query "HTTP/1.1 200 OK"
+2026-08-21 17:08:08,626 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-reranker-base "HTTP/1.1 200 OK"
+2026-08-21 17:08:08,638 INFO Cadence openai/gpt-oss-120b : attente 56 s
+2026-08-21 17:08:31,170 INFO setup plugin alembic.autogenerate.schemas
+2026-08-21 17:08:31,170 INFO setup plugin alembic.autogenerate.tables
+2026-08-21 17:08:31,170 INFO setup plugin alembic.autogenerate.types
+2026-08-21 17:08:31,170 INFO setup plugin alembic.autogenerate.constraints
+2026-08-21 17:08:31,170 INFO setup plugin alembic.autogenerate.defaults
+2026-08-21 17:08:31,170 INFO setup plugin alembic.autogenerate.comments
+2026-08-21 17:08:31,170 INFO setup plugin alembic.autogenerate.checkconstraint_byname
+2026-08-21 17:08:31,738 INFO 127 mesure(s) à faire, 21 déjà en base
+2026-08-21 17:08:32,177 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-m3 "HTTP/1.1 200 OK"
+2026-08-21 17:08:32,370 INFO HTTP Request: POST https://4098007e-b474-4cbe-8d3f-24fa37fcc564.europe-west3-0.gcp.cloud.qdrant.io:6333/collections/documents/points/query "HTTP/1.1 200 OK"
+2026-08-21 17:08:32,748 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-reranker-base "HTTP/1.1 200 OK"
+2026-08-21 17:08:33,063 WARNING Cerebras inutilisable (HTTP 402) — le candidat repart sur Groq. {"message":"Payment required to access this resource. Visit your billing tab.","type":"payment_required_error","param":"
+2026-08-21 17:08:33,712 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-08-21 17:08:35,181 INFO reste 126 | comme sur des roulettes | openai/gpt-oss-120b : 4935 tokens (3840 en cache) {'fidelite': 0.8, 'pertinence': 0.7, 'completude': 0.4, 'ton': 0.9}
+2026-08-21 17:08:35,320 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-m3 "HTTP/1.1 200 OK"
+2026-08-21 17:08:35,381 INFO HTTP Request: POST https://4098007e-b474-4cbe-8d3f-24fa37fcc564.europe-west3-0.gcp.cloud.qdrant.io:6333/collections/documents/points/query "HTTP/1.1 200 OK"
+2026-08-21 17:08:35,760 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-reranker-base "HTTP/1.1 200 OK"
+2026-08-21 17:08:35,779 INFO Cadence openai/gpt-oss-120b : attente 59 s
+2026-08-21 17:12:20,951 INFO setup plugin alembic.autogenerate.schemas
+2026-08-21 17:12:20,951 INFO setup plugin alembic.autogenerate.tables
+2026-08-21 17:12:20,951 INFO setup plugin alembic.autogenerate.types
+2026-08-21 17:12:20,951 INFO setup plugin alembic.autogenerate.constraints
+2026-08-21 17:12:20,951 INFO setup plugin alembic.autogenerate.defaults
+2026-08-21 17:12:20,951 INFO setup plugin alembic.autogenerate.comments
+2026-08-21 17:12:20,951 INFO setup plugin alembic.autogenerate.checkconstraint_byname
+2026-08-21 17:12:21,660 INFO 126 mesure(s) à faire, 22 déjà en base
+2026-08-21 17:12:22,093 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-m3 "HTTP/1.1 200 OK"
+2026-08-21 17:12:22,327 INFO HTTP Request: POST https://4098007e-b474-4cbe-8d3f-24fa37fcc564.europe-west3-0.gcp.cloud.qdrant.io:6333/collections/documents/points/query "HTTP/1.1 200 OK"
+2026-08-21 17:12:22,696 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-reranker-base "HTTP/1.1 200 OK"
+2026-08-21 17:12:23,017 WARNING Cerebras inutilisable (HTTP 402) — le candidat repart sur Groq. {"message":"Payment required to access this resource. Visit your billing tab.","type":"payment_required_error","param":"
+2026-08-21 17:12:23,891 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-08-21 17:12:25,177 INFO reste 125 | Quelle est l'histoire de TELECOM Nancy ? | openai/gpt-oss-120b : 4923 tokens (3840 en cache) {'fidelite': 0.9, 'pertinence': 0.8, 'completude': 0.7, 'ton': 0.9}
+2026-08-21 17:12:26,801 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-m3 "HTTP/1.1 200 OK"
+2026-08-21 17:12:26,929 INFO HTTP Request: POST https://4098007e-b474-4cbe-8d3f-24fa37fcc564.europe-west3-0.gcp.cloud.qdrant.io:6333/collections/documents/points/query "HTTP/1.1 200 OK"
+2026-08-21 17:12:27,592 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-reranker-base "HTTP/1.1 200 OK"
+2026-08-21 17:12:27,633 INFO Cadence openai/gpt-oss-120b : attente 57 s

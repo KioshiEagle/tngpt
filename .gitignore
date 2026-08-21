@@ -47,3 +47,7 @@ ctf/*.rendu.md
 
 # Résultats bruts de benchmark : volumineux et rejouables
 *.jsonl
+
+# Journaux et verrou du banc nocturne
+benchmarks/*.log
+benchmarks/.nuit.lock
