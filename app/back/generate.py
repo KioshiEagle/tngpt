@@ -22,6 +22,11 @@ logger = logging.getLogger(__name__)
 # (qwen/qwen3-32b a ainsi disparu au profit de qwen/qwen3.6-27b).
 _CHAT_MODEL = os.getenv("GROQ_CHAT_MODEL", "qwen/qwen3.6-27b")
 
+# Les quotas Groq se comptent par modèle : quand celui du chat est épuisé,
+# ce second modèle a encore le sien. Mieux vaut une réponse d'un autre
+# modèle qu'un message d'attente.
+_CHAT_MODEL_REPLI = os.getenv("GROQ_CHAT_MODEL_REPLI", "openai/gpt-oss-120b")
+
 # Prompt système dans un fichier à part, révisé comme de la doc. Lu une fois à
 # l'import : il est identique d'une requête à l'autre.
 SYSTEM_PROMPT_PATH = Path(__file__).with_name("system_prompt.md")
@@ -409,6 +414,24 @@ def generate_answer(
     yield from _stream_with_retries(req, results, client, spec)
 
 
+@dataclass(frozen=True)
+class _Appel:
+    """Comment adresser le modèle à cet essai : lequel, avec quels paramètres."""
+
+    spec: CallSpec
+    params: GroqParams
+    modele: str
+
+
+@dataclass(frozen=True)
+class _Marge:
+    """La latitude restant après une erreur : ce qu'on peut encore tenter."""
+
+    can_retry: bool
+    has_params: bool
+    repli_possible: bool
+
+
 @dataclass
 class _RetryOutcome:
     """Ce qu'il faut faire après une tentative d'appel Groq ratée."""
@@ -418,6 +441,7 @@ class _RetryOutcome:
     wait_seconds: float = 0.0
     smaller_context: bool = False
     drop_params: bool = False
+    switch_model: bool = False
     error_message: str | None = None
 
 
@@ -433,7 +457,9 @@ def _retry_after(e: APIStatusError) -> float | None:
         return None
 
 
-def _outcome_429(e: APIStatusError, attempt: int) -> _RetryOutcome:
+def _outcome_429(
+    e: APIStatusError, attempt: int, *, repli_possible: bool
+) -> _RetryOutcome:
     """Repli sur quota dépassé : attendre si c'est court, renoncer sinon.
 
     Groq réclame parfois une minute entière. L'attendre, worker unique et
@@ -444,6 +470,14 @@ def _outcome_429(e: APIStatusError, attempt: int) -> _RetryOutcome:
     attente = demande if demande is not None else 2.0**attempt
     if attente <= _MAX_WAIT_S:
         return _RetryOutcome(retry=True, wait_seconds=attente)
+    if repli_possible:
+        logger.warning(
+            "Quota de %s épuisé (%.0f s réclamées) : bascule sur %s.",
+            _CHAT_MODEL,
+            attente,
+            _CHAT_MODEL_REPLI,
+        )
+        return _RetryOutcome(retry=True, switch_model=True)
     logger.warning("Quota Groq dépassé, %.0f s réclamées : abandon.", attente)
     return _RetryOutcome(
         error_message=(
@@ -454,19 +488,21 @@ def _outcome_429(e: APIStatusError, attempt: int) -> _RetryOutcome:
 
 
 def _retry_for_status(
-    e: APIStatusError, status: int, attempt: int, *, can_retry: bool, has_params: bool
+    e: APIStatusError, status: int, attempt: int, marge: _Marge
 ) -> _RetryOutcome | None:
     """Repli applicable à un statut Groq. None si rien à retenter."""
     if status == _HTTP_429:
         # Traité même au dernier essai : c'est lui qui porte le message d'attente.
-        return _outcome_429(e, attempt) if can_retry else None
-    if not can_retry:
+        if not marge.can_retry:
+            return None
+        return _outcome_429(e, attempt, repli_possible=marge.repli_possible)
+    if not marge.can_retry:
         return None
     if status == _HTTP_413:
         return _RetryOutcome(retry=True, smaller_context=True)
     # Paramètres refusés (modèle configuré via GROQ_CHAT_MODEL qui ne les
     # supporte pas) : on retente sans eux plutôt que d'échouer.
-    if status == _HTTP_400 and has_params:
+    if status == _HTTP_400 and marge.has_params:
         return _RetryOutcome(retry=True, drop_params=True)
     return None
 
@@ -477,16 +513,16 @@ def _classify_error(
     max_retries: int,
     *,
     has_params: bool = False,
+    repli_possible: bool = False,
 ) -> _RetryOutcome:
     """Décide, pour une erreur Groq donnée, s'il faut réessayer et comment."""
     if isinstance(e, APIStatusError):
-        outcome = _retry_for_status(
-            e,
-            e.status_code,
-            attempt,
+        marge = _Marge(
             can_retry=attempt < max_retries - 1,
             has_params=has_params,
+            repli_possible=repli_possible,
         )
+        outcome = _retry_for_status(e, e.status_code, attempt, marge)
         if outcome is not None:
             return outcome
         logger.error("Erreur Groq : statut %d", e.status_code, exc_info=e)
@@ -552,19 +588,16 @@ def _reduire_fiches(fiches: str) -> str:
 
 
 def _attempt(
-    req: GenerateRequest,
-    contexte: _Contexte,
-    client: Groq,
-    spec: CallSpec,
-    params: GroqParams,
+    req: GenerateRequest, contexte: _Contexte, client: Groq, appel: _Appel
 ) -> Iterator[str]:
     """Un essai : construit le prompt, appelle Groq et cède la complétion lue."""
+    spec = appel.spec
     prompt = spec.build(contexte.rendu(), req.question, user_name=req.user_name)
     # Les tours passés s'intercalent entre les règles et la question : seule
     # cette dernière porte des archives.
     history = _history_messages(req.history) if spec.send_history else []
     completion = client.chat.completions.create(
-        model=_CHAT_MODEL,
+        model=appel.modele,
         messages=[
             {"role": "system", "content": spec.system},
             *history,
@@ -572,7 +605,7 @@ def _attempt(
         ],
         temperature=spec.temperature,
         stream=True,
-        **params,
+        **appel.params,
     )
     yield from spec.consume(completion)
 
@@ -608,6 +641,13 @@ def _apply(
     return contexte, params
 
 
+def _params_pour(modele: str, params: GroqParams) -> GroqParams:
+    """Adapte les paramètres au modèle : gpt-oss refuse un effort « none »."""
+    if modele.startswith("openai/gpt-oss"):
+        return {"reasoning_effort": "low"}
+    return params
+
+
 def _stream_with_retries(
     req: GenerateRequest,
     results: list[SearchResult],
@@ -617,19 +657,29 @@ def _stream_with_retries(
     """Appelle Groq avec repli (429 : backoff, 413 : moins de contexte)."""
     contexte = _Contexte(fiches=req.fiches, results=results)
     current_params: GroqParams = spec.params if spec.params is not None else {}
+    modele = _CHAT_MODEL
 
     for attempt in range(_MAX_RETRIES):
         try:
-            yield from _attempt(req, contexte, client, spec, current_params)
+            yield from _attempt(
+                req, contexte, client, _Appel(spec, current_params, modele)
+            )
         except Exception as e:  # noqa: BLE001
             outcome = _classify_error(
-                e, attempt, _MAX_RETRIES, has_params=bool(current_params)
+                e,
+                attempt,
+                _MAX_RETRIES,
+                has_params=bool(current_params),
+                repli_possible=modele != _CHAT_MODEL_REPLI,
             )
             if not outcome.retry:
                 # _classify_error garantit un message quand retry est False.
                 assert outcome.error_message is not None
                 yield outcome.error_message
                 return
+            if outcome.switch_model:
+                modele = _CHAT_MODEL_REPLI
+                current_params = _params_pour(modele, current_params)
             contexte, current_params = _apply(outcome, contexte, current_params)
         else:
             return

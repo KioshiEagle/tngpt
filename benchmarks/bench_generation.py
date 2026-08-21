@@ -123,9 +123,42 @@ def _params(modele: str) -> dict[str, Any]:
     return {"reasoning_format": "hidden", "reasoning_effort": "none"}
 
 
+# Une clé présente ne vaut pas un accès : un compte sans palier gratuit
+# répond 402. On sonde une fois, puis on retombe sur Groq sans casser le banc.
+_CEREBRAS_UTILISABLE: bool | None = None
+
+
+def _cerebras_utilisable() -> bool:
+    """Sonde l'accès Cerebras une fois pour toutes, et retient la réponse."""
+    global _CEREBRAS_UTILISABLE  # noqa: PLW0603
+    if _CEREBRAS_UTILISABLE is not None:
+        return _CEREBRAS_UTILISABLE
+    if not os.getenv("CEREBRAS_API_KEY"):
+        _CEREBRAS_UTILISABLE = False
+        return False
+    reponse = requests.post(
+        CEREBRAS_URL,
+        headers={"Authorization": f"Bearer {os.environ['CEREBRAS_API_KEY']}"},
+        json={
+            "model": next(iter(CEREBRAS_MODELES.values())),
+            "messages": [{"role": "user", "content": "ok"}],
+            "max_tokens": 1,
+        },
+        timeout=30,
+    )
+    _CEREBRAS_UTILISABLE = reponse.ok
+    if not reponse.ok:
+        logger.warning(
+            "Cerebras inutilisable (HTTP %d) — le candidat repart sur Groq. %s",
+            reponse.status_code,
+            reponse.text[:120],
+        )
+    return _CEREBRAS_UTILISABLE
+
+
 def _sur_cerebras(modele: str) -> bool:
     """Dit si le modèle part chez Cerebras plutôt que sur le compte Groq."""
-    return modele in CEREBRAS_MODELES and bool(os.getenv("CEREBRAS_API_KEY"))
+    return modele in CEREBRAS_MODELES and _cerebras_utilisable()
 
 
 def _depouiller(donnees: dict[str, Any]) -> dict[str, Any]:
@@ -301,10 +334,11 @@ def _boucle(args: argparse.Namespace) -> None:
     cadence = Cadence()
 
     faites = _deja_faites(args.sortie)
+    voulus = [m.strip() for m in args.modeles.split(",") if m.strip()]
     restantes = [
         (question, modele)
         for question in questions(args.questions)
-        for modele in (BASELINE, CANDIDAT)
+        for modele in voulus
         if (question, modele) not in faites
     ]
     logger.info("%d mesure(s) à faire, %d déjà en base", len(restantes), len(faites))
@@ -372,6 +406,13 @@ def main() -> None:
     parseur = argparse.ArgumentParser(description=__doc__)
     parseur.add_argument("--questions", type=int, default=30)
     parseur.add_argument("--sortie", type=Path, default=Path("bench_generation.jsonl"))
+    # Le seau de quota de qwen est celui de la production : on doit pouvoir
+    # mesurer le candidat seul, sans jamais réveiller la baseline.
+    parseur.add_argument(
+        "--modeles",
+        default=f"{BASELINE},{CANDIDAT}",
+        help="modèles à mesurer, séparés par des virgules",
+    )
     args = parseur.parse_args()
 
     logging.basicConfig(

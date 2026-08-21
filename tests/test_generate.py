@@ -22,6 +22,7 @@ from app.back.generate import (
     _Contexte,
     _filter_renvoi,
     _history_messages,
+    _params_pour,
     _reduire_fiches,
     _stream_chunks,
     _ThinkFilter,
@@ -449,3 +450,51 @@ def test_reponse_longue_intacte_par_morceaux() -> None:
     """Le buffer de garde ne doit rien perdre en fin de flux."""
     morceaux = ("Le BDS ", "gère le sport, ", "et le BDA la culture.")
     assert _renvoi(*morceaux) == "".join(morceaux)
+
+
+def test_429_trop_long_bascule_sur_le_modele_de_repli() -> None:
+    """Les quotas Groq se comptent par modèle : l'autre a encore le sien.
+
+    Plutôt que d'annoncer une attente à l'utilisateur, on rejoue la question
+    sur le modèle de repli, dont le seau de quota est intact.
+    """
+    outcome = _classify_error(
+        _erreur(429, {"retry-after": "1800"}), 0, 3, repli_possible=True
+    )
+    assert outcome.retry is True
+    assert outcome.switch_model is True
+    assert outcome.error_message is None
+
+
+def test_sans_repli_disponible_le_429_long_renonce_toujours() -> None:
+    """Déjà sur le modèle de repli : plus rien à tenter, on le dit."""
+    outcome = _classify_error(
+        _erreur(429, {"retry-after": "1800"}), 0, 3, repli_possible=False
+    )
+    assert outcome.retry is False
+    assert outcome.error_message
+
+
+def test_une_attente_courte_reste_preferee_a_la_bascule() -> None:
+    """Cinq secondes d'attente valent mieux qu'un changement de modèle.
+
+    Basculer coûte la qualité du modèle principal : on ne le fait que quand
+    l'attente est hors budget, pas au premier hoquet.
+    """
+    outcome = _classify_error(
+        _erreur(429, {"retry-after": "5"}), 0, 3, repli_possible=True
+    )
+    assert outcome.retry is True
+    assert outcome.switch_model is False
+    assert outcome.wait_seconds == 5  # noqa: PLR2004
+
+
+def test_le_repli_troque_les_parametres_de_raisonnement() -> None:
+    """gpt-oss refuse l'effort « none » que qwen accepte.
+
+    Basculer de modèle sans basculer les paramètres provoquerait un 400.
+    """
+    params = _params_pour("openai/gpt-oss-120b", {"reasoning_effort": "none"})
+    assert params == {"reasoning_effort": "low"}
+    inchanges = _params_pour("qwen/qwen3.6-27b", {"reasoning_effort": "none"})
+    assert inchanges == {"reasoning_effort": "none"}
