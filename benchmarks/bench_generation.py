@@ -31,6 +31,16 @@ logger = logging.getLogger(__name__)
 BASELINE = "qwen/qwen3.6-27b"
 CANDIDAT = "openai/gpt-oss-120b"
 
+# Le quota Groq appartient à la production : dès qu'une clé Cerebras est
+# fournie, le candidat part chez elle et ne dispute plus rien à personne.
+CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
+CEREBRAS_MODELES = {CANDIDAT: "gpt-oss-120b"}
+
+# Plafond de contexte du palier gratuit Cerebras. Le maximum mesuré sur nos
+# questions est 6 837 tokens, mais une question hors norme doit être écartée
+# plutôt que tronquée en silence — ce serait comparer deux contextes.
+CEREBRAS_CONTEXTE_MAX = 8192
+
 # Juge d'une troisième famille : ni qwen ni gpt-oss ne peut se favoriser.
 JUGE = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
 
@@ -53,6 +63,15 @@ _CLE_MIN = 6
 
 # Plafond d'une sieste : on se réveille pour reprendre la main régulièrement.
 _SOMMEIL_MAX = 900.0
+
+
+class QuotaEpuiseError(Exception):
+    """Quota d'un fournisseur atteint, avec le délai qu'il réclame."""
+
+    def __init__(self, modele: str, retry_after: str | None) -> None:
+        """Retient le délai réclamé par le fournisseur, s'il en donne un."""
+        super().__init__(f"{modele} : quota atteint")
+        self.retry_after = retry_after
 
 
 @dataclass
@@ -104,8 +123,47 @@ def _params(modele: str) -> dict[str, Any]:
     return {"reasoning_format": "hidden", "reasoning_effort": "none"}
 
 
-def generer(client: Groq, modele: str, prompt: str) -> dict[str, Any]:
-    """Un appel non streamé, avec ses compteurs de tokens."""
+def _sur_cerebras(modele: str) -> bool:
+    """Dit si le modèle part chez Cerebras plutôt que sur le compte Groq."""
+    return modele in CEREBRAS_MODELES and bool(os.getenv("CEREBRAS_API_KEY"))
+
+
+def _depouiller(donnees: dict[str, Any]) -> dict[str, Any]:
+    """Extrait réponse et compteurs d'une charge au format OpenAI."""
+    usage = donnees.get("usage", {})
+    details = usage.get("prompt_tokens_details") or {}
+    return {
+        "reponse": donnees["choices"][0]["message"]["content"] or "",
+        "tokens_entree": usage.get("prompt_tokens", 0),
+        "tokens_sortie": usage.get("completion_tokens", 0),
+        "tokens_caches": details.get("cached_tokens", 0) or 0,
+    }
+
+
+def _generer_cerebras(modele: str, prompt: str) -> dict[str, Any]:
+    """Appel à l'API Cerebras, compatible OpenAI, sans SDK supplémentaire."""
+    reponse = requests.post(
+        CEREBRAS_URL,
+        headers={"Authorization": f"Bearer {os.environ['CEREBRAS_API_KEY']}"},
+        json={
+            "model": CEREBRAS_MODELES[modele],
+            "messages": [
+                {"role": "system", "content": CHAT_SYSTEM},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": TEMPERATURE,
+            "max_tokens": MAX_TOKENS,
+        },
+        timeout=120,
+    )
+    if reponse.status_code == _HTTP_429:
+        raise QuotaEpuiseError(modele, reponse.headers.get("retry-after"))
+    reponse.raise_for_status()
+    return _depouiller(reponse.json())
+
+
+def _generer_groq(client: Groq, modele: str, prompt: str) -> dict[str, Any]:
+    """Appel au compte Groq — celui que se partage la production."""
     completion = client.chat.completions.create(
         model=modele,
         messages=[
@@ -116,14 +174,14 @@ def generer(client: Groq, modele: str, prompt: str) -> dict[str, Any]:
         max_tokens=MAX_TOKENS,
         **_params(modele),
     )
-    usage = completion.usage
-    details = getattr(usage, "prompt_tokens_details", None)
-    return {
-        "reponse": completion.choices[0].message.content or "",
-        "tokens_entree": usage.prompt_tokens,
-        "tokens_sortie": usage.completion_tokens,
-        "tokens_caches": getattr(details, "cached_tokens", 0) or 0,
-    }
+    return _depouiller(completion.model_dump())
+
+
+def generer(client: Groq, modele: str, prompt: str) -> dict[str, Any]:
+    """Aiguille vers le fournisseur du modèle et rend ses compteurs."""
+    if _sur_cerebras(modele):
+        return _generer_cerebras(modele, prompt)
+    return _generer_groq(client, modele, prompt)
 
 
 _GRILLE = """Tu es un juge impartial. Évalue la RÉPONSE au regard du CONTEXTE.
@@ -191,13 +249,17 @@ def _deja_faites(sortie: Path) -> set[tuple[str, str]]:
     return faites
 
 
-def _pause_demandee(erreur: APIStatusError) -> float:
+def _pause_demandee(erreur: APIStatusError | QuotaEpuiseError) -> float:
     """Secondes à patienter, lues dans le message du 429 puis dans l'en-tête."""
     trouve = re.search(r"try again in (?:(\d+)m)?([\d.]+)s", str(erreur))
     if trouve:
         minutes = float(trouve.group(1) or 0)
         return minutes * 60 + float(trouve.group(2)) + 5
-    entete = erreur.response.headers.get("retry-after")
+    entete = (
+        erreur.retry_after
+        if isinstance(erreur, QuotaEpuiseError)
+        else erreur.response.headers.get("retry-after")
+    )
     return float(entete) + 5 if entete else 300.0
 
 
@@ -266,8 +328,10 @@ def _boucle(args: argparse.Namespace) -> None:
 
             try:
                 sortie = _mesurer(client, cadence, question, contexte, modele)
-            except APIStatusError as erreur:
-                if erreur.status_code != _HTTP_429:
+            except (APIStatusError, QuotaEpuiseError) as erreur:
+                if isinstance(erreur, APIStatusError) and (
+                    erreur.status_code != _HTTP_429
+                ):
                     raise
                 delai = _pause_demandee(erreur)
                 reprise[modele] = time.time() + delai

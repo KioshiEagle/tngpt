@@ -23,3 +23,39 @@
 2026-08-21 16:40:44,538 INFO HTTP Request: POST https://4098007e-b474-4cbe-8d3f-24fa37fcc564.europe-west3-0.gcp.cloud.qdrant.io:6333/collections/documents/points/query "HTTP/1.1 200 OK"
 2026-08-21 16:40:44,919 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-reranker-base "HTTP/1.1 200 OK"
 2026-08-21 16:40:44,935 INFO Cadence openai/gpt-oss-120b : attente 59 s
+2026-08-21 16:41:44,991 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-08-21 16:41:46,861 INFO reste 281 | qui ecrit le Mini Tel ? | openai/gpt-oss-120b : 5052 tokens (0 en cache) {'fidelite': 0.9, 'pertinence': 0.8, 'completude': 0.7, 'ton': 0.8}
+2026-08-21 16:41:47,101 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-m3 "HTTP/1.1 200 OK"
+2026-08-21 16:41:47,297 INFO HTTP Request: POST https://4098007e-b474-4cbe-8d3f-24fa37fcc564.europe-west3-0.gcp.cloud.qdrant.io:6333/collections/documents/points/query "HTTP/1.1 200 OK"
+2026-08-21 16:42:05,718 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-reranker-base "HTTP/1.1 200 OK"
+2026-08-21 16:42:05,744 INFO Cadence openai/gpt-oss-120b : attente 40 s
+2026-08-21 16:42:47,640 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-08-21 16:42:50,120 INFO reste 280 | quels sont les clubs de telecom nancy ? | openai/gpt-oss-120b : 6428 tokens (3840 en cache) {'fidelite': 0.8, 'pertinence': 0.9, 'completude': 0.7, 'ton': 0.6}
+2026-08-21 16:42:50,614 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-m3 "HTTP/1.1 200 OK"
+2026-08-21 16:42:50,757 INFO HTTP Request: POST https://4098007e-b474-4cbe-8d3f-24fa37fcc564.europe-west3-0.gcp.cloud.qdrant.io:6333/collections/documents/points/query "HTTP/1.1 200 OK"
+2026-08-21 16:42:51,137 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-reranker-base "HTTP/1.1 200 OK"
+2026-08-21 16:42:51,161 INFO Cadence openai/gpt-oss-120b : attente 57 s
+2026-08-21 16:43:49,074 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-08-21 16:43:51,803 INFO reste 279 | c'est quoi le club canard ? | openai/gpt-oss-120b : 6630 tokens (0 en cache) {'fidelite': 0.9, 'pertinence': 1.0, 'completude': 0.8, 'ton': 0.7}
+2026-08-21 16:43:52,678 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-m3 "HTTP/1.1 200 OK"
+2026-08-21 16:43:52,888 INFO HTTP Request: POST https://4098007e-b474-4cbe-8d3f-24fa37fcc564.europe-west3-0.gcp.cloud.qdrant.io:6333/collections/documents/points/query "HTTP/1.1 200 OK"
+2026-08-21 16:43:53,408 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-reranker-base "HTTP/1.1 200 OK"
+2026-08-21 16:43:53,438 INFO Cadence openai/gpt-oss-120b : attente 57 s
+2026-08-21 16:44:51,205 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-08-21 16:44:54,108 INFO reste 278 | comment se passe l'integration ? | openai/gpt-oss-120b : 5001 tokens (0 en cache) {'fidelite': 0.8, 'pertinence': 0.9, 'completude': 0.7, 'ton': 0.6}
+2026-08-21 16:44:54,350 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-m3 "HTTP/1.1 200 OK"
+2026-08-21 16:44:54,534 INFO HTTP Request: POST https://4098007e-b474-4cbe-8d3f-24fa37fcc564.europe-west3-0.gcp.cloud.qdrant.io:6333/collections/documents/points/query "HTTP/1.1 200 OK"
+2026-08-21 16:44:55,190 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-reranker-base "HTTP/1.1 200 OK"
+2026-08-21 16:44:55,202 INFO Cadence openai/gpt-oss-120b : attente 57 s
+2026-08-21 16:45:53,075 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-08-21 16:45:54,440 INFO reste 277 | c'est quoi une reunion ouverte ? | openai/gpt-oss-120b : 5097 tokens (0 en cache) {'fidelite': 0.8, 'pertinence': 0.9, 'completude': 0.7, 'ton': 0.6}
+2026-08-21 16:45:54,694 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-m3 "HTTP/1.1 200 OK"
+2026-08-21 16:45:54,859 INFO HTTP Request: POST https://4098007e-b474-4cbe-8d3f-24fa37fcc564.europe-west3-0.gcp.cloud.qdrant.io:6333/collections/documents/points/query "HTTP/1.1 200 OK"
+2026-08-21 16:45:55,227 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-reranker-base "HTTP/1.1 200 OK"
+2026-08-21 16:45:55,253 INFO Cadence openai/gpt-oss-120b : attente 59 s
+2026-08-21 16:46:55,072 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-08-21 16:46:57,970 INFO reste 276 | qui est le tresorier du BDE ? | openai/gpt-oss-120b : 4892 tokens (0 en cache) {'fidelite': 1.0, 'pertinence': 1.0, 'completude': 0.8, 'ton': 0.9}
+2026-08-21 16:46:58,309 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-m3 "HTTP/1.1 200 OK"
+2026-08-21 16:46:58,471 INFO HTTP Request: POST https://4098007e-b474-4cbe-8d3f-24fa37fcc564.europe-west3-0.gcp.cloud.qdrant.io:6333/collections/documents/points/query "HTTP/1.1 200 OK"
+2026-08-21 16:46:58,806 INFO HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/150f0cfeb854f27ec24d3471a2a49582/ai/run/@cf/baai/bge-reranker-base "HTTP/1.1 200 OK"
+2026-08-21 16:46:58,817 INFO Cadence openai/gpt-oss-120b : attente 57 s
