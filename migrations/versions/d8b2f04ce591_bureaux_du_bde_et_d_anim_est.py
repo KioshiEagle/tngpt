@@ -4,10 +4,11 @@ Revision ID: d8b2f04ce591
 Revises: c6a4e1b83f27
 Create Date: 2026-08-07 12:18:44.913027
 
-Premier remplissage d'`asso_roles`. Les rôles 5 à 13 existaient déjà (saisis à
-la main) : ils sont réutilisés tels quels, y compris là où leur orthographe
-diffère de la saisie (« évènements », « partenariats », « billeterie »), pour
-ne pas créer de doublons sémantiques dans la table `roles`.
+Premier remplissage d'`asso_roles`. Les rôles 5 à 13 avaient été saisis à la
+main sur la base d'origine, donc aucune migration ne les créait : une base
+neuve s'arrêtait ici sur une violation de clé étrangère. Ils sont désormais
+insérés avec leur orthographe de l'époque (« évènements », « partenariats »,
+« billeterie ») — f1a6de29c704 corrige billetterie plus loin dans la chaîne.
 
 Les personnes extérieures à l'école — Anim'Est en recrute beaucoup — portent le
 suffixe « (exté) » dans `personne`, faute d'une colonne dédiée. C'est une
@@ -31,8 +32,21 @@ depends_on = None
 CETEN, ANIMEST = 0, 2
 MANDAT = "2026-2027"
 
-# Rôles absents de la table. Les identifiants prennent la suite des 5..13 déjà
-# saisis à la main.
+# Rôles saisis à la main sur la base d'origine, jamais portés en migration.
+# Insérés sans écraser l'existant : la base d'origine les a déjà.
+ROLES_SAISIS_A_LA_MAIN = [
+    (5, "Responsable logistique"),
+    (6, "Responsable évènements"),
+    (7, "Vice-trésorier"),
+    (8, "Vice-secrétaire"),
+    (9, "Responsable prévention"),
+    (10, "Responsable partenariats"),
+    (11, "Responsable RSE"),
+    (12, "Responsable billeterie"),
+    (13, "Responsable sécurité"),
+]
+
+# Rôles absents de la table. Les identifiants prennent la suite des 5..13.
 NOUVEAUX_ROLES = [
     (14, "Responsable passation"),
     (15, "Responsable boutique"),
@@ -113,6 +127,13 @@ UNIFICATIONS = [
 
 
 def upgrade():
+    for rid, nom in ROLES_SAISIS_A_LA_MAIN:
+        op.execute(
+            sa.text(
+                "INSERT INTO roles (role_id, role_name) VALUES (:rid, :nom) "
+                "ON CONFLICT DO NOTHING"
+            ).bindparams(rid=rid, nom=nom)
+        )
     op.bulk_insert(
         sa.table('roles',
                  sa.column('role_id', sa.Integer),
@@ -146,5 +167,7 @@ def downgrade():
     op.execute(
         sa.text("DELETE FROM asso_roles WHERE mandat = :m").bindparams(m=MANDAT)
     )
+    # ROLES_SAISIS_A_LA_MAIN survit au downgrade : sur la base d'origine ces
+    # rôles préexistent à cette révision, les retirer serait une perte.
     ids = ", ".join(str(rid) for rid, _ in NOUVEAUX_ROLES)
     op.execute(f"DELETE FROM roles WHERE role_id IN ({ids})")
