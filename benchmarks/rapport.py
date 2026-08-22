@@ -94,6 +94,15 @@ def comparer(groupes: dict[str, dict[str, Any]], modeles: list[str]) -> None:
         ]
         print(_ligne(intitule, colonnes))
 
+    # Le cache ne mord pas à tous les appels : la moyenne sur l'ensemble est
+    # le seul chiffre honnête, le bénéfice « quand ça marche » trompe.
+    colonnes = []
+    for modele in modeles:
+        touches = [m for m in retenues[modele] if m["tokens_caches"] > 0]
+        part = 100 * len(touches) / len(retenues[modele])
+        colonnes.append(f"{part:.0f} %")
+    print(_ligne("cache touché", colonnes))
+
     colonnes = []
     for modele in modeles:
         entree = _moyenne([m["tokens_entree"] for m in retenues[modele]]) or 0
