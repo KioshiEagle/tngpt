@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
@@ -284,6 +285,31 @@ def _filter_renvoi(pieces: Iterator[str]) -> Iterator[str]:
     yield from filtre.flush()
 
 
+# `_build_context` préfixe chaque archive de « [Source: … | Date: …] » pour
+# situer le texte devant le modèle. gpt-oss le recopie parfois dans sa réponse.
+_ENTETE_ARCHIVE = re.compile(r"\n*\[Source\s*:[^\]\n]*\]\s*")
+
+
+def _filter_entetes(pieces: Iterator[str]) -> Iterator[str]:
+    """Retire les en-têtes d'archives qu'un modèle recopierait dans sa réponse.
+
+    Le tampon retient la fin de flux tant qu'elle peut encore amorcer un
+    en-tête, sinon une balise coupée en deux chunks passerait entière.
+    """
+    tampon = ""
+    for piece in pieces:
+        tampon = _ENTETE_ARCHIVE.sub("\n", tampon + piece)
+        coupe = tampon.rfind("[")
+        if coupe == -1:
+            yield tampon
+            tampon = ""
+        else:
+            yield tampon[:coupe]
+            tampon = tampon[coupe:]
+    if tampon:
+        yield _ENTETE_ARCHIVE.sub("", tampon)
+
+
 def _stream_chunks(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
     """Filtre les <think> en garantissant une sortie non vide.
 
@@ -328,8 +354,8 @@ CHAT_GROQ_PARAMS: GroqParams = {
 
 
 def _stream_chat_chunks(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
-    """Lecture du chat : blocs <think> filtrés, puis renvoi hors périmètre."""
-    return _filter_renvoi(_stream_chunks(completion))
+    """Lecture du chat : <think> filtrés, en-têtes d'archives, puis renvoi."""
+    return _filter_renvoi(_filter_entetes(_stream_chunks(completion)))
 
 
 CHAT_SPEC = CallSpec(params=CHAT_GROQ_PARAMS, consume=_stream_chat_chunks)

@@ -5,7 +5,7 @@ test ne s'en aperçoive : d'où ce fichier.
 """
 
 from collections.abc import Iterator
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 import pytest
@@ -13,18 +13,23 @@ from groq import APIConnectionError, APIStatusError, APITimeoutError, Stream
 from groq.types.chat import ChatCompletionChunk
 
 from app.back.generate import (
+    _CHAT_MODEL,
+    _CHAT_MODEL_REPLI,
     _EMPTY_ANSWER,
     _FICHES_ECOURTEES,
     _HISTORY_MAX_CHARS,
     CHAT_SYSTEM,
     RENVOI_HORS_PERIMETRE,
+    GenerateRequest,
     _classify_error,
     _Contexte,
+    _filter_entetes,
     _filter_renvoi,
     _history_messages,
     _params_pour,
     _reduire_fiches,
     _stream_chunks,
+    _stream_with_retries,
     _ThinkFilter,
     build_prompt,
     today_fr,
@@ -498,3 +503,118 @@ def test_le_repli_troque_les_parametres_de_raisonnement() -> None:
     assert params == {"reasoning_effort": "low"}
     inchanges = _params_pour("qwen/qwen3.6-27b", {"reasoning_effort": "none"})
     assert inchanges == {"reasoning_effort": "none"}
+
+
+# --- Bascule de modèle de bout en bout ---------------------------------------
+
+
+class _ClientQuotaEpuise:
+    """Client Groq qui refuse le premier modèle et sert le second.
+
+    Reproduit la situation réelle : le seau journalier de qwen est vide, celui
+    de gpt-oss est intact.
+    """
+
+    def __init__(self, modele_a_refuser: str) -> None:
+        self.modele_a_refuser = modele_a_refuser
+        self.appels: list[dict[str, object]] = []
+        self.chat = self
+
+    @property
+    def completions(self) -> "_ClientQuotaEpuise":
+        """Le client se fait passer pour `client.chat.completions`."""
+        return self
+
+    def create(self, **kwargs: object) -> Stream[ChatCompletionChunk]:
+        """Refuse le modèle épuisé, sert un flux pour tout autre."""
+        self.appels.append(kwargs)
+        if kwargs["model"] == self.modele_a_refuser:
+            raise _erreur(429, {"retry-after": "1800"})
+        return _flux("voilà ", "la réponse")
+
+
+def test_un_quota_epuise_fait_repondre_le_modele_de_repli() -> None:
+    """Bout en bout : l'utilisateur reçoit une réponse, pas un message d'attente."""
+    client = cast("Any", _ClientQuotaEpuise(_CHAT_MODEL))
+    requete = GenerateRequest(question="qui préside le BDE ?", top_k=5)
+
+    sortie = "".join(_stream_with_retries(requete, [], client))
+
+    assert sortie == "voilà la réponse"
+    assert [appel["model"] for appel in client.appels] == [
+        _CHAT_MODEL,
+        _CHAT_MODEL_REPLI,
+    ]
+
+
+def test_la_bascule_troque_aussi_les_parametres() -> None:
+    """gpt-oss refuse l'effort « none » : le second appel doit être adapté."""
+    client = cast("Any", _ClientQuotaEpuise(_CHAT_MODEL))
+    requete = GenerateRequest(question="qui préside le BDE ?", top_k=5)
+
+    list(_stream_with_retries(requete, [], client))
+
+    premier, second = client.appels
+    assert premier.get("reasoning_effort") == "none"
+    assert second.get("reasoning_effort") == "low"
+
+
+def test_le_repli_epuise_a_son_tour_rend_un_message_et_non_une_boucle() -> None:
+    """Les deux seaux vides : on le dit, on ne tourne pas indéfiniment."""
+
+    class _ToutRefuser(_ClientQuotaEpuise):
+        def create(self, **kwargs: object) -> Stream[ChatCompletionChunk]:
+            self.appels.append(kwargs)
+            raise _erreur(429, {"retry-after": "1800"})
+
+    client = cast("Any", _ToutRefuser(_CHAT_MODEL))
+    requete = GenerateRequest(question="qui préside le BDE ?", top_k=5)
+
+    sortie = "".join(_stream_with_retries(requete, [], client))
+
+    assert "pause" in sortie or "Réessaie" in sortie
+    assert len(client.appels) <= 3  # noqa: PLR2004
+
+
+# --- En-têtes d'archives recopiés par le modèle ------------------------------
+
+
+def _sans_entetes(*fragments: str) -> str:
+    """Passe les fragments au filtre d'en-têtes et recolle ce qui en sort."""
+    return "".join(_filter_entetes(iter(fragments)))
+
+
+def test_un_entete_recopie_est_retire() -> None:
+    """`[Source: ...]` sert à situer le texte pour le modèle, pas pour le lecteur."""
+    sortie = _sans_entetes(
+        "ils te filent le truc.\n\n[Source: Compte rendu du BDE | Date: 2022-09-12]"
+    )
+    assert "[Source" not in sortie
+    assert "ils te filent le truc." in sortie
+
+
+def test_un_entete_coupe_entre_deux_chunks_ne_fuit_pas() -> None:
+    """Groq fragmente : la balise arrive rarement d'un seul bloc."""
+    sortie = _sans_entetes("voilà.\n\n[Sour", "ce: Machin | Date: 2024", "-01-01]")
+    assert "[Sour" not in sortie
+    assert "voilà." in sortie
+
+
+def test_un_crochet_ordinaire_survit() -> None:
+    """Tout ce qui commence par un crochet n'est pas un en-tête d'archive."""
+    sortie = _sans_entetes("le tarif [prix libre] tient toujours")
+    assert sortie == "le tarif [prix libre] tient toujours"
+
+
+def test_plusieurs_entetes_disparaissent_tous() -> None:
+    """Une réponse peut en recopier plusieurs à la suite."""
+    sortie = _sans_entetes(
+        "réponse.\n[Source: A | Date: 2020-01-01]\n[Source: B | Date: 2021-01-01]"
+    )
+    assert "[Source" not in sortie
+    assert "réponse." in sortie
+
+
+def test_un_texte_sans_entete_passe_intact() -> None:
+    """Le filtre ne doit rien changer au cas courant, celui de qwen."""
+    assert _sans_entetes("c'est ", "loan beltran.") == "c'est loan beltran."
