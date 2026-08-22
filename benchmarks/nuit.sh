@@ -3,6 +3,10 @@
 #
 # Le banc reprend où il s'est arrêté (une ligne JSONL par mesure) : le découper
 # en nuits successives ne coûte rien et laisse les journées à la production.
+#
+# Plus programmé : la campagne a répondu (voir docs). Pour la réarmer, écrire un
+# LaunchAgent qui appelle ce script — pas un cron, que macOS oublie pendant la
+# veille là où launchd le rattrape au réveil.
 set -eu
 
 RACINE="/Users/tobiasnobile/dev/perso/tngpt"
