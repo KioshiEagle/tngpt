@@ -1,5 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <rect x="3" y="3" width="18" height="18" rx="5"/>
-    <circle cx="12" cy="12" r="4"/>
-    <circle cx="17.5" cy="6.5" r="1.2" fill="#000" stroke="none"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <linearGradient id="ig" x1="2" y1="22" x2="22" y2="2" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#FEDA75"/>
+        <stop offset="0.25" stop-color="#FA7E1E"/>
+        <stop offset="0.5" stop-color="#D62976"/>
+        <stop offset="0.75" stop-color="#962FBF"/>
+        <stop offset="1" stop-color="#4F5BD5"/>
+    </linearGradient>
+    <rect x="3" y="3" width="18" height="18" rx="5" stroke="url(#ig)"/>
+    <circle cx="12" cy="12" r="4" stroke="url(#ig)"/>
+    <circle cx="17.5" cy="6.5" r="1.3" fill="url(#ig)"/>
 </svg>

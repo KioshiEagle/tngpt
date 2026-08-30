@@ -890,17 +890,24 @@ button.user-tab {
 .author-link:hover .author-logo { opacity: 1; }
 [data-theme="dark"] .author-logo { filter: invert(1); opacity: 0.85; }
 
-/* Réseaux de Neura'TN : même sobriété et même bascule au survol que les
-   logos voisins, à une taille d'icône. */
-.author-social { display: flex; align-items: center; }
-.author-social-icon {
-    height: 20px;
-    width: 20px;
-    opacity: 0.6;
-    transition: opacity 0.15s, filter 0.3s;
+/* Réseaux de Neura'TN. Aux couleurs de marque et non en monochrome atténué
+   comme les logos : ce sont des liens, ils doivent appeler le clic. */
+.author-social {
+    display: flex;
+    align-items: center;
+    padding: 5px;
+    border-radius: 9px;
+    transition: background 0.15s, transform 0.15s;
 }
-.author-social:hover .author-social-icon { opacity: 1; }
-[data-theme="dark"] .author-social-icon { filter: invert(1); opacity: 0.85; }
+.author-social:hover { background: rgba(0, 0, 0, 0.07); transform: translateY(-2px); }
+.author-social:hover .author-social-icon { transform: scale(1.08); }
+[data-theme="dark"] .author-social:hover { background: rgba(255, 255, 255, 0.12); }
+.author-social-icon {
+    height: 28px;
+    width: 28px;
+    display: block;
+    transition: transform 0.15s;
+}
 
 /* --- LANDING MODE (état vide centré, style Gemini) --- */
 body.landing .main {
