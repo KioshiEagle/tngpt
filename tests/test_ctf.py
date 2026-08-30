@@ -50,8 +50,13 @@ def test_les_trois_chals_cohabitent(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.parametrize("chal", [ctf.SOCIAL, ctf.PROMPT, ctf.RAG])
 def test_aucun_flag_dans_le_depot(chal: str) -> None:
-    """Les prompts versionnés portent des gabarits, jamais un flag."""
-    assert "NTN{" not in ctf.chemin(chal).read_text(encoding="utf-8")
+    """Les prompts versionnés portent des gabarits, jamais un flag.
+
+    `NTN{...}` — les points de suspension littéraux — est la forme que les
+    prompts donnent à recopier, pas un flag : lui seul est toléré.
+    """
+    texte = ctf.chemin(chal).read_text(encoding="utf-8").replace("NTN{...}", "")
+    assert "NTN{" not in texte
 
 
 def test_le_flag_social_vient_de_l_environnement(
