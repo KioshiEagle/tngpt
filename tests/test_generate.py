@@ -21,6 +21,7 @@ from app.back.generate import (
     CHAT_SYSTEM,
     RENVOI_HORS_PERIMETRE,
     GenerateRequest,
+    _build_context,
     _classify_error,
     _Contexte,
     _filter_entetes,
@@ -108,6 +109,38 @@ def test_le_message_utilisateur_ne_porte_que_des_donnees() -> None:
     assert "<question>\nqui est prez ?\n</question>" in prompt
     assert "Utilisateur connecté : Tobias" in prompt
     assert "TN-GPT" not in prompt
+
+
+def _archive(**metadata: str) -> SearchResult:
+    """Un résultat de recherche réduit à ses métadonnées d'en-tête."""
+    return SearchResult(
+        point_id="1",
+        content="le texte",
+        metadata=dict(metadata),
+        score=0.5,
+        semantic_score=0.5,
+        freshness_score=0.5,
+    )
+
+
+def test_l_auteur_figure_dans_l_entete_d_archive() -> None:
+    """Sans lui, « rédigé par qui ? » n'a aucune réponse dans le contexte."""
+    contexte = _build_context(
+        [_archive(title="Mail du 04/04", date="2026-04-04", author="DUPONT Jean")]
+    )
+    assert (
+        "[Source: Mail du 04/04 | Date: 2026-04-04 | Auteur: DUPONT Jean]" in contexte
+    )
+
+
+@pytest.mark.parametrize("vide", ["", "  ", "Inconnu", "null", "?"])
+def test_un_auteur_non_renseigne_ne_s_affiche_pas(vide: str) -> None:
+    """L'ingestion écrit « Inconnu » faute de mieux : ce n'est pas quelqu'un."""
+    contexte = _build_context(
+        [_archive(title="Mini Tel'", date="2024-11-01", author=vide)]
+    )
+    assert "Auteur" not in contexte
+    assert "[Source: Mini Tel' | Date: 2024-11-01]" in contexte
 
 
 def test_sans_utilisateur_connecte_pas_de_ligne_vide() -> None:

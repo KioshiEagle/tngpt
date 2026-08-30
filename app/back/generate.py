@@ -105,6 +105,17 @@ PromptBuilder = Callable[..., str]
 CompletionConsumer = Callable[[Stream[ChatCompletionChunk]], Iterator[str]]
 
 
+# Ce que l'ingestion écrit faute d'auteur : l'afficher ferait croire à
+# quelqu'un qui s'appelle « Inconnu ».
+_AUTEURS_VIDES = frozenset({"", "inconnu", "null", "none", "?"})
+
+
+def _auteur(brut: object) -> str:
+    """Auteur d'une archive, ou chaîne vide s'il n'est pas renseigné."""
+    nom = str(brut or "").strip()
+    return "" if nom.lower() in _AUTEURS_VIDES else nom
+
+
 def _build_context(results: list[SearchResult]) -> str:
     if not results:
         return "Pas de contexte."
@@ -112,8 +123,13 @@ def _build_context(results: list[SearchResult]) -> str:
     for res in results:
         m = res["metadata"]
         title = m.get("title") or m.get("source", "source inconnue")
-        header = f"[Source: {title} | Date: {m.get('date', 'date inconnue')}]"
-        parts.append(f"{header}\n{res['content']}")
+        entete = [f"Source: {title}", f"Date: {m.get('date', 'date inconnue')}"]
+        # L'auteur situe qui parle : sans lui, un mail signé d'un prénom et un
+        # compte rendu officiel se lisent pareil.
+        auteur = _auteur(m.get("author"))
+        if auteur:
+            entete.append(f"Auteur: {auteur}")
+        parts.append(f"[{' | '.join(entete)}]\n{res['content']}")
     return "\n\n".join(parts)
 
 
