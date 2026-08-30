@@ -80,6 +80,7 @@ def test_le_prompt_systeme_porte_bien_les_regles() -> None:
         "<perimetre>",
         "<ancrage_factuel>",
         "<graphie_approximative>",
+        "<personnes>",
         "<hierarchie_des_sources>",
         "<typologie_documentaire>",
         "<ton_et_format>",
