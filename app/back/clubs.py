@@ -108,11 +108,12 @@ Bureaux = dict[tuple[str, int], list[BureauRow]]
 # --- Reconnaissance ------------------------------------------------------------
 
 
-def _blank(haystack: str, pattern: re.Pattern[str]) -> tuple[str, bool]:
+def blanchir(haystack: str, pattern: re.Pattern[str]) -> tuple[str, bool]:
     """Cherche un motif et neutralise l'occurrence trouvée.
 
     Blanchir plutôt que supprimer garde les positions ; sans quoi « bar »
-    matcherait à l'intérieur de « baroudeurs ».
+    matcherait à l'intérieur de « baroudeurs ». Partagé avec `personnes.py`,
+    qui consomme les noms d'une question de la même façon.
     """
     found = pattern.search(haystack)
     if found is None:
@@ -130,11 +131,12 @@ def _blank(haystack: str, pattern: re.Pattern[str]) -> tuple[str, bool]:
 _LIAISON = r"[\s'.\-]*"
 
 
-def _word(needle: str) -> re.Pattern[str]:
+def motif_mot(needle: str) -> re.Pattern[str]:
     r"""Compile un motif exigeant des frontières de mot autour du terme.
 
     `\b` ne convient pas en bordure (apostrophes, points) ; à l'intérieur, seuls
-    les séparateurs déjà présents au nom officiel deviennent facultatifs.
+    les séparateurs déjà présents au nom officiel deviennent facultatifs — ce
+    qui vaut aussi pour un patronyme composé, écrit avec ou sans trait d'union.
     """
     morceaux = [re.escape(m) for m in re.split(r"[^0-9a-z]+", needle) if m]
     if not morceaux:
@@ -162,7 +164,7 @@ def match_entites(question: str, catalogue: Sequence[Entite]) -> list[Entite]:
 
     found: dict[tuple[str, int], Entite] = {}
     for needle, entite in needles:
-        haystack, hit = _blank(haystack, _word(needle))
+        haystack, hit = blanchir(haystack, motif_mot(needle))
         if hit:
             found.setdefault(entite.cle, entite)
     # Les associations d'abord : quand une question cite les deux, c'est la
@@ -233,7 +235,7 @@ def match_roles(question: str, roles: Sequence[RoleEntry]) -> list[RoleEntry]:
     # Intitulés de la table d'abord, du plus long au plus court : sinon
     # « tresor » matcherait à l'intérieur de « vice-trésorier ».
     for nom in sorted(par_nom, key=len, reverse=True):
-        haystack, hit = _blank(haystack, _motif_role(nom))
+        haystack, hit = blanchir(haystack, _motif_role(nom))
         if hit:
             role = par_nom[nom]
             found.setdefault(role.role_id, role)
@@ -241,7 +243,7 @@ def match_roles(question: str, roles: Sequence[RoleEntry]) -> list[RoleEntry]:
     # Puis les abréviations qui ne se déduisent pas de l'intitulé (« prez »,
     # « trez », « respo com »).
     for nom, motif in _ROLE_MOTS:
-        haystack, hit = _blank(haystack, motif)
+        haystack, hit = blanchir(haystack, motif)
         role = par_nom.get(nom)
         if hit and role is not None:
             found.setdefault(role.role_id, role)
@@ -655,11 +657,12 @@ def assemble_fiches(
     return fiches
 
 
-def lookup_context(question: str) -> str:
+def lookup_context(question: str, *, avec_annuaire: bool = True) -> str:
     """Bloc de fiches à placer en tête du contexte, ou une chaîne vide.
 
     Vide dans tous les cas incertains : le chat retombe alors exactement sur
-    son comportement RAG.
+    son comportement RAG. `avec_annuaire=False` coupe le repli sur l'annuaire
+    complet, quand la question s'explique déjà autrement (voir `personnes.py`).
     """
     catalogue, roles = load_catalogue()
     if not catalogue:
@@ -669,7 +672,9 @@ def lookup_context(question: str) -> str:
     if not cites:
         # Rien de reconnu : on se tait, ou on laisse le modèle retrouver le nom
         # dans l'annuaire.
-        if not veut_annuaire(question, match_roles(question, roles)):
+        if not avec_annuaire or not veut_annuaire(
+            question, match_roles(question, roles)
+        ):
             return ""
         # Deuxième chance : quelques noms ressemblants en pistes. Bien moins
         # coûteux que l'annuaire, et suffisant sur une faute de frappe.

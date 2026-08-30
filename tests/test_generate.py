@@ -88,14 +88,15 @@ def test_le_prompt_systeme_porte_bien_les_regles() -> None:
         assert section in CHAT_SYSTEM
 
 
-def test_les_trois_blocs_faisant_autorite_sont_documentes() -> None:
-    """`clubs.py` sait produire trois en-têtes : le prompt doit les connaître.
+def test_les_blocs_faisant_autorite_sont_documentes() -> None:
+    """Le SQL sait produire quatre en-têtes : le prompt doit les connaître.
 
     « NOMS PROCHES » manquait au prompt précédent, qui laissait donc le modèle
     face à un bloc jamais annoncé.
     """
     for entete in (
         "FICHE OFFICIELLE",
+        "FICHE PERSONNE",
         "ANNUAIRE DE LA VIE ASSOCIATIVE",
         "NOMS PROCHES",
     ):

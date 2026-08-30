@@ -26,6 +26,7 @@ from .back.generate import (
 )
 from .back.groqpool import acquire
 from .back.models import Conversation, db
+from .back.personnes import lookup_personnes
 from .back.reflexes import reflex
 from .back.seamap import generate_map, retrieve_for_map, wants_map
 from .back.types import SearchResult
@@ -239,7 +240,12 @@ def _run_chat(*, spec: CallSpec, is_ctf: bool) -> Response | tuple[Response, int
     # Fiches SQL, résolues dans le contexte de requête pour la même raison que
     # le retrieval. La carte a son propre prompt, sans place pour elles.
     if not is_map:
-        req.fiches = lookup_context(user_message)
+        # Une personne reconnue explique déjà la question : l'annuaire complet,
+        # lui, ne sert qu'à rattraper un nom d'entité qui nous aurait échappé.
+        personnes = lookup_personnes(user_message)
+        req.fiches = personnes + lookup_context(
+            user_message, avec_annuaire=not personnes
+        )
 
     log_retrieval(
         user_id=user_id,
