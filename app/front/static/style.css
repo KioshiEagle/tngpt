@@ -890,6 +890,18 @@ button.user-tab {
 .author-link:hover .author-logo { opacity: 1; }
 [data-theme="dark"] .author-logo { filter: invert(1); opacity: 0.85; }
 
+/* Réseaux de Neura'TN : même sobriété et même bascule au survol que les
+   logos voisins, à une taille d'icône. */
+.author-social { display: flex; align-items: center; }
+.author-social-icon {
+    height: 20px;
+    width: 20px;
+    opacity: 0.6;
+    transition: opacity 0.15s, filter 0.3s;
+}
+.author-social:hover .author-social-icon { opacity: 1; }
+[data-theme="dark"] .author-social-icon { filter: invert(1); opacity: 0.85; }
+
 /* --- LANDING MODE (état vide centré, style Gemini) --- */
 body.landing .main {
     justify-content: center;
