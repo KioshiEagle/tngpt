@@ -21,8 +21,10 @@ jobs:
       - run: uv lock --check
       - run: uvx ruff check . --statistics
       - run: uvx ruff format . --check
-      - run: uv check
-      # uv check est encore expérimental donc on garde uvx ty check pour l'instant
+      # `uv check`, expérimental, télécharge le ty du jour : depuis la 0.0.77
+      # il appelle `uv workspace metadata --active`, que l'uv de l'image épinglée
+      # ne connaît pas. C'est `uvx ty check` qui fait foi, et il couvre la même
+      # chose.
       - run: uvx ty check
 
   check_security:

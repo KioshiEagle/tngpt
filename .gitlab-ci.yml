@@ -12,9 +12,10 @@ lint:
     - uv lock --check
     - uvx ruff check . --statistics
     - uvx ruff format . --check
-    - uv check
+    # `uv check`, expérimental, télécharge le ty du jour : depuis la 0.0.77 il
+    # appelle `uv workspace metadata --active`, que l'uv de l'image épinglée ne
+    # connaît pas. C'est `uvx ty check` qui fait foi, et il couvre la même chose.
     - uvx ty check
-#uv check est encore expérimental donc je laisse uvx ty check pour l'instant
 check_security:
   stage: check_code_quality
   script:

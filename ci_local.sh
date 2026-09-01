@@ -16,7 +16,9 @@ echo "--------------------------------------"
 
 uv lock --check
 uv sync
-uv check
+# `uv check` (expérimental) réclame un uv récent et télécharge le ty du jour :
+# `uvx ty check` fait la même vérification sans dépendre de la version d'uv.
+uvx ty check
 
 echo ""
 echo "[2/3] Qualité du code"
