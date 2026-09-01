@@ -16,9 +16,9 @@ echo "--------------------------------------"
 
 uv lock --check
 uv sync
-# `uv check` (expérimental) réclame un uv récent et télécharge le ty du jour :
-# `uvx ty check` fait la même vérification sans dépendre de la version d'uv.
-uvx ty check
+# `uv run` et non `uvx` : ty a besoin du venv du projet pour résoudre les
+# imports tiers, et sa version vient du lock, pas du dernier ty publié.
+uv run ty check
 
 echo ""
 echo "[2/3] Qualité du code"
