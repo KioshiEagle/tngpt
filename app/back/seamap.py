@@ -9,11 +9,11 @@ import logging
 import re
 from collections.abc import Iterator
 
-from groq import Groq, Stream
+from groq import Stream
 from groq.types.chat import ChatCompletionChunk, ChatCompletionToolParam
 
 from .generate import CallSpec, GenerateRequest, generate_answer, today_fr
-from .groqpool import acquire
+from .groqpool import Client, acquire
 from .retrieval import search
 from .textnorm import strip_accents
 from .types import GroqParams, MapClub, MapPayload, SearchResult
@@ -480,7 +480,7 @@ MAP_SPEC = CallSpec(
 def generate_map(
     req: GenerateRequest,
     results: list[SearchResult] | None = None,
-    client: Groq | None = None,
+    client: Client | None = None,
 ) -> Iterator[str]:
     """Génère un court commentaire suivi de la carte au trésor des clubs."""
     if results is None:

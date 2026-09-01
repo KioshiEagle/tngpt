@@ -48,14 +48,19 @@ class MapPayload(TypedDict):
 
 
 class GroqParams(TypedDict, total=False):
-    """Paramètres d'appel Groq ajustables selon le prompt utilisé.
+    """Paramètres d'appel ajustables selon le prompt utilisé.
 
-    `reasoning_format` doit valoir 'parsed' ou 'hidden' dès qu'on passe des
-    outils : Groq refuse le format brut avec le tool calling.
+    Les specs les déclarent en vocabulaire Groq, seul fournisseur historique ;
+    `fournisseurs.adapter_params` les traduit pour les autres. `reasoning_format`
+    doit valoir 'parsed' ou 'hidden' dès qu'on passe des outils : Groq refuse le
+    format brut avec le tool calling.
     """
 
     reasoning_effort: Literal["none", "default", "low", "medium", "high"]
     reasoning_format: Literal["parsed", "hidden"]
+    # Extensions hors signature du SDK (le `thinking` de DeepSeek, équivalent
+    # des deux précédents qu'il ne connaît pas) : sinon c'est un TypeError.
+    extra_body: dict
     max_completion_tokens: int
     tools: list[ChatCompletionToolParam]
     tool_choice: ChatCompletionNamedToolChoiceParam

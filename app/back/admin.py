@@ -27,6 +27,7 @@ from .catalog import (
     start_ingestion,
     sync_from_qdrant,
 )
+from .fournisseurs import fournisseur
 from .models import (
     DOC_FAILED,
     DOC_INDEXED,
@@ -446,7 +447,16 @@ def create_groq_key() -> Response:
     """Ajoute une clé Groq au pool."""
     secret = (request.form.get("secret") or "").strip()
     if not secret:
-        flash("La clé Groq est vide.", "warning")
+        flash("La clé est vide.", "warning")
+        return redirect(url_for("admin.groq_keys_page"))
+
+    # Sans ce contrôle, une clé au préfixe inconnu entre dans le pool et part
+    # vers la mauvaise API : elle n'échoue qu'en 401, une requête sur N.
+    if fournisseur(secret) is None:
+        flash(
+            "Préfixe de clé non reconnu : attendu gsk_ (Groq) ou sk- (DeepSeek).",
+            "warning",
+        )
         return redirect(url_for("admin.groq_keys_page"))
 
     if db.session.scalar(db.select(GroqKey).filter_by(secret=secret)):

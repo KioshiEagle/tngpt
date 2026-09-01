@@ -74,10 +74,11 @@ _SANS_REPONSE = "j'ai réfléchi un peu trop fort là, redemande ?"
 
 
 class LecteurScelle:
-    """Rend visible le raisonnement (champ `reasoning`) puis l'appel d'outil.
+    """Rend visible le raisonnement puis l'appel d'outil.
 
-    Avec `reasoning_format="parsed"`, le raisonnement — le canal de fuite du
-    chal — arrive à part du contenu. On l'affiche dans un bloc dédié.
+    Demandé par `reasoning_format="parsed"` chez Groq, par `thinking` chez
+    DeepSeek : dans les deux cas le raisonnement — le canal de fuite du chal —
+    arrive à part du contenu. On l'affiche dans un bloc dédié.
     """
 
     def __init__(self) -> None:
@@ -99,7 +100,11 @@ class LecteurScelle:
 
     def _delta(self, delta: object) -> Iterator[str]:
         """Cède ce qu'un delta apporte : réflexion, texte, arguments d'outil."""
-        pensee = getattr(delta, "reasoning", None)
+        # Groq nomme ce champ `reasoning`, DeepSeek `reasoning_content` : le
+        # chal doit fuiter par l'un comme par l'autre.
+        pensee = getattr(delta, "reasoning", None) or getattr(
+            delta, "reasoning_content", None
+        )
         if pensee:
             if not self._reflexion:
                 self._reflexion = True

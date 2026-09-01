@@ -12,7 +12,6 @@ from flask import (
     stream_with_context,
 )
 from flask_login import current_user, login_required
-from groq import Groq
 
 from .back.brainrot import BRAINROT_SPEC
 from .back.clubs import lookup_context
@@ -24,7 +23,7 @@ from .back.generate import (
     generate_answer,
     retrieve,
 )
-from .back.groqpool import acquire
+from .back.groqpool import Client, acquire
 from .back.models import Conversation, db
 from .back.personnes import lookup_personnes
 from .back.reflexes import reflex
@@ -78,7 +77,7 @@ def _append_message(conversation_id: int, role: str, content: str) -> None:
 def _stream_answer(
     req: GenerateRequest,
     results: list[SearchResult],
-    client: Groq,
+    client: Client,
     conversation_id: int,
     spec: CallSpec | None,
 ) -> Iterator[str]:

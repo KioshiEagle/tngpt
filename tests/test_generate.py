@@ -8,9 +8,11 @@ from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any, cast
 
 import httpx
+import httpx2
 import pytest
 from groq import APIConnectionError, APIStatusError, APITimeoutError, Stream
 from groq.types.chat import ChatCompletionChunk
+from openai import APIStatusError as OpenAIStatusError
 
 from app.back.generate import (
     _CHAT_MODEL,
@@ -262,6 +264,34 @@ def _erreur(code: int, entetes: dict[str, str] | None = None) -> APIStatusError:
         headers=entetes or {},
     )
     return APIStatusError("boom", response=reponse, body=None)
+
+
+def _erreur_openai(code: int) -> OpenAIStatusError:
+    """La même erreur, mais levée par le SDK openai (donc par DeepSeek)."""
+    reponse = httpx2.Response(
+        code, request=httpx2.Request("POST", "http://deepseek.test")
+    )
+    return OpenAIStatusError("boom", response=reponse, body=None)
+
+
+def test_l_echelle_s_arme_aussi_sur_une_erreur_deepseek() -> None:
+    """Régression : les deux SDK ont des hiérarchies d'exceptions disjointes.
+
+    Une erreur DeepSeek n'étant pas une `groq.APIStatusError`, tout le repli
+    (backoff 429, contexte 413, abandon de paramètres 400) restait inerte.
+    """
+    outcome = _classify_error(_erreur_openai(429), 0, 3)
+    assert outcome.retry is True
+    assert outcome.wait_seconds > 0
+
+
+def test_un_statut_deepseek_non_rattrapable_se_nomme() -> None:
+    """Le 402 « Insufficient Balance » tombait dans le fourre-tout final."""
+    outcome = _classify_error(_erreur_openai(402), 0, 3)
+    assert outcome.retry is False
+    assert outcome.error_message is not None
+    assert "402" in outcome.error_message
+    assert "inattendue" not in outcome.error_message
 
 
 def test_429_attend_puis_retente() -> None:
@@ -592,6 +622,54 @@ def test_la_bascule_troque_aussi_les_parametres() -> None:
     premier, second = client.appels
     assert premier.get("reasoning_effort") == "none"
     assert second.get("reasoning_effort") == "low"
+
+
+class _ClientDeepSeek:
+    """Client dont l'hôte est celui de DeepSeek, et qui répond à tout."""
+
+    base_url = "https://api.deepseek.com"
+
+    def __init__(self) -> None:
+        self.appels: list[dict[str, object]] = []
+        self.chat = self
+
+    @property
+    def completions(self) -> "_ClientDeepSeek":
+        """Le client se fait passer pour `client.chat.completions`."""
+        return self
+
+    def create(self, **kwargs: object) -> Stream[ChatCompletionChunk]:
+        """Enregistre l'appel et sert un flux."""
+        self.appels.append(kwargs)
+        return _flux("voilà ", "la réponse")
+
+
+def test_une_cle_deepseek_appelle_un_modele_deepseek() -> None:
+    """Régression : la clé DeepSeek du pool partait avec l'id de modèle Groq.
+
+    Elle visait alors `api.groq.com` et rendait un 401 à une requête sur trois.
+    """
+    client = cast("Any", _ClientDeepSeek())
+    requete = GenerateRequest(question="qui préside le BDE ?", top_k=5)
+
+    sortie = "".join(_stream_with_retries(requete, [], client))
+
+    assert sortie == "voilà la réponse"
+    (appel,) = client.appels
+    assert appel["model"].startswith("deepseek-")
+    assert appel["model"] != _CHAT_MODEL
+
+
+def test_une_cle_deepseek_n_envoie_pas_le_vocabulaire_groq() -> None:
+    """`reasoning_format` n'existe pas chez DeepSeek : l'envoyer vaut un 400."""
+    client = cast("Any", _ClientDeepSeek())
+    requete = GenerateRequest(question="qui préside le BDE ?", top_k=5)
+
+    list(_stream_with_retries(requete, [], client))
+
+    (appel,) = client.appels
+    assert "reasoning_format" not in appel
+    assert appel["extra_body"]["thinking"] == {"type": "disabled"}
 
 
 def test_le_repli_epuise_a_son_tour_rend_un_message_et_non_une_boucle() -> None:

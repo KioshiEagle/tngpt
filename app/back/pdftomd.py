@@ -7,7 +7,16 @@ from datetime import date
 from pathlib import Path
 
 from dotenv import load_dotenv
-from groq import APIConnectionError, APIStatusError, APITimeoutError, Groq
+from groq import Groq
+
+from .fournisseurs import GROQ, modeles
+from .groqpool import (
+    ERREURS_CONNEXION,
+    ERREURS_STATUT,
+    ERREURS_TIMEOUT,
+    Client,
+    fournisseur_du_client,
+)
 
 # pymupdf4llm conseille pymupdf-layout d'un print() à l'import : ce paquet est
 # justement écarté (voir la borne pymupdf4llm du pyproject).
@@ -128,11 +137,21 @@ _METADATA_USER = (
 )
 
 
-def _groq_extract(content: str, client: Groq) -> str | None:
-    """Appelle Groq pour extraire les métadonnées. Retourne None si indisponible."""
+def _modele_extraction(client: Client) -> str:
+    """Modèle d'extraction adapté au fournisseur du client tiré du pool.
+
+    Groq garde son petit modèle dédié ; ailleurs on reprend le modèle de chat du
+    fournisseur, faute d'équivalent bon marché connu.
+    """
+    nom = fournisseur_du_client(client)
+    return _GROQ_MODEL if nom == GROQ else modeles(nom)[0]
+
+
+def _groq_extract(content: str, client: Client) -> str | None:
+    """Appelle le modèle d'extraction. Retourne None si indisponible."""
     try:
         resp = client.chat.completions.create(
-            model=_GROQ_MODEL,
+            model=_modele_extraction(client),
             messages=[
                 {"role": "system", "content": _METADATA_SYSTEM},
                 {"role": "user", "content": _METADATA_USER + content},
@@ -141,14 +160,14 @@ def _groq_extract(content: str, client: Groq) -> str | None:
             max_tokens=200,
         )
         return resp.choices[0].message.content or None
-    except (APITimeoutError, APIConnectionError, APIStatusError):
+    except (*ERREURS_TIMEOUT, *ERREURS_CONNEXION, *ERREURS_STATUT):
         return None
 
 
 class DocumentProcessor:
     """Convertit des PDF en Markdown avec extraction de métadonnées via Groq."""
 
-    def _extract_metadata(self, md_content: str, filename: str, client: Groq) -> dict:
+    def _extract_metadata(self, md_content: str, filename: str, client: Client) -> dict:
         """Extrait titre, date et auteur via Groq, regex en fallback pour la date."""
         meta: dict = {"title": filename, "date": None, "author": None}
 
@@ -171,7 +190,7 @@ class DocumentProcessor:
         return meta
 
     def convert_file(
-        self, pdf_path: Path, output_dir: Path, client: Groq | None = None
+        self, pdf_path: Path, output_dir: Path, client: Client | None = None
     ) -> Path:
         """Convertit un PDF en Markdown avec frontmatter et retourne le chemin du .md.
 
