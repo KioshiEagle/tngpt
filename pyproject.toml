@@ -18,7 +18,7 @@ dependencies = [
     # donc onnxruntime et ~118 Mo de modèles .onnx (layout, tables, décision
     # OCR) qui s'exécutent en local à chaque conversion de PDF. La 0.3.x expose
     # le même `to_markdown()` sans aucune inférence locale.
-    "pymupdf4llm>=0.3.4,<1.0",
+    "pymupdf4llm>=0.3.4,<2.0",
     "gunicorn>=26.0.0",
     "python-dotenv>=1.2.2",
     "flask-limiter>=4.1.1",
