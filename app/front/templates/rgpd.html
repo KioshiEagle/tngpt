@@ -15,6 +15,23 @@
         })();
     </script>
     <style>
+        /* style.css fige le body pour la coque du chat (100vh, flex, overflow
+           hidden) : une page de document doit défiler normalement. */
+        body.rgpd {
+            display: block;
+            height: auto;
+            min-height: 100vh;
+            overflow-x: hidden;
+            overflow-y: auto;
+            font-size: 16px;
+        }
+
+        body.rgpd code {
+            font-family: 'IBM Plex Mono', ui-monospace, monospace;
+            font-size: .9em;
+            word-break: break-word;
+        }
+
         .rgpd-page {
             max-width: 34rem;
             margin: 0 auto;
@@ -109,7 +126,7 @@
         .rgpd-retour:hover { color: var(--primary); }
     </style>
 </head>
-<body>
+<body class="rgpd">
     <div class="rgpd-page">
 
         <img src="/static/rgpd_placeholder.png" class="rgpd-visuel" alt="" width="1200" height="400">
