@@ -20,6 +20,9 @@ DEEPSEEK = "deepseek"
 CEREBRAS = "cerebras"
 MISTRAL = "mistral"
 
+# Valeurs admises dans la colonne `fournisseur` du pool, et proposées au panel.
+FOURNISSEURS = (GROQ, DEEPSEEK, CEREBRAS, MISTRAL)
+
 # Point d'entrée par fournisseur, pour les SDK compatibles OpenAI. Groq est
 # absent : son propre SDK connaît déjà son URL.
 BASE_URLS = {
@@ -52,9 +55,10 @@ _GROQ_REPLI = "openai/gpt-oss-120b"
 _DEEPSEEK_CHAT = "deepseek-v4-flash"
 
 # Repli sur le petit modèle : chez Mistral la facture se compte au token, et le
-# chat restitue du contexte plutôt qu'il ne raisonne.
+# chat restitue du contexte plutôt qu'il ne raisonne. Ids épinglés et non
+# « -latest » : un modèle qui change sous les pieds invaliderait le banc.
 _MISTRAL_CHAT = "mistral-medium-3.5"
-_MISTRAL_REPLI = "mistral-small-4"
+_MISTRAL_REPLI = "mistral-small-2603"
 
 # Efforts de raisonnement acceptés par DeepSeek. Le vocabulaire de Groq
 # (« none », « default », « medium ») n'y a pas cours : ce qui n'est pas dans
@@ -79,6 +83,21 @@ def fournisseur(secret: str) -> str | None:
         "Préfixe de clé non reconnu (%r…) : fournisseur indéterminé.", debut[:4]
     )
     return None
+
+
+def resoudre(secret: str, declare: str | None) -> str | None:
+    """Fournisseur d'une clé du pool : le déclaré prime sur le préfixe.
+
+    Une clé Mistral n'a pas de préfixe reconnaissable. Sans colonne pour le
+    dire, elle partirait chez Groq et n'échouerait qu'en 401, loin d'ici.
+    """
+    if declare in FOURNISSEURS:
+        return declare
+    if declare:
+        logger.warning(
+            "Fournisseur déclaré inconnu (%r) : on retombe sur le préfixe.", declare
+        )
+    return fournisseur(secret)
 
 
 def modeles(nom: str) -> tuple[str, str]:

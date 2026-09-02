@@ -34,7 +34,7 @@ CANDIDAT = "openai/gpt-oss-120b"
 # Candidats souverains : mêmes questions, mêmes contextes, mais inférence en
 # France. C'est la perte de qualité de ce déplacement qu'on cherche à chiffrer.
 MISTRAL_MEDIUM = "mistral-medium-3.5"
-MISTRAL_SMALL = "mistral-small-4"
+MISTRAL_SMALL = "mistral-small-2603"
 
 
 @dataclass(frozen=True)

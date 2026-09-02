@@ -27,7 +27,7 @@ from .catalog import (
     start_ingestion,
     sync_from_qdrant,
 )
-from .fournisseurs import fournisseur
+from .fournisseurs import FOURNISSEURS, resoudre
 from .models import (
     DOC_FAILED,
     DOC_INDEXED,
@@ -437,6 +437,7 @@ def groq_keys_page() -> str:
     return render_template(
         "admin/groq_keys.html",
         rows=rows,
+        fournisseurs=FOURNISSEURS,
         env_fallback=bool(os.getenv("GROQ_API_KEY")),
     )
 
@@ -450,11 +451,19 @@ def create_groq_key() -> Response:
         flash("La clé est vide.", "warning")
         return redirect(url_for("admin.groq_keys_page"))
 
+    # Le fournisseur déclaré au formulaire prime ; vide, on retombe sur le
+    # préfixe. Mistral n'a que cette voie : ses clés n'ont aucun marqueur.
+    declare = (request.form.get("fournisseur") or "").strip() or None
+    if declare is not None and declare not in FOURNISSEURS:
+        flash("Fournisseur inconnu.", "warning")
+        return redirect(url_for("admin.groq_keys_page"))
+
     # Sans ce contrôle, une clé au préfixe inconnu entre dans le pool et part
     # vers la mauvaise API : elle n'échoue qu'en 401, une requête sur N.
-    if fournisseur(secret) is None:
+    if resoudre(secret, declare) is None:
         flash(
-            "Préfixe de clé non reconnu : attendu gsk_ (Groq) ou sk- (DeepSeek).",
+            "Préfixe non reconnu : choisis le fournisseur dans la liste. "
+            "Les clés Mistral n'ont aucun préfixe et l'exigent toujours.",
             "warning",
         )
         return redirect(url_for("admin.groq_keys_page"))
@@ -466,6 +475,7 @@ def create_groq_key() -> Response:
     key = GroqKey(
         label=(request.form.get("label") or "").strip()[:100] or None,
         secret=secret,
+        fournisseur=declare,
         created_by=current_user.user_id,
     )
     db.session.add(key)

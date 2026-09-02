@@ -11,8 +11,19 @@
         <form method="post" action="{{ url_for('admin.create_groq_key') }}" class="admin-key-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <label>
-                <span>Clé Groq (gsk_…)</span>
+                <span>Clé d'API</span>
                 <input type="password" name="secret" autocomplete="off" required placeholder="gsk_…" style="min-width: 280px;">
+            </label>
+            <label>
+                <span>Fournisseur</span>
+                {# Obligatoire pour Mistral, dont les clés n'ont aucun préfixe
+                   reconnaissable ; ailleurs le préfixe suffit encore. #}
+                <select name="fournisseur">
+                    <option value="">Déduire du préfixe</option>
+                    {% for nom in fournisseurs %}
+                        <option value="{{ nom }}">{{ nom }}</option>
+                    {% endfor %}
+                </select>
             </label>
             <label>
                 <span>Libellé (facultatif)</span>
@@ -42,7 +53,7 @@
                             <td>
                                 <span class="admin-user-text">
                                     <span class="admin-user-name admin-mono">{{ key.masked }}</span>
-                                    <span class="admin-user-mail">{{ key.label or "sans libellé" }}</span>
+                                    <span class="admin-user-mail">{{ key.fournisseur_effectif }} · {{ key.label or "sans libellé" }}</span>
                                 </span>
                             </td>
                             <td class="admin-td-num">{{ row.today }}</td>

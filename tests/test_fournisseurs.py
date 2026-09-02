@@ -15,6 +15,7 @@ from app.back.fournisseurs import (
     adapter_params,
     fournisseur,
     modeles,
+    resoudre,
 )
 from app.back.generate import CHAT_GROQ_PARAMS
 from app.back.groqpool import _construire, fournisseur_du_client
@@ -84,6 +85,35 @@ def test_le_modele_suit_le_fournisseur() -> None:
     principal, _ = modeles(DEEPSEEK)
     assert principal.startswith("deepseek-")
     assert "qwen" not in principal
+
+
+# --- Fournisseur déclaré par le pool ------------------------------------------
+
+_CLE_MISTRAL = "cle-de-test-sans-prefixe-reconnaissable"
+
+
+def test_le_declare_l_emporte_sur_le_prefixe() -> None:
+    """Sans quoi une clé Mistral opaque partirait chez Groq, et ferait un 401."""
+    assert resoudre(_CLE_MISTRAL, MISTRAL) == MISTRAL
+
+
+def test_sans_declaration_le_prefixe_decide_encore() -> None:
+    """Les clés d'avant la colonne restent reconnues comme avant."""
+    assert resoudre("gsk_QH0000000000000000", None) == GROQ
+    assert resoudre("sk-0000000000000000", None) == DEEPSEEK
+
+
+def test_une_declaration_inconnue_ne_fait_pas_autorite() -> None:
+    """Une valeur hors liste retombe sur le préfixe plutôt que d'être suivie."""
+    assert resoudre("gsk_QH0000000000000000", "azure") == GROQ
+    assert resoudre(_CLE_MISTRAL, "azure") is None
+
+
+def test_une_cle_declaree_mistral_vise_le_bon_hote() -> None:
+    """Bout en bout : la déclaration doit survivre jusqu'à l'URL appelée."""
+    client = _construire(_CLE_MISTRAL, MISTRAL)
+    assert fournisseur_du_client(client) == MISTRAL
+    assert "api.mistral.ai" in str(client.base_url)
 
 
 def test_le_modele_mistral_suit_son_fournisseur() -> None:
