@@ -1,7 +1,7 @@
 {% extends "admin/base.html" %}
 
-{% block title %}Clés Groq{% endblock %}
-{% block heading %}Pool de clés Groq{% endblock %}
+{% block title %}Clés API{% endblock %}
+{% block heading %}Pool de clés API{% endblock %}
 {% block subtitle %}Les appels au LLM sont répartis en round-robin entre les clés actives, pour qu'aucune ne sature.{% endblock %}
 
 {% block content %}
@@ -12,7 +12,7 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <label>
                 <span>Clé d'API</span>
-                <input type="password" name="secret" autocomplete="off" required placeholder="gsk_…" style="min-width: 280px;">
+                <input type="password" name="secret" autocomplete="off" required placeholder="gsk_… / csk-… / sk-… / clé Mistral" style="min-width: 280px;">
             </label>
             <label>
                 <span>Fournisseur</span>
@@ -99,7 +99,7 @@
 
     <p class="admin-note">
         <strong>Aujourd'hui</strong> = questions du chat servies par la clé (journal). <strong>Total</strong>
-        = tous les appels Groq via cette clé, chat et ingestion compris. La clé la moins récemment
+        = tous les appels API via cette clé, chat et ingestion compris. La clé la moins récemment
         utilisée est choisie en premier : la charge tourne d'une clé à l'autre. Si le pool est vide,
         TN-GPT retombe sur <code>GROQ_API_KEY</code> du .env.
     </p>
