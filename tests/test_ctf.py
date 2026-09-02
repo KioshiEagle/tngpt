@@ -130,10 +130,17 @@ def test_rien_ne_sort_apres_la_coupure() -> None:
 
 
 def test_une_route_ctf_tolere_le_slash_final() -> None:
-    """`/ctf/social` et `/ctf/social/` mènent au même chal : un refresh ne 404 pas."""
-    from main import app  # noqa: PLC0415
+    """`/ctf/social` et `/ctf/social/` mènent au même chal : un refresh ne 404 pas.
 
+    Le blueprint est monté sur une app jetable, sans importer `main` : ce dernier
+    exige `DATABASE_URL` à l'import, absent du job de tests.
+    """
+    from flask import Flask  # noqa: PLC0415
+
+    from app.routes import bp  # noqa: PLC0415
+
+    app = Flask(__name__)
+    app.register_blueprint(bp)
     adapter = app.url_map.bind("localhost")
-    sans, _ = adapter.match("/ctf/social")
-    avec, _ = adapter.match("/ctf/social/")
-    assert sans == avec == "chat.ctf_index"
+    assert adapter.match("/ctf/social")[0] == "chat.ctf_index"
+    assert adapter.match("/ctf/social/")[0] == "chat.ctf_index"
