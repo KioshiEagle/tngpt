@@ -353,11 +353,12 @@ def index() -> str:
     )
 
 
+# Volontairement hors `login_required` : le traitement des données doit pouvoir
+# être lu avant de consentir à créer un compte, pas seulement après.
 @bp.route("/rgpd")
-@login_required
 def rgpd() -> str:
     """Page d'information sur le traitement des données personnelles."""
-    return render_template("rgpd.html")
+    return render_template("rgpd.html", connecte=current_user.is_authenticated)
 
 
 # Slash final toléré : `/ctf/social` et `/ctf/social/` servent la même page, sans

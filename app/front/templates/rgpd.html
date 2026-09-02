@@ -137,17 +137,25 @@
         <hr class="rgpd-regle">
 
         <p>
-            TN-GPT répond à partir des archives de l'école. Pour y parvenir, votre question
-            traverse plusieurs services, et votre conversation est conservée afin que vous
-            puissiez la retrouver. Cette page indique lesquels, et où.
+            TN-GPT répond à partir des données suivantes : les éditions du MiniTel, les Faux
+            Comptes Rendus (FCR), les comptes rendus de réunion ouverte CETEN, la plaquette
+            alpha ainsi que le site Internet de TELECOM Nancy.
+        </p>
+        <p>
+            Pour y parvenir, votre question traverse plusieurs services, et votre conversation
+            est conservée afin que vous puissiez la retrouver. Vos échanges ne servent pas à
+            entraîner nos modèles : TN-GPT n'apprend donc rien des requêtes que vous lui
+            envoyez, contrairement à une croyance répandue.
         </p>
 
         <h2>Ce qui est conservé</h2>
         <p>
             Vos conversations, votre adresse <code>@telecomnancy.net</code> et votre compte
             sont stockés dans la base de données du serveur du projet, et non chez un
-            prestataire tiers. Vous pouvez supprimer une conversation à tout moment depuis
-            la barre latérale : elle est alors retirée de la base.
+            prestataire tiers. L'accès à cette base est restreint à l'équipe technique du
+            projet, qui ne consulte pas les conversations dans le cadre de son
+            fonctionnement courant. Vous pouvez supprimer une conversation à tout moment
+            depuis la barre latérale : elle est alors retirée de la base.
         </p>
 
         <h2>Le trajet d'une question</h2>
@@ -185,7 +193,11 @@
             depuis votre adresse de l'école : elle est traitée sous un mois.
         </p>
 
-        <a href="/" class="rgpd-retour">← Retour au chat</a>
+        {% if connecte %}
+            <a href="/" class="rgpd-retour">← Retour au chat</a>
+        {% else %}
+            <a href="/auth/login" class="rgpd-retour">← Retour à la connexion</a>
+        {% endif %}
     </div>
 </body>
 </html>

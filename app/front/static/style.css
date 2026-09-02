@@ -1044,6 +1044,17 @@ body.login-page {
 }
 .btn-google:hover { opacity: 0.85; }
 
+/* Consultable sans compte : le traitement des données doit pouvoir être lu
+   avant de consentir à s'inscrire, pas après. */
+.login-rgpd {
+    display: inline-block;
+    margin-top: 18px;
+    font-size: 13px;
+    color: var(--text-muted);
+    text-decoration: none;
+}
+.login-rgpd:hover { color: var(--primary); text-decoration: underline; }
+
 .login-flash {
     font-size: 14px;
     font-family: 'IBM Plex Mono', monospace;
