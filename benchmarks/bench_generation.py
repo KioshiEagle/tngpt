@@ -78,6 +78,7 @@ MAX_TOKENS = 1000
 ATTENTE_PAR_MODELE = 62.0
 
 _HTTP_429 = 429
+_HTTP_413 = 413
 _ABANDON_APRES = 3
 
 # En deçà, la clé normalisée est trop courte pour distinguer deux questions.
@@ -410,6 +411,19 @@ def _boucle(args: argparse.Namespace) -> None:
             try:
                 sortie = _mesurer(client, cadence, question, contexte, modele)
             except (APIStatusError, QuotaEpuiseError) as erreur:
+                if (
+                    isinstance(erreur, APIStatusError)
+                    and erreur.status_code == _HTTP_413
+                ):
+                    # Contexte au-dessus du plafond par minute du modèle. La
+                    # production réduit le contexte ; le banc ne le peut pas
+                    # sans cesser de comparer des générateurs à contexte égal.
+                    logger.warning(
+                        "%s : contexte trop grand pour « %.40s », mesure abandonnée",
+                        modele,
+                        question,
+                    )
+                    continue
                 if isinstance(erreur, APIStatusError) and (
                     erreur.status_code != _HTTP_429
                 ):

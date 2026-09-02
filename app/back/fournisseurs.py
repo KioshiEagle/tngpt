@@ -57,8 +57,8 @@ _DEEPSEEK_CHAT = "deepseek-v4-flash"
 # Repli sur le petit modèle : chez Mistral la facture se compte au token, et le
 # chat restitue du contexte plutôt qu'il ne raisonne. Ids épinglés et non
 # « -latest » : un modèle qui change sous les pieds invaliderait le banc.
-_MISTRAL_CHAT = "mistral-medium-3.5"
-_MISTRAL_REPLI = "mistral-small-2603"
+_MISTRAL_CHAT = "mistral-small-2603"
+_MISTRAL_REPLI = "mistral-medium-3.5"
 
 # Efforts de raisonnement acceptés par DeepSeek. Le vocabulaire de Groq
 # (« none », « default », « medium ») n'y a pas cours : ce qui n'est pas dans
