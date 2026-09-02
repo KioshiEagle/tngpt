@@ -11,6 +11,7 @@ from app.back.fournisseurs import (
     CEREBRAS,
     DEEPSEEK,
     GROQ,
+    MISTRAL,
     adapter_params,
     fournisseur,
     modeles,
@@ -85,6 +86,29 @@ def test_le_modele_suit_le_fournisseur() -> None:
     assert "qwen" not in principal
 
 
+def test_le_modele_mistral_suit_son_fournisseur() -> None:
+    """Aucun id Groq ni DeepSeek ne doit partir vers api.mistral.ai."""
+    principal, repli = modeles(MISTRAL)
+    assert principal.startswith("mistral-")
+    assert repli.startswith("mistral-")
+    assert "qwen" not in principal
+
+
+def test_mistral_a_un_repli_distinct() -> None:
+    """Principal et repli séparés : `repli_possible` peut donc jouer."""
+    principal, repli = modeles(MISTRAL)
+    assert principal != repli
+
+
+def test_une_cle_mistral_n_est_pas_reconnue_au_prefixe() -> None:
+    """Ses clés sont opaques : les deviner enverrait le pool au mauvais hôte.
+
+    Garde-fou du choix documenté dans `fournisseurs` : Mistral se construit
+    explicitement, et une clé inconnue vaut None plutôt qu'une supposition.
+    """
+    assert fournisseur("cle-de-test-sans-prefixe-reconnaissable") is None
+
+
 def test_deepseek_n_a_pas_de_modele_de_repli() -> None:
     """Sa limite se compte en connexions simultanées, pas en quota par modèle.
 
@@ -134,6 +158,21 @@ def test_un_effort_du_vocabulaire_groq_est_retire_et_non_traduit() -> None:
     adapte = adapter_params({"reasoning_effort": "default"}, DEEPSEEK)
     assert adapte["extra_body"]["thinking"] == {"type": "enabled"}
     assert "reasoning_effort" not in adapte
+
+
+def test_mistral_ne_recoit_pas_le_vocabulaire_groq() -> None:
+    """Ni `reasoning_format` ni `thinking` : Mistral refuserait les deux."""
+    adapte = adapter_params(CHAT_GROQ_PARAMS, MISTRAL)
+    assert "reasoning_format" not in adapte
+    assert "reasoning_effort" not in adapte
+    assert "extra_body" not in adapte
+
+
+def test_le_chal_rag_garde_son_outil_chez_mistral() -> None:
+    """L'outil scellé est le cœur du chal 3 : le filtrage ne doit pas l'emporter."""
+    adapte = adapter_params(RAG_GROQ_PARAMS, MISTRAL)
+    assert adapte["tools"] == RAG_GROQ_PARAMS["tools"]
+    assert adapte["max_completion_tokens"] == RAG_GROQ_PARAMS["max_completion_tokens"]
 
 
 def test_un_effort_commun_aux_deux_est_conserve() -> None:

@@ -18,12 +18,14 @@ logger = logging.getLogger(__name__)
 GROQ = "groq"
 DEEPSEEK = "deepseek"
 CEREBRAS = "cerebras"
+MISTRAL = "mistral"
 
 # Point d'entrée par fournisseur, pour les SDK compatibles OpenAI. Groq est
 # absent : son propre SDK connaît déjà son URL.
 BASE_URLS = {
     DEEPSEEK: "https://api.deepseek.com",
     CEREBRAS: "https://api.cerebras.ai/v1",
+    MISTRAL: "https://api.mistral.ai/v1",
 }
 
 # Hôte d'appel → fournisseur, pour retrouver la destination d'un client déjà
@@ -32,9 +34,13 @@ HOTES = {
     "api.groq.com": GROQ,
     "api.deepseek.com": DEEPSEEK,
     "api.cerebras.ai": CEREBRAS,
+    "api.mistral.ai": MISTRAL,
 }
 
 # Comparés par `startswith`, donc « csk- » ne peut pas être pris pour « sk- ».
+# Mistral est absent volontairement : ses clés sont des chaînes opaques, sans
+# préfixe. Un client Mistral se construit donc explicitement, jamais par tirage
+# au sort dans le pool — tant que la table des clés n'a pas de colonne dédiée.
 _PREFIXES = (
     ("gsk_", GROQ),
     ("csk-", CEREBRAS),
@@ -44,6 +50,11 @@ _PREFIXES = (
 _GROQ_CHAT = "qwen/qwen3.6-27b"
 _GROQ_REPLI = "openai/gpt-oss-120b"
 _DEEPSEEK_CHAT = "deepseek-v4-flash"
+
+# Repli sur le petit modèle : chez Mistral la facture se compte au token, et le
+# chat restitue du contexte plutôt qu'il ne raisonne.
+_MISTRAL_CHAT = "mistral-medium-3.5"
+_MISTRAL_REPLI = "mistral-small-4"
 
 # Efforts de raisonnement acceptés par DeepSeek. Le vocabulaire de Groq
 # (« none », « default », « medium ») n'y a pas cours : ce qui n'est pas dans
@@ -81,6 +92,11 @@ def modeles(nom: str) -> tuple[str, str]:
         # connexions simultanées, pas en quota par modèle. Rien à gagner à
         # basculer, et `repli_possible` reste donc faux.
         return (_DEEPSEEK_CHAT, _DEEPSEEK_CHAT)
+    if nom == MISTRAL:
+        return (
+            os.getenv("MISTRAL_CHAT_MODEL", _MISTRAL_CHAT),
+            os.getenv("MISTRAL_CHAT_MODEL_REPLI", _MISTRAL_REPLI),
+        )
     return (
         os.getenv("GROQ_CHAT_MODEL", _GROQ_CHAT),
         os.getenv("GROQ_CHAT_MODEL_REPLI", _GROQ_REPLI),
