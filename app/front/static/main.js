@@ -348,7 +348,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!res.ok) return;
             row.remove();
             if (String(conv.id) === String(currentConversationId)) {
-                window.location.assign('/');
+                // Recharge la route courante et non '/' : sur /ctf/<chal>, repartir
+                // à la racine ferait quitter le challenge sans rien annoncer.
+                window.location.assign(window.location.pathname);
             }
         });
 

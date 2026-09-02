@@ -348,7 +348,16 @@ def quote() -> str:
 @login_required
 def index() -> str:
     """Affiche la page d'accueil du TN-GPT normal."""
-    return render_template("index.html", quote=quote(), chat_endpoint="/chat")
+    return render_template(
+        "index.html", quote=quote(), chat_endpoint="/chat", nouvelle_conv="/"
+    )
+
+
+@bp.route("/rgpd")
+@login_required
+def rgpd() -> str:
+    """Page d'information sur le traitement des données personnelles."""
+    return render_template("rgpd.html")
 
 
 # Slash final toléré : `/ctf/social` et `/ctf/social/` servent la même page, sans
@@ -359,6 +368,11 @@ def ctf_index(chal: str) -> str:
     """Affiche la page de chat d'un challenge, ou 404 s'il n'est pas activé."""
     if spec_for(chal) is None:
         abort(404)
+    # « nouvelle conv. » reste sur le chal courant : repartir sur / ferait
+    # quitter le challenge sans que rien ne l'annonce.
     return render_template(
-        "index.html", quote=quote(), chat_endpoint=f"/ctf/{chal}/chat"
+        "index.html",
+        quote=quote(),
+        chat_endpoint=f"/ctf/{chal}/chat",
+        nouvelle_conv=f"/ctf/{chal}",
     )
