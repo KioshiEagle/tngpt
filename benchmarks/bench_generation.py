@@ -13,7 +13,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 import psycopg2
 import requests
@@ -344,6 +344,87 @@ def _pause_demandee(erreur: APIStatusError | QuotaEpuiseError) -> float:
     return float(entete) + 5 if entete else 300.0
 
 
+@dataclass(frozen=True)
+class _Tache:
+    """Une mesure à faire : la question, le modèle, et leur contexte commun."""
+
+    question: str
+    modele: str
+    contexte: str
+
+
+def _mesurer_ou_reporter(
+    client: Groq,
+    cadence: Cadence,
+    tache: _Tache,
+    reprise: dict[str, float],
+    restantes: list[tuple[str, str]],
+) -> dict[str, Any] | None:
+    """Mesure la tâche, ou rend None après l'avoir reportée ou abandonnée.
+
+    Un quota épuisé remet la tâche en file et arme la reprise du modèle ; un
+    contexte trop grand l'abandonne, le banc ne pouvant pas le réduire sans
+    cesser de comparer des générateurs à contexte égal.
+    """
+    try:
+        return _mesurer(client, cadence, tache.question, tache.contexte, tache.modele)
+    except (APIStatusError, QuotaEpuiseError) as erreur:
+        if _contexte_trop_grand(erreur):
+            logger.warning(
+                "%s : contexte trop grand pour « %.40s », mesure abandonnée",
+                tache.modele,
+                tache.question,
+            )
+            return None
+        if not _quota_atteint(erreur):
+            raise
+        delai = _pause_demandee(erreur)
+        reprise[tache.modele] = time.time() + delai
+        restantes.append((tache.question, tache.modele))
+        logger.warning("%s à court de quota, repris dans %.0f s", tache.modele, delai)
+        return None
+
+
+def _consigner(
+    flux: TextIO, question: str, modele: str, contexte: str, sortie: dict[str, Any]
+) -> None:
+    """Écrit une mesure et la vide sur disque, pour survivre à une coupure.
+
+    L'empreinte du contexte accompagne la mesure : sans elle, rien ne dirait
+    que deux modèles ont bien été jugés sur le même contexte.
+    """
+    empreinte = hashlib.sha256(contexte.encode()).hexdigest()[:16]
+    flux.write(
+        json.dumps(
+            {
+                "question": question,
+                "modele": modele,
+                "contexte_sha": empreinte,
+                **sortie,
+            },
+            ensure_ascii=False,
+        )
+        + "\n"
+    )
+    flux.flush()
+
+
+def _contexte_trop_grand(erreur: Exception) -> bool:
+    """Dit si l'appel dépasse le plafond de contexte par minute du modèle.
+
+    La production réduit alors le contexte ; le banc ne le peut pas sans
+    cesser de comparer des générateurs à contexte égal, et renonce donc.
+    """
+    return isinstance(erreur, APIStatusError) and erreur.status_code == _HTTP_413
+
+
+def _quota_atteint(erreur: Exception) -> bool:
+    """Dit si l'erreur n'est qu'un quota épuisé, donc réessayable plus tard."""
+    if isinstance(erreur, QuotaEpuiseError):
+        return True
+    return isinstance(erreur, APIStatusError) and erreur.status_code == _HTTP_429
+
+
 def _mesurer(
     client: Groq, cadence: Cadence, question: str, contexte: str, modele: str
 ) -> dict[str, Any]:
@@ -408,47 +489,13 @@ def _boucle(args: argparse.Namespace) -> None:
                 contextes[question] = contexte_de(question)
             contexte = contextes[question]
 
-            try:
-                sortie = _mesurer(client, cadence, question, contexte, modele)
-            except (APIStatusError, QuotaEpuiseError) as erreur:
-                if (
-                    isinstance(erreur, APIStatusError)
-                    and erreur.status_code == _HTTP_413
-                ):
-                    # Contexte au-dessus du plafond par minute du modèle. La
-                    # production réduit le contexte ; le banc ne le peut pas
-                    # sans cesser de comparer des générateurs à contexte égal.
-                    logger.warning(
-                        "%s : contexte trop grand pour « %.40s », mesure abandonnée",
-                        modele,
-                        question,
-                    )
-                    continue
-                if isinstance(erreur, APIStatusError) and (
-                    erreur.status_code != _HTTP_429
-                ):
-                    raise
-                delai = _pause_demandee(erreur)
-                reprise[modele] = time.time() + delai
-                restantes.append((question, modele))
-                logger.warning("%s à court de quota, repris dans %.0f s", modele, delai)
+            sortie = _mesurer_ou_reporter(
+                client, cadence, _Tache(question, modele, contexte), reprise, restantes
+            )
+            if sortie is None:
                 continue
 
-            flux.write(
-                json.dumps(
-                    {
-                        "question": question,
-                        "modele": modele,
-                        "contexte_sha": hashlib.sha256(contexte.encode()).hexdigest()[
-                            :16
-                        ],
-                        **sortie,
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n"
-            )
-            flux.flush()
+            _consigner(flux, question, modele, contexte, sortie)
             logger.info(
                 "reste %d | %s | %s : %d tokens (%d en cache) %s",
                 len(restantes),
