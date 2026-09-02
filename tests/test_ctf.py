@@ -127,3 +127,13 @@ def test_un_texte_sans_secret_passe_intact() -> None:
 def test_rien_ne_sort_apres_la_coupure() -> None:
     """Une fois coupé, le flux reste coupé jusqu'à la fin."""
     assert _censure("avant NTN{vrai}", " et la suite du secret") == "avant " + COUPURE
+
+
+def test_une_route_ctf_tolere_le_slash_final() -> None:
+    """`/ctf/social` et `/ctf/social/` mènent au même chal : un refresh ne 404 pas."""
+    from main import app  # noqa: PLC0415
+
+    adapter = app.url_map.bind("localhost")
+    sans, _ = adapter.match("/ctf/social")
+    avec, _ = adapter.match("/ctf/social/")
+    assert sans == avec == "chat.ctf_index"

@@ -351,7 +351,9 @@ def index() -> str:
     return render_template("index.html", quote=quote(), chat_endpoint="/chat")
 
 
-@bp.route("/ctf/<chal>")
+# Slash final toléré : `/ctf/social` et `/ctf/social/` servent la même page, sans
+# redirection, pour qu'un rafraîchissement recharge le même chal (pas un 404).
+@bp.route("/ctf/<chal>", strict_slashes=False)
 @login_required
 def ctf_index(chal: str) -> str:
     """Affiche la page de chat d'un challenge, ou 404 s'il n'est pas activé."""
