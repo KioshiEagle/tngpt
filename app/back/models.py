@@ -273,6 +273,9 @@ class GroqKey(db.Model):
     groq_key_id = db.Column(db.Integer, primary_key=True)
     label = db.Column(db.String(100), nullable=True)
     secret = db.Column(db.String(200), nullable=False)
+    # Nul pour les clés d'avant la colonne : leur préfixe suffit à les
+    # reconnaître. Obligatoire pour Mistral, dont les clés sont opaques.
+    fournisseur = db.Column(db.String(20), nullable=True)
     active = db.Column(db.Boolean, nullable=False, default=True)
     request_count = db.Column(db.Integer, nullable=False, default=0)
 
@@ -287,6 +290,13 @@ class GroqKey(db.Model):
     created_by = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=True)
 
     creator = db.relationship("User", foreign_keys=[created_by])
+
+    @property
+    def fournisseur_effectif(self) -> str:
+        """Destination réelle de la clé, telle que le pool la calculera."""
+        from .fournisseurs import resoudre  # noqa: PLC0415
+
+        return resoudre(self.secret, self.fournisseur) or "indéterminé"
 
     @property
     def masked(self) -> str:

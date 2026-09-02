@@ -26,7 +26,7 @@ from openai import (
 from openai import OpenAI
 from sqlalchemy.exc import SQLAlchemyError
 
-from .fournisseurs import BASE_URLS, GROQ, HOTES, fournisseur
+from .fournisseurs import BASE_URLS, GROQ, HOTES, resoudre
 from .models import GroqKey, db
 
 logger = logging.getLogger(__name__)
@@ -58,13 +58,13 @@ _lock = threading.Lock()
 _MAX_RETRIES = 0
 
 
-def _construire(secret: str) -> Client:
-    """Client du fournisseur reconnu au préfixe du secret.
+def _construire(secret: str, declare: str | None = None) -> Client:
+    """Client du fournisseur de la clé : celui déclaré, sinon son préfixe.
 
-    Un préfixe inconnu retombe sur Groq : c'est le fournisseur historique du
-    pool, et l'avertissement est déjà émis par `fournisseur`.
+    Un fournisseur indéterminé retombe sur Groq : c'est l'historique du pool,
+    et l'avertissement est déjà émis en amont.
     """
-    nom = fournisseur(secret)
+    nom = resoudre(secret, declare)
     if nom is None or nom == GROQ:
         return Groq(api_key=secret, max_retries=_MAX_RETRIES)
     return OpenAI(api_key=secret, base_url=BASE_URLS[nom], max_retries=_MAX_RETRIES)
@@ -80,12 +80,14 @@ def fournisseur_du_client(client: Client) -> str:
     return HOTES.get(hote, GROQ)
 
 
-def _client_for(cache_id: int | None, secret: str) -> Client:
+def _client_for(
+    cache_id: int | None, secret: str, declare: str | None = None
+) -> Client:
     """Retourne un client mémoïsé pour un secret donné."""
     with _lock:
         client = _clients.get(cache_id)
         if client is None:
-            client = _construire(secret)
+            client = _construire(secret, declare)
             _clients[cache_id] = client
         return client
 
@@ -111,6 +113,9 @@ def acquire() -> tuple[Client, int | None]:
         key.last_used_at = datetime.now(UTC)
         key.request_count = (key.request_count or 0) + 1
         db.session.commit()
-        return _client_for(key.groq_key_id, key.secret), key.groq_key_id
+        return (
+            _client_for(key.groq_key_id, key.secret, key.fournisseur),
+            key.groq_key_id,
+        )
 
     return _client_for(None, os.getenv("GROQ_API_KEY", "")), None

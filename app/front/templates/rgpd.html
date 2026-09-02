@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="TN-GPT et le RGPD — le trajet des données d'une question posée au chat.">
+    <title>TN-GPT et le RGPD</title>
+    <link rel="icon" type="image/webp" href="/static/ducky_cassis.webp">
+    <link rel="stylesheet" href="{{ asset('style.css') }}">
+    <!-- Prevent dark-mode flash -->
+    <script>
+        (function () {
+            var t = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            document.documentElement.setAttribute('data-theme', t);
+        })();
+    </script>
+    <style>
+        /* style.css fige le body pour la coque du chat (100vh, flex, overflow
+           hidden) : une page de document doit défiler normalement. */
+        body.rgpd {
+            display: block;
+            height: auto;
+            min-height: 100vh;
+            overflow-x: hidden;
+            overflow-y: auto;
+            font-size: 16px;
+        }
+
+        body.rgpd code {
+            font-family: 'IBM Plex Mono', ui-monospace, monospace;
+            font-size: .9em;
+            word-break: break-word;
+        }
+
+        .rgpd-page {
+            max-width: 34rem;
+            margin: 0 auto;
+            padding: clamp(3.5rem, 11vh, 7rem) 1.5rem clamp(5rem, 14vh, 9rem);
+            text-align: center;
+            color: var(--text-main);
+        }
+
+        .rgpd-visuel {
+            width: 100%;
+            max-width: 15rem;
+            height: auto;
+            margin: 0 auto;
+            display: block;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            opacity: .85;
+        }
+
+        .rgpd-page h1 {
+            margin: clamp(2.5rem, 6vh, 3.75rem) 0 0;
+            font-size: clamp(2.4rem, 8vw, 3.6rem);
+            font-weight: 700;
+            letter-spacing: -.03em;
+            line-height: 1.05;
+            text-wrap: balance;
+        }
+
+        .rgpd-maj {
+            margin: 1.15rem 0 0;
+            font-size: .7rem;
+            letter-spacing: .14em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+
+        .rgpd-regle {
+            width: 2.5rem;
+            height: 1px;
+            border: 0;
+            margin: clamp(2.25rem, 5vh, 3rem) auto;
+            background: var(--border);
+        }
+
+        .rgpd-page p {
+            margin: 0 0 1.1rem;
+            font-size: .875rem;
+            line-height: 1.8;
+            color: var(--text-main);
+        }
+
+        .rgpd-page p:last-of-type { margin-bottom: 0; }
+
+        .rgpd-page h2 {
+            margin: clamp(2.5rem, 5.5vh, 3.25rem) 0 1.1rem;
+            font-size: .7rem;
+            font-weight: 600;
+            letter-spacing: .16em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+
+        .rgpd-trajet {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            border-top: 1px solid var(--border);
+        }
+
+        .rgpd-trajet li {
+            padding: .8rem .25rem;
+            border-bottom: 1px solid var(--border);
+            font-size: .8125rem;
+            line-height: 1.55;
+        }
+
+        .rgpd-trajet strong {
+            display: block;
+            font-weight: 600;
+        }
+
+        .rgpd-lieu { color: var(--text-muted); }
+
+        .rgpd-retour {
+            display: inline-block;
+            margin-top: clamp(3rem, 7vh, 4.5rem);
+            font-size: .8125rem;
+            color: var(--text-muted);
+            text-decoration: none;
+        }
+
+        .rgpd-retour:hover { color: var(--primary); }
+    </style>
+</head>
+<body class="rgpd">
+    <div class="rgpd-page">
+
+        <img src="/static/rgpd_placeholder.png" class="rgpd-visuel" alt="" width="1200" height="400">
+
+        <h1>TN-GPT et le RGPD</h1>
+        <p class="rgpd-maj">Dernière mise à jour · 2 septembre 2026</p>
+
+        <hr class="rgpd-regle">
+
+        <p>
+            TN-GPT répond à partir des données suivantes : les éditions du MiniTel, les Faux
+            Comptes Rendus (FCR), les comptes rendus de réunion ouverte CETEN, la plaquette
+            alpha ainsi que le site Internet de TELECOM Nancy.
+        </p>
+        <p>
+            Pour y parvenir, votre question traverse plusieurs services, et votre conversation
+            est conservée afin que vous puissiez la retrouver. Vos échanges ne servent pas à
+            entraîner nos modèles : TN-GPT n'apprend donc rien des requêtes que vous lui
+            envoyez, contrairement à une croyance répandue.
+        </p>
+
+        <h2>Ce qui est conservé</h2>
+        <p>
+            Vos conversations, votre adresse <code>@telecomnancy.net</code> et votre compte
+            sont stockés dans la base de données du serveur du projet, et non chez un
+            prestataire tiers. L'accès à cette base est restreint à l'équipe technique du
+            projet, qui ne consulte pas les conversations dans le cadre de son
+            fonctionnement courant. Vous pouvez supprimer une conversation à tout moment
+            depuis la barre latérale : elle est alors retirée de la base.
+        </p>
+
+        <h2>Le trajet d'une question</h2>
+        <ul class="rgpd-trajet">
+            <li>
+                <strong>Recherche dans les archives</strong>
+                <span class="rgpd-lieu">Cloudflare Workers AI — votre question seule</span>
+            </li>
+            <li>
+                <strong>Index des documents</strong>
+                <span class="rgpd-lieu">Qdrant Cloud, Francfort — Union européenne</span>
+            </li>
+            <li>
+                <strong>Rédaction de la réponse</strong>
+                <span class="rgpd-lieu">Groq, États-Unis — votre question et les extraits trouvés</span>
+            </li>
+            <li>
+                <strong>Conservation</strong>
+                <span class="rgpd-lieu">serveur du projet — la conversation</span>
+            </li>
+        </ul>
+
+        <h2>Ce qu'aucun prestataire ne fait</h2>
+        <p>
+            Aucun de ces services n'est autorisé à réutiliser vos échanges pour entraîner ses
+            modèles. Certains modèles portent un nom d'origine chinoise : leurs poids sont
+            publiés ouvertement et s'exécutent chez Cloudflare et Groq. Aucune donnée n'est
+            transmise en Chine.
+        </p>
+
+        <h2>Vos droits</h2>
+        <p>
+            Vous pouvez demander l'accès à vos données, leur rectification ou leur effacement,
+            et vous opposer à leur traitement. Adressez votre demande à l'équipe du projet
+            depuis votre adresse de l'école : elle est traitée sous un mois.
+        </p>
+
+        {% if connecte %}
+            <a href="/" class="rgpd-retour">← Retour au chat</a>
+        {% else %}
+            <a href="/auth/login" class="rgpd-retour">← Retour à la connexion</a>
+        {% endif %}
+    </div>
+</body>
+</html>

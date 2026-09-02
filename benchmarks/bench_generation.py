@@ -13,7 +13,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 import psycopg2
 import requests
@@ -31,10 +31,32 @@ logger = logging.getLogger(__name__)
 BASELINE = "qwen/qwen3.6-27b"
 CANDIDAT = "openai/gpt-oss-120b"
 
-# Le quota Groq appartient à la production : dès qu'une clé Cerebras est
-# fournie, le candidat part chez elle et ne dispute plus rien à personne.
+# Candidats souverains : mêmes questions, mêmes contextes, mais inférence en
+# France. C'est la perte de qualité de ce déplacement qu'on cherche à chiffrer.
+MISTRAL_MEDIUM = "mistral-medium-3.5"
+MISTRAL_SMALL = "mistral-small-2603"
+
+
+@dataclass(frozen=True)
+class Route:
+    """Fournisseur compatible OpenAI joint en HTTP direct, hors du pool."""
+
+    url: str
+    variable: str
+    modele: str
+    attente: float
+
+
+# Le quota Groq appartient à la production : dès qu'une clé du fournisseur est
+# fournie, le candidat part chez lui et ne dispute plus rien à personne.
 CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
-CEREBRAS_MODELES = {CANDIDAT: "gpt-oss-120b"}
+MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
+
+_ROUTES: dict[str, Route] = {
+    CANDIDAT: Route(CEREBRAS_URL, "CEREBRAS_API_KEY", "gpt-oss-120b", 62.0),
+    MISTRAL_MEDIUM: Route(MISTRAL_URL, "MISTRAL_API_KEY", MISTRAL_MEDIUM, 2.0),
+    MISTRAL_SMALL: Route(MISTRAL_URL, "MISTRAL_API_KEY", MISTRAL_SMALL, 2.0),
+}
 
 # Plafond de contexte du palier gratuit Cerebras. Le maximum mesuré sur nos
 # questions est 6 837 tokens, mais une question hors norme doit être écartée
@@ -56,6 +78,7 @@ MAX_TOKENS = 1000
 ATTENTE_PAR_MODELE = 62.0
 
 _HTTP_429 = 429
+_HTTP_413 = 413
 _ABANDON_APRES = 3
 
 # En deçà, la clé normalisée est trop courte pour distinguer deux questions.
@@ -81,10 +104,16 @@ class Cadence:
     dernier: dict[str, float] = field(default_factory=dict)
 
     def attendre(self, modele: str) -> None:
-        """Dort le temps qu'il faut pour rester sous le plafond du modèle."""
+        """Dort le temps qu'il faut pour rester sous le plafond du modèle.
+
+        Le plafond est celui du fournisseur réellement appelé : la minute de
+        Groq n'a pas à ralentir un candidat payant qui a ses propres limites.
+        """
         precedent = self.dernier.get(modele)
         if precedent is not None:
-            reste = ATTENTE_PAR_MODELE - (time.monotonic() - precedent)
+            route = _route_de(modele)
+            plafond = route.attente if route is not None else ATTENTE_PAR_MODELE
+            reste = plafond - (time.monotonic() - precedent)
             if reste > 0:
                 logger.info("Cadence %s : attente %.0f s", modele, reste)
                 time.sleep(reste)
@@ -125,40 +154,41 @@ def _params(modele: str) -> dict[str, Any]:
 
 # Une clé présente ne vaut pas un accès : un compte sans palier gratuit
 # répond 402. On sonde une fois, puis on retombe sur Groq sans casser le banc.
-_CEREBRAS_UTILISABLE: bool | None = None
+_SONDES: dict[str, bool] = {}
 
 
-def _cerebras_utilisable() -> bool:
-    """Sonde l'accès Cerebras une fois pour toutes, et retient la réponse."""
-    global _CEREBRAS_UTILISABLE  # noqa: PLW0603
-    if _CEREBRAS_UTILISABLE is not None:
-        return _CEREBRAS_UTILISABLE
-    if not os.getenv("CEREBRAS_API_KEY"):
-        _CEREBRAS_UTILISABLE = False
+def _utilisable(route: Route) -> bool:
+    """Sonde l'accès au fournisseur une fois pour toutes, et retient la réponse."""
+    if route.variable in _SONDES:
+        return _SONDES[route.variable]
+    if not os.getenv(route.variable):
+        _SONDES[route.variable] = False
         return False
     reponse = requests.post(
-        CEREBRAS_URL,
-        headers={"Authorization": f"Bearer {os.environ['CEREBRAS_API_KEY']}"},
+        route.url,
+        headers={"Authorization": f"Bearer {os.environ[route.variable]}"},
         json={
-            "model": next(iter(CEREBRAS_MODELES.values())),
+            "model": route.modele,
             "messages": [{"role": "user", "content": "ok"}],
             "max_tokens": 1,
         },
         timeout=30,
     )
-    _CEREBRAS_UTILISABLE = reponse.ok
+    _SONDES[route.variable] = reponse.ok
     if not reponse.ok:
         logger.warning(
-            "Cerebras inutilisable (HTTP %d) — le candidat repart sur Groq. %s",
+            "%s inutilisable (HTTP %d) — le candidat repart sur Groq. %s",
+            route.variable,
             reponse.status_code,
             reponse.text[:120],
         )
-    return _CEREBRAS_UTILISABLE
+    return _SONDES[route.variable]
 
 
-def _sur_cerebras(modele: str) -> bool:
-    """Dit si le modèle part chez Cerebras plutôt que sur le compte Groq."""
-    return modele in CEREBRAS_MODELES and _cerebras_utilisable()
+def _route_de(modele: str) -> Route | None:
+    """Route directe du modèle, ou None s'il part sur le compte Groq."""
+    route = _ROUTES.get(modele)
+    return route if route is not None and _utilisable(route) else None
 
 
 def _depouiller(donnees: dict[str, Any]) -> dict[str, Any]:
@@ -173,13 +203,13 @@ def _depouiller(donnees: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _generer_cerebras(modele: str, prompt: str) -> dict[str, Any]:
-    """Appel à l'API Cerebras, compatible OpenAI, sans SDK supplémentaire."""
+def _generer_http(route: Route, modele: str, prompt: str) -> dict[str, Any]:
+    """Appel à une API compatible OpenAI, sans SDK supplémentaire."""
     reponse = requests.post(
-        CEREBRAS_URL,
-        headers={"Authorization": f"Bearer {os.environ['CEREBRAS_API_KEY']}"},
+        route.url,
+        headers={"Authorization": f"Bearer {os.environ[route.variable]}"},
         json={
-            "model": CEREBRAS_MODELES[modele],
+            "model": route.modele,
             "messages": [
                 {"role": "system", "content": CHAT_SYSTEM},
                 {"role": "user", "content": prompt},
@@ -212,8 +242,9 @@ def _generer_groq(client: Groq, modele: str, prompt: str) -> dict[str, Any]:
 
 def generer(client: Groq, modele: str, prompt: str) -> dict[str, Any]:
     """Aiguille vers le fournisseur du modèle et rend ses compteurs."""
-    if _sur_cerebras(modele):
-        return _generer_cerebras(modele, prompt)
+    route = _route_de(modele)
+    if route is not None:
+        return _generer_http(route, modele, prompt)
     return _generer_groq(client, modele, prompt)
 
 
@@ -313,6 +344,87 @@ def _pause_demandee(erreur: APIStatusError | QuotaEpuiseError) -> float:
     return float(entete) + 5 if entete else 300.0
 
 
+@dataclass(frozen=True)
+class _Tache:
+    """Une mesure à faire : la question, le modèle, et leur contexte commun."""
+
+    question: str
+    modele: str
+    contexte: str
+
+
+def _mesurer_ou_reporter(
+    client: Groq,
+    cadence: Cadence,
+    tache: _Tache,
+    reprise: dict[str, float],
+    restantes: list[tuple[str, str]],
+) -> dict[str, Any] | None:
+    """Mesure la tâche, ou rend None après l'avoir reportée ou abandonnée.
+
+    Un quota épuisé remet la tâche en file et arme la reprise du modèle ; un
+    contexte trop grand l'abandonne, le banc ne pouvant pas le réduire sans
+    cesser de comparer des générateurs à contexte égal.
+    """
+    try:
+        return _mesurer(client, cadence, tache.question, tache.contexte, tache.modele)
+    except (APIStatusError, QuotaEpuiseError) as erreur:
+        if _contexte_trop_grand(erreur):
+            logger.warning(
+                "%s : contexte trop grand pour « %.40s », mesure abandonnée",
+                tache.modele,
+                tache.question,
+            )
+            return None
+        if not _quota_atteint(erreur):
+            raise
+        delai = _pause_demandee(erreur)
+        reprise[tache.modele] = time.time() + delai
+        restantes.append((tache.question, tache.modele))
+        logger.warning("%s à court de quota, repris dans %.0f s", tache.modele, delai)
+        return None
+
+
+def _consigner(
+    flux: TextIO, question: str, modele: str, contexte: str, sortie: dict[str, Any]
+) -> None:
+    """Écrit une mesure et la vide sur disque, pour survivre à une coupure.
+
+    L'empreinte du contexte accompagne la mesure : sans elle, rien ne dirait
+    que deux modèles ont bien été jugés sur le même contexte.
+    """
+    empreinte = hashlib.sha256(contexte.encode()).hexdigest()[:16]
+    flux.write(
+        json.dumps(
+            {
+                "question": question,
+                "modele": modele,
+                "contexte_sha": empreinte,
+                **sortie,
+            },
+            ensure_ascii=False,
+        )
+        + "\n"
+    )
+    flux.flush()
+
+
+def _contexte_trop_grand(erreur: Exception) -> bool:
+    """Dit si l'appel dépasse le plafond de contexte par minute du modèle.
+
+    La production réduit alors le contexte ; le banc ne le peut pas sans
+    cesser de comparer des générateurs à contexte égal, et renonce donc.
+    """
+    return isinstance(erreur, APIStatusError) and erreur.status_code == _HTTP_413
+
+
+def _quota_atteint(erreur: Exception) -> bool:
+    """Dit si l'erreur n'est qu'un quota épuisé, donc réessayable plus tard."""
+    if isinstance(erreur, QuotaEpuiseError):
+        return True
+    return isinstance(erreur, APIStatusError) and erreur.status_code == _HTTP_429
+
+
 def _mesurer(
     client: Groq, cadence: Cadence, question: str, contexte: str, modele: str
 ) -> dict[str, Any]:
@@ -377,34 +489,13 @@ def _boucle(args: argparse.Namespace) -> None:
                 contextes[question] = contexte_de(question)
             contexte = contextes[question]
 
-            try:
-                sortie = _mesurer(client, cadence, question, contexte, modele)
-            except (APIStatusError, QuotaEpuiseError) as erreur:
-                if isinstance(erreur, APIStatusError) and (
-                    erreur.status_code != _HTTP_429
-                ):
-                    raise
-                delai = _pause_demandee(erreur)
-                reprise[modele] = time.time() + delai
-                restantes.append((question, modele))
-                logger.warning("%s à court de quota, repris dans %.0f s", modele, delai)
+            sortie = _mesurer_ou_reporter(
+                client, cadence, _Tache(question, modele, contexte), reprise, restantes
+            )
+            if sortie is None:
                 continue
 
-            flux.write(
-                json.dumps(
-                    {
-                        "question": question,
-                        "modele": modele,
-                        "contexte_sha": hashlib.sha256(contexte.encode()).hexdigest()[
-                            :16
-                        ],
-                        **sortie,
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n"
-            )
-            flux.flush()
+            _consigner(flux, question, modele, contexte, sortie)
             logger.info(
                 "reste %d | %s | %s : %d tokens (%d en cache) %s",
                 len(restantes),

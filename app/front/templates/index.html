@@ -29,7 +29,7 @@
             <div class="brand">Discussions</div>
         </div>
 
-        <a href="/" class="new-btn">+ nouvelle conv.</a>
+        <a href="{{ nouvelle_conv | default('/') }}" class="new-btn">+ nouvelle conv.</a>
 
         <div class="conv-section">Récent</div>
         <nav class="conv-list" id="conv-list"></nav>
@@ -59,6 +59,7 @@
                 </div>
                 <div class="user-menu-divider"></div>
                 <a href="/auth/logout" class="user-menu-item user-menu-logout">Se déconnecter</a>
+                <a href="/rgpd" class="user-menu-item">RGPD</a>
             </div>
 
             <button class="user-tab" id="user-tab">

@@ -94,12 +94,14 @@ def _fiche_officielle() -> str:
     return format_fiches([_BUREAU])
 
 
-def _cle_deepseek() -> str:
-    """Clé DeepSeek : env en priorité, sinon le pool sous contexte applicatif."""
-    cle = os.getenv("DEEPSEEK_API_KEY")
+def _cle(nom: str) -> str:
+    """Clé du fournisseur : env en priorité, sinon le pool sous contexte applicatif."""
+    variable = f"{nom.upper()}_API_KEY"
+    cle = os.getenv(variable)
     if cle:
         return cle
-    # Repli : première clé DeepSeek active du pool, si la base est joignable.
+    # Repli : première clé active du pool, si la base est joignable. Mistral en
+    # est exclu de fait — ses clés opaques ne s'y reconnaissent pas au préfixe.
     from sqlalchemy.exc import SQLAlchemyError  # noqa: PLC0415
 
     from app.back.fournisseurs import fournisseur  # noqa: PLC0415
@@ -108,18 +110,18 @@ def _cle_deepseek() -> str:
     try:
         actives = db.session.scalars(db.select(GroqKey).where(GroqKey.active.is_(True)))
         for key in actives:
-            if fournisseur(key.secret) == DEEPSEEK:
+            if fournisseur(key.secret) == nom:
                 return key.secret
     except SQLAlchemyError:
         logger.warning("pool injoignable (base éteinte) : pas de repli de clé")
-    msg = "aucune clé DeepSeek : renseigne DEEPSEEK_API_KEY ou ajoute-en une au pool"
+    msg = f"aucune clé {nom} : renseigne {variable} ou ajoute-en une au pool"
     raise SystemExit(msg)
 
 
 class Joueur:
-    """Appel local à deepseek avec le prompt réel du chal social, tour par tour."""
+    """Appel local avec le prompt réel du chal social, tour par tour."""
 
-    def __init__(self, client: OpenAI) -> None:
+    def __init__(self, client: OpenAI, nom: str) -> None:
         """Fige le prompt système du chal et les paramètres du modèle."""
         spec = ctf.spec_for(ctf.SOCIAL)
         if spec is None:
@@ -127,8 +129,8 @@ class Joueur:
             raise SystemExit(msg)
         self.client = client
         self.systeme = spec.system
-        self.modele, _ = modeles(DEEPSEEK)
-        self.params = adapter_params(CHAT_GROQ_PARAMS, DEEPSEEK)
+        self.modele, _ = modeles(nom)
+        self.params = adapter_params(CHAT_GROQ_PARAMS, nom)
         self.fiche = _fiche_officielle()
 
     def _appel(self, messages: list[dict[str, str]]) -> str:
@@ -146,7 +148,7 @@ class Joueur:
                 time.sleep(attente)
             else:
                 return completion.choices[0].message.content or ""
-        msg = "échec répété de l'appel deepseek"
+        msg = f"échec répété de l'appel {self.modele}"
         raise RuntimeError(msg)
 
     def jouer(self, attaque: Attaque) -> list[dict[str, str]]:
@@ -251,10 +253,10 @@ def _rediger(
     return [{role: masquer(t) for role, t in tour.items()} for tour in transcript]
 
 
-def _joueur_local() -> Joueur:
-    """Construit le joueur local et sa clé DeepSeek."""
-    client = OpenAI(api_key=_cle_deepseek(), base_url=BASE_URLS[DEEPSEEK])
-    return Joueur(client)
+def _joueur_local(nom: str) -> Joueur:
+    """Construit le joueur local et la clé du fournisseur visé."""
+    client = OpenAI(api_key=_cle(nom), base_url=BASE_URLS[nom])
+    return Joueur(client, nom)
 
 
 def _boucle(args: argparse.Namespace) -> None:
@@ -262,7 +264,9 @@ def _boucle(args: argparse.Namespace) -> None:
     flag = "" if args.url else os.environ["CTF_FLAG_SOCIAL"]
     attaques = charger_attaques(args.corpus)
     joueur: Joueur | JoueurLive = (
-        JoueurLive(args.url, args.cookie, args.chal) if args.url else _joueur_local()
+        JoueurLive(args.url, args.cookie, args.chal)
+        if args.url
+        else _joueur_local(args.fournisseur)
     )
 
     par_famille: dict[str, list[int]] = {}
@@ -327,6 +331,12 @@ def main() -> None:
     parseur.add_argument("--url", help="base du site déployé, ex. https://…")
     parseur.add_argument("--cookie", help="en-tête Cookie d'un compte non-membre")
     parseur.add_argument("--chal", default="social")
+    parseur.add_argument(
+        "--fournisseur",
+        default=DEEPSEEK,
+        choices=sorted(BASE_URLS),
+        help="fournisseur visé en mode local (défaut : %(default)s)",
+    )
     args = parseur.parse_args()
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
