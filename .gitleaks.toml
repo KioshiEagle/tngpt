@@ -12,3 +12,14 @@ useDefault = true
 paths = [
   '''.*optuna_retrieval_trial_log\.jsonl$''',
 ]
+
+# Les clés Mistral sont 32 caractères alphanumériques sans préfixe : aucune
+# règle par défaut ne les reconnaît, et GitHub a bloqué un push qu'un gitleaks
+# vert avait laissé passer. On ancre sur le voisinage du mot « mistral »,
+# faute de quoi la règle flaguerait toute empreinte de 32 caractères.
+[[rules]]
+id = "mistral-api-key"
+description = "Clé d'API Mistral"
+regex = '''(?i)mistral[a-z0-9_\-]{0,24}["']?\s*[:=]\s*["']?([A-Za-z0-9]{32})["']?'''
+secretGroup = 1
+keywords = ["mistral"]
