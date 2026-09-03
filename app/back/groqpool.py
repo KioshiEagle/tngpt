@@ -57,6 +57,13 @@ _lock = threading.Lock()
 # donc la main, avec un plafond d'attente tenable.
 _MAX_RETRIES = 0
 
+# Sans timeout, le SDK attend 600 s par défaut : un fournisseur qui temporise
+# tient alors le worker jusqu'à ce que gunicorn le tue à 30 s, et l'élève voit
+# une erreur de transmission. Mesuré, le premier token arrive en une seconde —
+# passé 20 s il ne s'agit plus d'une lenteur mais d'un appel qui ne viendra pas.
+# En flux, ce délai s'applique entre deux morceaux, pas à la réponse entière.
+_TIMEOUT = 20.0
+
 
 def _construire(secret: str, declare: str | None = None) -> Client:
     """Client du fournisseur de la clé : celui déclaré, sinon son préfixe.
@@ -66,8 +73,13 @@ def _construire(secret: str, declare: str | None = None) -> Client:
     """
     nom = resoudre(secret, declare)
     if nom is None or nom == GROQ:
-        return Groq(api_key=secret, max_retries=_MAX_RETRIES)
-    return OpenAI(api_key=secret, base_url=BASE_URLS[nom], max_retries=_MAX_RETRIES)
+        return Groq(api_key=secret, max_retries=_MAX_RETRIES, timeout=_TIMEOUT)
+    return OpenAI(
+        api_key=secret,
+        base_url=BASE_URLS[nom],
+        max_retries=_MAX_RETRIES,
+        timeout=_TIMEOUT,
+    )
 
 
 def fournisseur_du_client(client: Client) -> str:
