@@ -2,6 +2,8 @@ import base64
 import hashlib
 import os
 import secrets
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 
 from flask import (
@@ -41,16 +43,40 @@ SCOPES = [
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 
 
-def _tolerer_http() -> None:
-    """Lève l'exigence https d'oauthlib quand le développement le demande.
+_LOOPBACK = frozenset({"localhost", "127.0.0.1", "::1", "[::1]"})
 
-    Lu à chaque appel, et non à l'import : `main` importe ce module avant
-    d'appeler `load_dotenv`, donc un test figé ici ne verrait jamais le `.env`.
+
+def _en_local() -> bool:
+    """Dit si la requête courante arrive en http sur une adresse de bouclage.
+
+    Google autorise http sur le bouclage, oauthlib non : c'est la seule
+    situation où l'exigence https mérite d'être levée.
     """
-    if os.environ.get("OAUTH_ALLOW_HTTP", "").lower() in ("1", "true"):
-        # oauthlib refuse un échange de jeton hors https, y compris sur
-        # localhost que Google autorise pourtant.
-        os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
+    if request.is_secure:
+        return False
+    return request.host.rsplit(":", 1)[0] in _LOOPBACK
+
+
+@contextmanager
+def _http_tolere() -> Iterator[None]:
+    """Lève l'exigence https d'oauthlib le temps d'un échange en local.
+
+    La variable est restaurée en sortie : posée durablement, elle vaudrait
+    aussi pour les requêtes suivantes, y compris celles d'un vrai domaine.
+    Sûr ici parce qu'un worker gunicorn sync ne sert qu'une requête à la fois.
+    """
+    if not _en_local():
+        yield
+        return
+    ancien = os.environ.get("OAUTHLIB_INSECURE_TRANSPORT")
+    os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
+    try:
+        yield
+    finally:
+        if ancien is None:
+            os.environ.pop("OAUTHLIB_INSECURE_TRANSPORT", None)
+        else:
+            os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = ancien
 
 
 @auth_bp.route("/login")
@@ -64,7 +90,6 @@ def login_page() -> Response | str:
 @auth_bp.route("/login_google")
 def login_google() -> Response:
     """Démarre le flux OAuth Google."""
-    _tolerer_http()
     flow = Flow.from_client_config(CLIENT_CONFIG, scopes=SCOPES)
 
     redirect_uri = url_for("auth.callback", _external=True)
@@ -77,12 +102,13 @@ def login_google() -> Response:
         .decode()
     )
 
-    authorization_url, state = flow.authorization_url(
-        access_type="offline",
-        prompt="select_account",
-        code_challenge=code_challenge,
-        code_challenge_method="S256",
-    )
+    with _http_tolere():
+        authorization_url, state = flow.authorization_url(
+            access_type="offline",
+            prompt="select_account",
+            code_challenge=code_challenge,
+            code_challenge_method="S256",
+        )
 
     session["oauth_state"] = state
     session["code_verifier"] = code_verifier
@@ -92,7 +118,6 @@ def login_google() -> Response:
 @auth_bp.route("/callback")
 def callback() -> Response:
     """Reçoit le code OAuth Google et connecte l'utilisateur."""
-    _tolerer_http()
     flow = Flow.from_client_config(CLIENT_CONFIG, scopes=SCOPES)
     flow.redirect_uri = url_for("auth.callback", _external=True)
 
@@ -101,10 +126,11 @@ def callback() -> Response:
     if session.pop("oauth_state", None) != request.args.get("state"):
         abort(403)
 
-    flow.fetch_token(
-        authorization_response=request.url,
-        code_verifier=session.pop("code_verifier", None),
-    )
+    with _http_tolere():
+        flow.fetch_token(
+            authorization_response=request.url,
+            code_verifier=session.pop("code_verifier", None),
+        )
     credentials = flow.credentials
     # Tolérance d'horloge : le token Google est parfois daté quelques secondes
     # dans le futur, sans quoi la vérification lève « used too early » (500).

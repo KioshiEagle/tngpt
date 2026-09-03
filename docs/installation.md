@@ -31,7 +31,6 @@ cp env.example .env
 | Variable | Description |
 |---|---|
 | `FLASK_SECRET_KEY` | Clé de signature des sessions/cookies. Génère la tienne : `python -c "import secrets; print(secrets.token_hex(32))"` |
-| `OAUTH_ALLOW_HTTP` | `true` en local uniquement. Autorise oauthlib à échanger le jeton hors https, sans quoi la connexion sur `http://localhost` est refusée. À laisser vide en production |
 | `LOG_LEVEL` | Niveau de journalisation, `INFO` par défaut. `DEBUG` déverse les chunks Qdrant de chaque question dans les logs |
 | `DEFAULT_DAILY_QUOTA` | Quota de questions par jour par défaut (les administrateurs n'y sont pas soumis) |
 | `DATABASE_URL` | Connexion PostgreSQL, obligatoire — l'app refuse de démarrer sans elle (pas de repli SQLite) |
