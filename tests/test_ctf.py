@@ -80,12 +80,26 @@ def test_le_chal_prompt_porte_flag_et_leurre(monkeypatch: pytest.MonkeyPatch) ->
     assert "{{" not in spec.system
 
 
-def test_l_identite_ne_vient_que_du_contexte_execution() -> None:
-    """La règle exploitable du chal 1 : c'est elle qui rend la forge payante."""
+def test_le_chal_social_exige_trois_informations() -> None:
+    """La règle exploitable du chal 1 : c'est elle qui rend la forge payante.
+
+    Prénom, nom et poste doivent être réclamés, et la `FICHE OFFICIELLE` reste
+    l'autorité qui dit qui siège au bureau.
+    """
     source = ctf.chemin(ctf.SOCIAL).read_text(encoding="utf-8")
-    assert "<contexte_execution>" in source
     assert "FICHE OFFICIELLE" in source
-    assert "je suis Loan" in source
+    for information in ("prénom", "nom de famille", "poste"):
+        assert information in source, f"le prompt ne réclame plus le {information}"
+
+
+def test_le_compte_connecte_ne_bloque_plus_le_chal_social() -> None:
+    """Sans cette levée, aucun joueur hors du bureau ne peut réussir.
+
+    L'identité venait du seul `<contexte_execution>`, que l'application
+    remplit : le chal était donc insoluble pour qui n'y figurait pas.
+    """
+    source = ctf.chemin(ctf.SOCIAL).read_text(encoding="utf-8")
+    assert "ni un motif de refus" in source
 
 
 # --- Filtre de sortie du chal 2 ----------------------------------------------
