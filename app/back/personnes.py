@@ -35,6 +35,13 @@ _CUE_PERSONNE = re.compile(
     r"|\bconnais\b|\bconnait\b|\bparle\s+moi\s+de\b"
 )
 
+# Ce qui signale une question sur soi-même. Elle ne contient par nature aucun
+# nom, donc `match_personnes` n'y trouve rien : sans ce rattrapage, celui qui
+# demande « j'ai quels rôles » n'obtient jamais sa propre fiche.
+_CUE_SOI = re.compile(
+    r"\bje\s|\bj'?ai\b|\bmes\b|\bmon\b|\bma\b|\bmoi\b|\bsuis\b|\bm'?a\b"
+)
+
 # Force d'une reconnaissance : un nom complet identifie à lui seul, un
 # patronyme seul demande que la question cherche bien quelqu'un.
 _COMPLET = 2
@@ -244,4 +251,23 @@ def lookup_personnes(question: str) -> str:
     # Le compte, pas les noms : ce journal n'a pas à tenir un registre de qui
     # est demandé.
     logger.debug("Fiches personnes : %d reconnue(s).", len(trouves))
+    return format_personnes(trouves)
+
+
+def lookup_soi(question: str, nom_complet: str) -> str:
+    """Fiche de celui qui pose la question, quand il parle de lui-même.
+
+    Le nom vient du compte connecté et non de la question : « j'ai quels
+    rôles » ne cite personne, et la fiche resterait donc introuvable. Vide dès
+    que le doute existe, comme `lookup_personnes`.
+    """
+    if not nom_complet.strip() or not _CUE_SOI.search(normalize(question)):
+        return ""
+    annuaire = load_annuaire()
+    if not annuaire:
+        return ""
+    trouves = match_personnes(nom_complet, annuaire)
+    if not trouves:
+        return ""
+    logger.debug("Fiche de l'utilisateur connecté jointe au contexte.")
     return format_personnes(trouves)

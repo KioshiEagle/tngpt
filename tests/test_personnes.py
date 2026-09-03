@@ -13,6 +13,7 @@ from app.back.personnes import (
     Poste,
     decouper,
     format_personnes,
+    lookup_soi,
     match_personnes,
 )
 
@@ -162,3 +163,42 @@ def test_l_entete_dit_ce_que_la_base_ne_couvre_pas() -> None:
     bloc = format_personnes([DUPONT])
     assert "eux seuls" in bloc
     assert "personnel de l'école" in bloc
+
+
+# --- Fiche de celui qui pose la question ---------------------------------------
+
+
+def test_une_question_sur_soi_ramene_sa_propre_fiche(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """« j'ai quels rôles » ne cite personne : sans ce rattrapage, aucune fiche.
+
+    Le nom vient du compte connecté, pas de la question.
+    """
+    monkeypatch.setattr("app.back.personnes.load_annuaire", lambda: ANNUAIRE)
+    bloc = lookup_soi("j'ai quels roles dans l'associatif ?", DUPONT.nom)
+    assert "Tek'TN" in bloc
+
+
+def test_une_question_sur_autrui_ne_declenche_pas_la_fiche_de_soi(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sinon la fiche du demandeur s'inviterait dans toutes les réponses."""
+    monkeypatch.setattr("app.back.personnes.load_annuaire", lambda: ANNUAIRE)
+    assert lookup_soi("qui est le president du bde ?", DUPONT.nom) == ""
+
+
+def test_un_demandeur_absent_de_l_annuaire_n_a_pas_de_fiche(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """L'annuaire ne recense que les élèves à mandat : les autres n'y sont pas."""
+    monkeypatch.setattr("app.back.personnes.load_annuaire", lambda: ANNUAIRE)
+    assert lookup_soi("mes roles ?", "INCONNU Camille") == ""
+
+
+def test_un_compte_sans_nom_ne_declenche_rien(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Un nom vide ferait chercher la chaîne vide dans tout l'annuaire."""
+    monkeypatch.setattr("app.back.personnes.load_annuaire", lambda: ANNUAIRE)
+    assert lookup_soi("mes roles ?", "   ") == ""

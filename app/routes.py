@@ -25,7 +25,7 @@ from .back.generate import (
 )
 from .back.groqpool import Client, acquire
 from .back.models import Conversation, db
-from .back.personnes import lookup_personnes
+from .back.personnes import lookup_personnes, lookup_soi
 from .back.reflexes import reflex
 from .back.seamap import generate_map, retrieve_for_map, wants_map
 from .back.types import SearchResult
@@ -241,7 +241,9 @@ def _run_chat(*, spec: CallSpec, is_ctf: bool) -> Response | tuple[Response, int
     if not is_map:
         # Une personne reconnue explique déjà la question : l'annuaire complet,
         # lui, ne sert qu'à rattraper un nom d'entité qui nous aurait échappé.
-        personnes = lookup_personnes(user_message)
+        personnes = lookup_personnes(user_message) or lookup_soi(
+            user_message, f"{current_user.user_firstname} {current_user.user_surname}"
+        )
         req.fiches = personnes + lookup_context(
             user_message, avec_annuaire=not personnes
         )
