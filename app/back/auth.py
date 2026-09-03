@@ -40,10 +40,17 @@ SCOPES = [
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 
-# oauthlib refuse un échange de jeton hors https, y compris sur localhost que
-# Google autorise pourtant. Seul cas d'usage : se connecter en développement.
-if os.environ.get("OAUTH_ALLOW_HTTP", "").lower() in ("1", "true"):
-    os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
+
+def _tolerer_http() -> None:
+    """Lève l'exigence https d'oauthlib quand le développement le demande.
+
+    Lu à chaque appel, et non à l'import : `main` importe ce module avant
+    d'appeler `load_dotenv`, donc un test figé ici ne verrait jamais le `.env`.
+    """
+    if os.environ.get("OAUTH_ALLOW_HTTP", "").lower() in ("1", "true"):
+        # oauthlib refuse un échange de jeton hors https, y compris sur
+        # localhost que Google autorise pourtant.
+        os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
 
 
 @auth_bp.route("/login")
@@ -57,6 +64,7 @@ def login_page() -> Response | str:
 @auth_bp.route("/login_google")
 def login_google() -> Response:
     """Démarre le flux OAuth Google."""
+    _tolerer_http()
     flow = Flow.from_client_config(CLIENT_CONFIG, scopes=SCOPES)
 
     redirect_uri = url_for("auth.callback", _external=True)
@@ -84,6 +92,7 @@ def login_google() -> Response:
 @auth_bp.route("/callback")
 def callback() -> Response:
     """Reçoit le code OAuth Google et connecte l'utilisateur."""
+    _tolerer_http()
     flow = Flow.from_client_config(CLIENT_CONFIG, scopes=SCOPES)
     flow.redirect_uri = url_for("auth.callback", _external=True)
 
