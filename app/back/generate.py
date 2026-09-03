@@ -362,6 +362,10 @@ class CallSpec:
     # La carte est un coup unique : les tours passés ne feraient qu'alourdir
     # son appel d'outil.
     send_history: bool = True
+    # Réclame le gros modèle du fournisseur plutôt que celui du chat. Le chal
+    # social demande de croiser trois informations avec une fiche : le petit
+    # modèle en est incapable et refuse jusqu'aux identités justes.
+    gros_modele: bool = False
 
 
 # Le chat restitue le contexte, il n'a rien à raisonner : laissé libre, qwen3
@@ -703,6 +707,10 @@ def _stream_with_retries(
     """
     nom = fournisseur_du_client(client)
     principal, repli = modeles(nom)
+    # Chez Groq comme chez Mistral, le repli est le plus gros des deux : le
+    # réclamer évite de figer ici un id propre à un fournisseur.
+    if spec.gros_modele:
+        principal = repli
     contexte = _Contexte(fiches=req.fiches, results=results)
     declares: GroqParams = spec.params if spec.params is not None else {}
     current_params: GroqParams = adapter_params(declares, nom)

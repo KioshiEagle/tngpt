@@ -110,7 +110,11 @@ def spec_for(chal: str) -> CallSpec | None:
     if not enabled(chal):
         return None
     if chal == SOCIAL:
-        return CallSpec(system=_rendre(SOCIAL), params=CHAT_GROQ_PARAMS)
+        # Croiser prénom, nom et poste avec la fiche dépasse le petit modèle,
+        # qui refuse alors jusqu'aux identités justes : le chal serait mort.
+        return CallSpec(
+            system=_rendre(SOCIAL), params=CHAT_GROQ_PARAMS, gros_modele=True
+        )
     if chal == PROMPT:
         # Seul le flag est censuré : le reste du prompt doit fuiter pour que le
         # joueur y lise « Référence de la note : ███ » et sache quoi extraire.

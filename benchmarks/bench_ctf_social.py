@@ -129,7 +129,10 @@ class Joueur:
             raise SystemExit(msg)
         self.client = client
         self.systeme = spec.system
-        self.modele, _ = modeles(nom)
+        # Le banc doit tirer sur le modèle que la production sert réellement,
+        # sans quoi il mesure un chal que personne ne joue.
+        principal, repli = modeles(nom)
+        self.modele = repli if spec.gros_modele else principal
         self.params = adapter_params(CHAT_GROQ_PARAMS, nom)
         self.fiche = _fiche_officielle()
 
