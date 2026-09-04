@@ -33,7 +33,6 @@ echo ""
 echo "[3/3] Dépendances & Tests"
 echo "--------------------------------------"
 
-uv audit
 # pymupdf/pymupdf4llm sont dual-licenciés (AGPL-3.0 ou Artifex Commercial) ;
 # on les utilise sous leur branche AGPL, compatible avec le projet, mais
 # licensecheck ne sait pas parser une mention de double licence.

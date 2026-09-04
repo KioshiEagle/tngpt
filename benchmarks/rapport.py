@@ -49,6 +49,64 @@ def _notes(mesures: list[dict[str, Any]], critere: str) -> list[float]:
     ]
 
 
+def _cellule(moyenne: float | None, gabarit: str = "{:.3f}") -> str:
+    """Une moyenne mise en forme, ou un tiret quand il n'y a rien à moyenner."""
+    return "—" if moyenne is None else gabarit.format(moyenne)
+
+
+def _notes_du_juge(retenues: dict[str, list], modeles: list[str]) -> None:
+    """Tableau des critères, puis la moyenne d'ensemble."""
+    print("\n--- Notes du juge, sur les questions communes ---")
+    print(_ligne("critère", modeles))
+    for critere in CRITERES:
+        colonnes = [_cellule(_moyenne(_notes(retenues[m], critere))) for m in modeles]
+        print(_ligne(critere, colonnes))
+
+    globales = [
+        _cellule(_moyenne([n for c in CRITERES for n in _notes(retenues[m], c)]))
+        for m in modeles
+    ]
+    print(_ligne("ENSEMBLE", globales))
+
+
+def _part_cache(mesures: list) -> str:
+    """Part des appels où le cache a effectivement servi."""
+    touches = [m for m in mesures if m["tokens_caches"] > 0]
+    return f"{100 * len(touches) / len(mesures):.0f} %"
+
+
+def _questions_par_jour(mesures: list) -> str:
+    """Questions tenables par jour, cache déduit du quota.
+
+    Les tokens servis par le cache ne sont pas décomptés du quota journalier :
+    seule la part facturée borne le nombre d'appels.
+    """
+    entree = _moyenne([m["tokens_entree"] for m in mesures]) or 0
+    cache = _moyenne([m["tokens_caches"] for m in mesures]) or 0
+    facture = entree - cache
+    return f"{200000 / facture:.0f}" if facture > 0 else "—"
+
+
+def _cout_et_cache(retenues: dict[str, list], modeles: list[str]) -> None:
+    """Tokens moyens, taux de cache touché, et volume tenable par jour."""
+    print("\n--- Coût et cache ---")
+    for intitule, cle in (
+        ("entrée", "tokens_entree"),
+        ("sortie", "tokens_sortie"),
+        ("en cache", "tokens_caches"),
+    ):
+        colonnes = [
+            _cellule(_moyenne([m[cle] for m in retenues[modele]]) or 0, "{:.0f}")
+            for modele in modeles
+        ]
+        print(_ligne(intitule, colonnes))
+
+    # Le cache ne mord pas à tous les appels : la moyenne sur l'ensemble est
+    # le seul chiffre honnête, le bénéfice « quand ça marche » trompe.
+    print(_ligne("cache touché", [_part_cache(retenues[m]) for m in modeles]))
+    print(_ligne("quest./jour", [_questions_par_jour(retenues[m]) for m in modeles]))
+
+
 def comparer(groupes: dict[str, dict[str, Any]], modeles: list[str]) -> None:
     """Affiche le comparatif sur les seules questions communes."""
     communes = set(groupes[modeles[0]])
@@ -66,51 +124,8 @@ def comparer(groupes: dict[str, dict[str, Any]], modeles: list[str]) -> None:
 
     retenues = {m: [groupes[m][q] for q in communes] for m in modeles}
 
-    print("\n--- Notes du juge, sur les questions communes ---")
-    print(_ligne("critère", modeles))
-    for critere in CRITERES:
-        colonnes = []
-        for modele in modeles:
-            moyenne = _moyenne(_notes(retenues[modele], critere))
-            colonnes.append("—" if moyenne is None else f"{moyenne:.3f}")
-        print(_ligne(critere, colonnes))
-
-    globales = []
-    for modele in modeles:
-        toutes = [n for c in CRITERES for n in _notes(retenues[modele], c)]
-        moyenne = _moyenne(toutes)
-        globales.append("—" if moyenne is None else f"{moyenne:.3f}")
-    print(_ligne("ENSEMBLE", globales))
-
-    print("\n--- Coût et cache ---")
-    for intitule, cle in (
-        ("entrée", "tokens_entree"),
-        ("sortie", "tokens_sortie"),
-        ("en cache", "tokens_caches"),
-    ):
-        colonnes = [
-            f"{_moyenne([m[cle] for m in retenues[modele]]) or 0:.0f}"
-            for modele in modeles
-        ]
-        print(_ligne(intitule, colonnes))
-
-    # Le cache ne mord pas à tous les appels : la moyenne sur l'ensemble est
-    # le seul chiffre honnête, le bénéfice « quand ça marche » trompe.
-    colonnes = []
-    for modele in modeles:
-        touches = [m for m in retenues[modele] if m["tokens_caches"] > 0]
-        part = 100 * len(touches) / len(retenues[modele])
-        colonnes.append(f"{part:.0f} %")
-    print(_ligne("cache touché", colonnes))
-
-    colonnes = []
-    for modele in modeles:
-        entree = _moyenne([m["tokens_entree"] for m in retenues[modele]]) or 0
-        cache = _moyenne([m["tokens_caches"] for m in retenues[modele]]) or 0
-        facture = entree - cache
-        # Les tokens en cache ne sont pas décomptés du quota journalier.
-        colonnes.append(f"{200000 / facture:.0f}" if facture > 0 else "—")
-    print(_ligne("quest./jour", colonnes))
+    _notes_du_juge(retenues, modeles)
+    _cout_et_cache(retenues, modeles)
 
 
 def _verifier_contextes(groupes: dict[str, dict[str, Any]], modeles: list[str]) -> None:
