@@ -254,6 +254,15 @@ def lookup_personnes(question: str) -> str:
     return format_personnes(trouves)
 
 
+def parle_de_soi(question: str) -> bool:
+    """Dit si la question porte sur celui qui la pose.
+
+    Une telle question ne cite aucun nom : c'est ce qui empêche la recherche
+    de retrouver les documents qui parlent de lui.
+    """
+    return bool(_CUE_SOI.search(normalize(question)))
+
+
 def lookup_soi(question: str, nom_complet: str) -> str:
     """Fiche de celui qui pose la question, quand il parle de lui-même.
 
@@ -261,7 +270,7 @@ def lookup_soi(question: str, nom_complet: str) -> str:
     rôles » ne cite personne, et la fiche resterait donc introuvable. Vide dès
     que le doute existe, comme `lookup_personnes`.
     """
-    if not nom_complet.strip() or not _CUE_SOI.search(normalize(question)):
+    if not nom_complet.strip() or not parle_de_soi(question):
         return ""
     annuaire = load_annuaire()
     if not annuaire:

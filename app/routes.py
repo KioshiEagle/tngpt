@@ -220,6 +220,7 @@ def _run_chat(*, spec: CallSpec, is_ctf: bool) -> Response | tuple[Response, int
         history=history,
         top_k=TOP_K,
         user_name=user_name,
+        nom_complet=f"{current_user.user_firstname} {current_user.user_surname}",
     )
 
     # Prélève une clé du pool Groq (round-robin) avant le streaming, pour pouvoir

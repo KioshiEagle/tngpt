@@ -20,6 +20,7 @@ from .groqpool import (
     acquire,
     fournisseur_du_client,
 )
+from .personnes import parle_de_soi
 from .retrieval import search
 from .types import GroqParams, HistoryMessage, SearchResult
 
@@ -97,6 +98,9 @@ class GenerateRequest:
     # Fiches SQL des clubs cités, placées devant les archives. Vide par
     # défaut : les appelants qui ne les remplissent pas gardent l'ancien prompt.
     fiches: str = ""
+    # « NOM Prénom » du compte connecté, pour retrouver ce qui parle de lui
+    # quand la question ne le nomme pas.
+    nom_complet: str = ""
 
 
 # Constructeur de prompt : (contexte, question, user_name) -> prompt. Permet de
@@ -460,6 +464,23 @@ def _enrich_query(question: str, history: list[HistoryMessage], n: int = 2) -> s
     return " | ".join(pairs) + f" | {question}"
 
 
+# Documents ramenés par le nom, quand la question porte sur celui qui la pose.
+_PLACES_POUR_SOI = 2
+
+
+def _sur_son_nom(req: GenerateRequest) -> list[SearchResult]:
+    """Documents qui citent l'utilisateur, cherchés par son nom.
+
+    « donne mes rôles » ne contient aucun nom : la recherche ne peut donc pas
+    retrouver ce qui parle de lui, et le reclassement écarte le bon document
+    même quand la variante enrichie le ramène — il note contre la question,
+    pas contre le nom. Le nom devient donc une requête à part entière.
+    """
+    if not req.nom_complet or not parle_de_soi(req.question):
+        return []
+    return search(req.nom_complet, top_k=_PLACES_POUR_SOI)
+
+
 def retrieve(req: GenerateRequest) -> list[SearchResult]:
     """Interroge Qdrant sur la question, et sur sa variante enrichie.
 
@@ -471,6 +492,11 @@ def retrieve(req: GenerateRequest) -> list[SearchResult]:
         top_k=req.top_k,
         context_query=_enrich_query(req.question, req.history),
     )
+    vus = {r["content"] for r in results}
+    pour_soi = [r for r in _sur_son_nom(req) if r["content"] not in vus]
+    if pour_soi:
+        # Devant : ce sont les seuls à parler de lui nommément.
+        results = pour_soi + results[: max(1, req.top_k - len(pour_soi))]
     _log_results(results)
     return results
 

@@ -15,6 +15,7 @@ from app.back.personnes import (
     format_personnes,
     lookup_soi,
     match_personnes,
+    parle_de_soi,
 )
 
 
@@ -202,3 +203,15 @@ def test_un_compte_sans_nom_ne_declenche_rien(
     """Un nom vide ferait chercher la chaîne vide dans tout l'annuaire."""
     monkeypatch.setattr("app.back.personnes.load_annuaire", lambda: ANNUAIRE)
     assert lookup_soi("mes roles ?", "   ") == ""
+
+
+def test_une_question_a_la_premiere_personne_est_reconnue() -> None:
+    """C'est elle qui déclenche la recherche par nom, faute de nom dans le texte."""
+    for question in ("donne mes rôles", "je suis qui", "j'ai quel poste ?"):
+        assert parle_de_soi(question)
+
+
+def test_une_question_sur_autrui_n_est_pas_une_question_sur_soi() -> None:
+    """Sinon toute question déclencherait une recherche sur le demandeur."""
+    for question in ("qui est le president du BDE ?", "c'est quoi la CETEN ?"):
+        assert not parle_de_soi(question)
