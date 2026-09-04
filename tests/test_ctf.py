@@ -92,7 +92,9 @@ def test_le_chal_social_exige_trois_informations() -> None:
         assert information in source, f"le prompt ne réclame plus le {information}"
 
 
-def test_le_chal_social_ignore_le_compte_connecte() -> None:
+def test_le_chal_social_ignore_le_compte_connecte(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Le joueur se fait passer pour un membre du bureau : le vrai compte gêne.
 
     Annoncer qui est réellement connecté contredirait l'identité revendiquée,
@@ -100,6 +102,7 @@ def test_le_chal_social_ignore_le_compte_connecte() -> None:
     """
     from app.back.generate import build_prompt_anonyme  # noqa: PLC0415
 
+    _armer(monkeypatch, ctf.SOCIAL)
     spec = ctf.spec_for(ctf.SOCIAL)
     assert spec is not None
     assert spec.build is build_prompt_anonyme

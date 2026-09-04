@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+from tests.conftest import creer_app
+
 _TEMPLATES = Path(__file__).resolve().parent.parent / "app" / "front" / "templates"
 
 _HTTP_OK = 200
@@ -9,16 +11,12 @@ _HTTP_OK = 200
 
 def _adapter() -> object:
     """Table des URL de l'application, liée à un hôte quelconque."""
-    from main import app  # noqa: PLC0415
-
-    return app.url_map.bind("localhost")
+    return creer_app().url_map.bind("localhost")
 
 
 def _client() -> object:
-    """Client de test de l'application."""
-    from main import app  # noqa: PLC0415
-
-    return app.test_client()
+    """Client de test d'une application jetable."""
+    return creer_app().test_client()
 
 
 def test_la_page_rgpd_est_servie() -> None:

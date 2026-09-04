@@ -5,15 +5,14 @@ import os
 from oauthlib.oauth2.rfc6749.utils import is_secure_transport
 
 from app.back.auth import _en_local, _http_tolere
+from tests.conftest import creer_app
 
 _VARIABLE = "OAUTHLIB_INSECURE_TRANSPORT"
 
 
 def _contexte(url: str) -> object:
-    """Contexte de requête de l'application pour une URL donnée."""
-    from main import app  # noqa: PLC0415
-
-    return app.test_request_context(url)
+    """Contexte de requête d'une application jetable, pour une URL donnée."""
+    return creer_app().test_request_context(url)
 
 
 def test_le_bouclage_est_reconnu() -> None:
