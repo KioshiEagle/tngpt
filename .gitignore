@@ -51,3 +51,8 @@ ctf/*.rendu.md
 # Journaux et verrou du banc nocturne
 benchmarks/*.log
 benchmarks/.nuit.lock
+
+# Scraper ponctuel du site de l'inté : adossé à une session personnelle,
+# hors du pipeline versionné.
+app/back/intetolocal.py
+app/back/temp/inte/
