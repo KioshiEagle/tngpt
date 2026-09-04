@@ -119,6 +119,32 @@ def _auteur(brut: object) -> str:
     return "" if nom.lower() in _AUTEURS_VIDES else nom
 
 
+# Au-delà, une source décrit une autre édition de l'événement : l'intégration,
+# le WEI, les soirées reviennent chaque année sous le même nom.
+_ANCIENNETE_AUTRE_EDITION = 300
+
+
+def _millesime(date: str) -> str:
+    """Avertissement à coller à l'en-tête d'une source d'une autre édition.
+
+    La date seule ne suffit pas : le modèle la lit sans en tirer de
+    conséquence, et recompose un lieu de l'an dernier avec la date de cette
+    année. Écrite en toutes lettres dans l'en-tête, elle se laisse moins
+    oublier.
+    """
+    try:
+        jour = datetime.fromisoformat(date).replace(tzinfo=UTC)
+    except (TypeError, ValueError):
+        return ""
+    age = (datetime.now(UTC) - jour).days
+    if age < _ANCIENNETE_AUTRE_EDITION:
+        return ""
+    return (
+        f"ÉDITION {jour.year} — détails valables pour cette année-là seulement, "
+        "ne pas les présenter comme actuels"
+    )
+
+
 def _build_context(results: list[SearchResult]) -> str:
     if not results:
         return "Pas de contexte."
@@ -126,7 +152,11 @@ def _build_context(results: list[SearchResult]) -> str:
     for res in results:
         m = res["metadata"]
         title = m.get("title") or m.get("source", "source inconnue")
-        entete = [f"Source: {title}", f"Date: {m.get('date', 'date inconnue')}"]
+        date = m.get("date", "")
+        entete = [f"Source: {title}", f"Date: {date or 'date inconnue'}"]
+        millesime = _millesime(date)
+        if millesime:
+            entete.append(millesime)
         # L'auteur situe qui parle : sans lui, un mail signé d'un prénom et un
         # compte rendu officiel se lisent pareil.
         auteur = _auteur(m.get("author"))

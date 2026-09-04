@@ -5,6 +5,7 @@ test ne s'en aperçoive : d'où ce fichier.
 """
 
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, cast
 
 import httpx
@@ -127,6 +128,11 @@ def _archive(**metadata: str) -> SearchResult:
     )
 
 
+# Une date récente : au-delà d'environ un an, l'en-tête porte en plus la mention
+# d'édition, qui n'a rien à voir avec ce que ces tests vérifient.
+_RECENTE = (datetime.now(UTC) - timedelta(days=30)).date().isoformat()
+
+
 def test_l_auteur_figure_dans_l_entete_d_archive() -> None:
     """Sans lui, « rédigé par qui ? » n'a aucune réponse dans le contexte."""
     contexte = _build_context(
@@ -140,11 +146,9 @@ def test_l_auteur_figure_dans_l_entete_d_archive() -> None:
 @pytest.mark.parametrize("vide", ["", "  ", "Inconnu", "null", "?"])
 def test_un_auteur_non_renseigne_ne_s_affiche_pas(vide: str) -> None:
     """L'ingestion écrit « Inconnu » faute de mieux : ce n'est pas quelqu'un."""
-    contexte = _build_context(
-        [_archive(title="Mini Tel'", date="2024-11-01", author=vide)]
-    )
+    contexte = _build_context([_archive(title="Mini Tel'", date=_RECENTE, author=vide)])
     assert "Auteur" not in contexte
-    assert "[Source: Mini Tel' | Date: 2024-11-01]" in contexte
+    assert f"[Source: Mini Tel' | Date: {_RECENTE}]" in contexte
 
 
 def test_sans_utilisateur_connecte_pas_de_ligne_vide() -> None:
@@ -731,3 +735,31 @@ def test_plusieurs_entetes_disparaissent_tous() -> None:
 def test_un_texte_sans_entete_passe_intact() -> None:
     """Le filtre ne doit rien changer au cas courant, celui de qwen."""
     assert _sans_entetes("c'est ", "loan beltran.") == "c'est loan beltran."
+
+
+# --- Millésime des sources ------------------------------------------------------
+
+
+def test_une_source_de_l_annee_ne_porte_pas_de_mention_d_edition() -> None:
+    """La mention alourdirait chaque en-tête pour rien sur du courant."""
+    contexte = _build_context([_archive(title="CR", date=_RECENTE, author="")])
+    assert "ÉDITION" not in contexte
+
+
+def test_une_source_ancienne_annonce_son_edition() -> None:
+    """La date seule ne suffisait pas : le modèle recomposait deux éditions.
+
+    Un lieu tiré d'un mail de l'an dernier ressortait avec la date de cette
+    année — chaque morceau vrai, l'ensemble faux.
+    """
+    vieille = (datetime.now(UTC) - timedelta(days=400)).date().isoformat()
+    contexte = _build_context([_archive(title="Mail BDS", date=vieille, author="")])
+    assert f"ÉDITION {vieille[:4]}" in contexte
+    assert "ne pas les présenter comme actuels" in contexte
+
+
+def test_une_date_illisible_ne_fait_pas_echouer_le_contexte() -> None:
+    """L'ingestion laisse passer des dates vides ou mal formées."""
+    for date in ("", "pas une date", "2026-13-45"):
+        contexte = _build_context([_archive(title="X", date=date, author="")])
+        assert "ÉDITION" not in contexte
