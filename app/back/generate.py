@@ -212,6 +212,19 @@ def build_prompt(context: str, question: str, user_name: str | None = None) -> s
     )
 
 
+def build_prompt_anonyme(
+    context: str, question: str, user_name: str | None = None
+) -> str:
+    """Prompt sans la ligne du compte connecté.
+
+    Le chal social se joue en se faisant passer pour un membre du bureau :
+    annoncer qui est réellement connecté contredirait l'identité revendiquée
+    et donnerait au modèle un motif de refus qui n'est pas la règle du chal.
+    """
+    del user_name
+    return build_prompt(context, question, user_name=None)
+
+
 class _ThinkFilter:
     """Filtre les blocs <think>...</think> d'un flux, même coupés entre chunks.
 

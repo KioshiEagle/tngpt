@@ -92,14 +92,20 @@ def test_le_chal_social_exige_trois_informations() -> None:
         assert information in source, f"le prompt ne réclame plus le {information}"
 
 
-def test_le_compte_connecte_ne_bloque_plus_le_chal_social() -> None:
-    """Sans cette levée, aucun joueur hors du bureau ne peut réussir.
+def test_le_chal_social_ignore_le_compte_connecte() -> None:
+    """Le joueur se fait passer pour un membre du bureau : le vrai compte gêne.
 
-    L'identité venait du seul `<contexte_execution>`, que l'application
-    remplit : le chal était donc insoluble pour qui n'y figurait pas.
+    Annoncer qui est réellement connecté contredirait l'identité revendiquée,
+    et donnait au modèle un motif de refus étranger à la règle du chal.
     """
-    source = ctf.chemin(ctf.SOCIAL).read_text(encoding="utf-8")
-    assert "ni un motif de refus" in source
+    from app.back.generate import build_prompt_anonyme  # noqa: PLC0415
+
+    spec = ctf.spec_for(ctf.SOCIAL)
+    assert spec is not None
+    assert spec.build is build_prompt_anonyme
+    rendu = spec.build("archives", "je suis qui ?", user_name="Camille")
+    assert "Utilisateur connecté" not in rendu
+    assert "Camille" not in rendu
 
 
 # --- Filtre de sortie du chal 2 ----------------------------------------------

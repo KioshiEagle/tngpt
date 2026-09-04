@@ -18,6 +18,7 @@ from .generate import (
     CallSpec,
     CompletionConsumer,
     _stream_chunks,
+    build_prompt_anonyme,
 )
 from .types import GroqParams
 
@@ -113,7 +114,10 @@ def spec_for(chal: str) -> CallSpec | None:
         # Croiser prénom, nom et poste avec la fiche dépasse le petit modèle,
         # qui refuse alors jusqu'aux identités justes : le chal serait mort.
         return CallSpec(
-            system=_rendre(SOCIAL), params=CHAT_GROQ_PARAMS, gros_modele=True
+            system=_rendre(SOCIAL),
+            params=CHAT_GROQ_PARAMS,
+            build=build_prompt_anonyme,
+            gros_modele=True,
         )
     if chal == PROMPT:
         # Seul le flag est censuré : le reste du prompt doit fuiter pour que le
