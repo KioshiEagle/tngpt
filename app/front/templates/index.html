@@ -1,5 +1,7 @@
 <!DOCTYPE html>
-<html lang="fr">
+<!-- L'habillage flamme est un réglage global posé en admin : il vient du serveur,
+     pas du navigateur, et personne ne le bascule depuis le chat. -->
+<html lang="fr"{% if flamme %} data-flamme="on"{% endif %}>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -33,6 +35,7 @@
             <div class="logo-zone-mini">
                 <img src="/static/ducky_cassis.webp" class="logo-img-mini logo-img-mini--normal" id="sidebar-ducky" alt="NeuraTN" width="68" height="68">
                 <img src="{{ asset('ducky_brainrot.svg') }}" class="logo-img-mini logo-img-mini--brainrot" id="sidebar-ducky-brainrot" alt="NeuraTN, mode brainrot" width="68" height="68">
+                <img src="{{ asset('ducky_flamme.svg') }}" class="logo-img-mini logo-img-mini--flamme" alt="NeuraTN, mode brainrot flamme" width="68" height="68">
                 <div class="speech-bubble mini" id="sidebar-bubble">{{ quote }}</div>
             </div>
             <div class="brand">Discussions</div>
@@ -46,7 +49,7 @@
         <div class="sidebar-footer">
             <button class="switch-row" id="theme-toggle" role="switch" aria-checked="false">
                 <span>mode sombre</span>
-                <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
+                <span class="switch-track" aria-hidden="true"><span class="switch-knob" data-off="☀️" data-on="🌙"></span></span>
             </button>
             {% if chat_endpoint | default('/chat') == '/chat' %}
             <button class="switch-row" id="brainrot-toggle" role="switch" aria-checked="false">
@@ -101,6 +104,7 @@
             <div class="empty" id="empty-state">
                 <img src="/static/ducky_cassis.webp" class="landing-ducky landing-ducky--normal" alt="NeuraTN" width="96" height="96">
                 <img src="{{ asset('ducky_brainrot.svg') }}" class="landing-ducky landing-ducky--brainrot" alt="NeuraTN, mode brainrot" width="96" height="96">
+                <img src="{{ asset('ducky_flamme.svg') }}" class="landing-ducky landing-ducky--flamme" alt="NeuraTN, mode brainrot flamme" width="96" height="96">
                 <div class="hero-zone">
                     <h1 class="hero-title">TN-<span>GPT</span></h1>
                     <p class="hero-subtitle">Pose-moi n'importe quelle question et j'y répondrai intelligemment :)</p>

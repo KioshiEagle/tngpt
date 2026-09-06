@@ -41,6 +41,24 @@
     {% endif %}
 
     <section class="admin-card">
+        <h2>Habillage flamme</h2>
+        <p class="admin-note">
+            Repeint le mode brainrot en braise, canard compris, à la place du rose.
+            Le réglage est global : une fois allumé, tout le monde le voit dès son
+            prochain chargement de page. Les utilisateurs n'ont pas la main dessus.
+        </p>
+        <p class="admin-note">
+            État actuel : <strong>{% if flamme %}allumé pour tout le monde{% else %}éteint{% endif %}</strong>
+        </p>
+        <form method="post" action="{{ url_for('admin.toggle_flamme') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="admin-btn">
+                {% if flamme %}Éteindre l'habillage flamme{% else %}Allumer l'habillage flamme{% endif %}
+            </button>
+        </form>
+    </section>
+
+    <section class="admin-card">
         <h2>Prochaines briques</h2>
         <p class="admin-note">
             Les métriques d'usage (chunks les plus retrouvés, quotas) se construisent à partir

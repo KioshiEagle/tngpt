@@ -59,6 +59,7 @@ from .permissions import (
     permission_table,
     view_analytics_required,
 )
+from .reglages import FLAMME, basculer, est_actif
 from .usage import daily_quota, groq_calls_today_by_key, questions_today_all
 
 logger = logging.getLogger(__name__)
@@ -116,7 +117,22 @@ def index() -> str:
         )
         or 0,
     }
-    return render_template("admin/index.html", stats=stats)
+    return render_template("admin/index.html", stats=stats, flamme=est_actif(FLAMME))
+
+
+@admin_bp.route("/apparence/flamme", methods=["POST"])
+@admin_required
+def toggle_flamme() -> Response:
+    """Allume ou éteint l'habillage flamme du mode brainrot, pour tout le monde.
+
+    Réservé aux admins : le réglage est global, personne ne le choisit depuis
+    le chat.
+    """
+    actif = not est_actif(FLAMME)
+    basculer(FLAMME, actif=actif, user_id=current_user.user_id)
+    etat = "allumé pour tout le monde" if actif else "éteint"
+    flash(f"Habillage flamme {etat}.", "success")
+    return redirect(url_for("admin.index"))
 
 
 @admin_bp.route("/catalog")

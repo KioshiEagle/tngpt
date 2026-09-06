@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96" role="img" aria-label="Canard TN-GPT en mode brainrot, variante flamme">
+  <defs>
+    <linearGradient id="fl-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a0700"/>
+      <stop offset="0.32" stop-color="#c02000"/>
+      <stop offset="0.62" stop-color="#ff7a00"/>
+      <stop offset="1" stop-color="#ffb42a"/>
+    </linearGradient>
+    <radialGradient id="fl-eye" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fff2f0"/>
+      <stop offset="0.35" stop-color="#ff2a2a"/>
+      <stop offset="1" stop-color="#ff2a2a" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="96" height="96" fill="url(#fl-bg)"/>
+
+  <!-- Braises qui montent derrière le canard -->
+  <g fill="#ffb020" opacity="0.65">
+    <circle cx="14" cy="30" r="2"/>
+    <circle cx="84" cy="22" r="1.6"/>
+    <circle cx="70" cy="12" r="2.4"/>
+    <circle cx="30" cy="14" r="1.4"/>
+    <circle cx="90" cy="46" r="1.8"/>
+  </g>
+
+  <!-- Ville en flammes, réduite à une ligne de toits -->
+  <g fill="#0d0200">
+    <path d="M0 78 L0 96 L96 96 L96 76 L88 76 L88 68 L80 68 L80 80 L68 80 L68 74 L58 74 L58 82 L40 82 L40 76 L30 76 L30 84 L16 84 L16 78 L8 78 L8 80 Z"/>
+  </g>
+
+  <!-- Canard en ombre chinoise, cerné de lumière -->
+  <g fill="#0d0200" stroke="#ffa332" stroke-width="1.6" stroke-linejoin="round">
+    <path d="M32 62 L5 41 L33 49 Z"/>
+    <ellipse cx="45" cy="63" rx="25" ry="18"/>
+    <circle cx="58" cy="35" r="17"/>
+    <path d="M72 33 C82 30 89 34 89 38 C89 43 80 45 72 43 Z"/>
+  </g>
+
+  <!-- L'œil qui brûle -->
+  <circle cx="61" cy="31" r="8" fill="url(#fl-eye)"/>
+  <circle cx="61" cy="31" r="2.6" fill="#fff2f0"/>
+
+  <!-- Flammes qui lèchent le bas du cadre -->
+  <g fill="#ffe089">
+    <path d="M10 96 C10 86 18 84 16 76 C24 82 24 90 22 96 Z"/>
+    <path d="M74 96 C74 88 82 85 80 78 C88 84 88 91 86 96 Z"/>
+  </g>
+</svg>

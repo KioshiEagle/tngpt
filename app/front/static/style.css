@@ -786,28 +786,35 @@ body {
 
 .switch-track {
     flex: none;
-    width: 28px;
-    height: 16px;
+    width: 34px;
+    height: 20px;
     border-radius: 999px;
     background: var(--border);
     transition: background 0.12s;
 }
 
 .switch-knob {
-    display: block;
-    width: 12px;
-    height: 12px;
+    display: grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
     margin: 2px;
     border-radius: 50%;
     background: var(--bg);
+    font-size: 11px;
+    line-height: 1;
     transition: transform 0.12s;
 }
 
 .switch-row[aria-checked="true"] .switch-track { background: var(--primary); }
-.switch-row[aria-checked="true"] .switch-knob { transform: translateX(12px); }
+.switch-row[aria-checked="true"] .switch-knob { transform: translateX(14px); }
 
-/* Variante « néon » : l'interrupteur du brainrot porte la couleur du mode qu'il
-   déclenche. Les autres variantes essayées vivent dans la maquette de l'artifact. */
+/* Le curseur du thème porte l'astre du moment ; celui du brainrot reste nu,
+   la couleur de la piste dit déjà tout. */
+#theme-toggle .switch-knob::after { content: attr(data-off); }
+#theme-toggle[aria-checked="true"] .switch-knob::after { content: attr(data-on); }
+
+/* L'interrupteur du brainrot porte la couleur du mode qu'il déclenche. */
 #brainrot-toggle[aria-checked="true"] {
     border-color: var(--primary);
     background: color-mix(in srgb, var(--primary) 12%, transparent);
@@ -1179,3 +1186,32 @@ body.login-page {
     .logo-img-mini.popping:hover { animation: none; }
     body, .sidebar { transition: none; }
 }
+
+/* --- Habillage flamme -------------------------------------------------------
+   Allumé globalement depuis le panel admin, jamais depuis le chat. Il repeint
+   le brainrot en braise ; hors brainrot l'app garde sa palette habituelle.
+   Déclaré après les deux palettes brainrot, qu'il remplace à égale spécificité.
+   -------------------------------------------------------------------------- */
+[data-flamme="on"][data-brainrot="on"] {
+    --primary: #ff5a1f;
+    --primary-light: #3a0d04;
+    --accent-2: #ffb42a;
+    --border: #5c1c08;
+    --bg: #0d0503;
+    --bg-sidebar: #140704;
+    --bg-input: #1a0a05;
+    --text-main: #ffe6d5;
+    --text-muted: #e0a077;
+    --bubble-user: #c2410c;
+    --bubble-user-text: #fff;
+    --bubble-assistant: #1f0b06;
+    --bubble-assistant-text: #ffe6d5;
+}
+
+/* Le canard flamme prend la place du canard brainrot quand l'habillage est mis */
+.logo-img-mini--flamme { display: none; }
+body.landing .landing-ducky--flamme { display: none; }
+[data-flamme="on"][data-brainrot="on"] .logo-img-mini--brainrot { display: none; }
+[data-flamme="on"][data-brainrot="on"] .logo-img-mini--flamme { display: block; }
+[data-flamme="on"][data-brainrot="on"] body.landing .landing-ducky--brainrot { display: none; }
+[data-flamme="on"][data-brainrot="on"] body.landing .landing-ducky--flamme { display: block; }

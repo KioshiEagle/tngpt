@@ -110,6 +110,33 @@ class User(UserMixin, db.Model):
         return self.status == USER_LIMITED
 
 
+class Setting(db.Model):
+    """Réglage global de l'application, posé depuis le panel admin.
+
+    Une table clé/valeur plutôt qu'une colonne par réglage : ces bascules
+    d'apparence vont et viennent, une migration chacune coûterait plus cher
+    que ce qu'elle rapporte.
+    """
+
+    __tablename__ = "settings"
+
+    key = db.Column(db.String(50), primary_key=True)
+    value = db.Column(db.String(200), nullable=False)
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
+    updated_by = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=True)
+
+    editor = db.relationship("User", foreign_keys=[updated_by])
+
+    def __repr__(self) -> str:
+        """Représentation lisible du réglage."""
+        return f"Setting {self.key}={self.value!r}"
+
+
 class Conversation(db.Model):
     """Conversation entre un utilisateur et TN-GPT."""
 
