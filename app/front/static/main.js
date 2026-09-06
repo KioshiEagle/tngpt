@@ -179,7 +179,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const inp = document.getElementById('inp');
     const messagesContainer = document.getElementById('messages');
     const sendBtn = document.getElementById('sbtn');
-    const duckyImg = document.getElementById('sidebar-ducky');
+    // Les deux canards (normal et brainrot) cohabitent : le CSS n'en montre
+    // qu'un, mais l'animation doit suivre celui qui est à l'écran.
+    const duckyImgs = document.querySelectorAll('.logo-img-mini');
+    const setDuckySpinning = (on) => duckyImgs.forEach((img) => img.classList.toggle('spinning', on));
     const scrollBtn = document.getElementById('scroll-btn');
     const themeToggle = document.getElementById('theme-toggle');
     const brainrotToggle = document.getElementById('brainrot-toggle');
@@ -212,14 +215,38 @@ document.addEventListener('DOMContentLoaded', () => {
     let brainrot = localStorage.getItem('brainrot') === 'on';
 
     function updateBrainrotSwitch() {
-        brainrotToggle?.setAttribute('aria-checked', String(brainrot));
+        // Pas d'interrupteur sur les pages de chal : le back y ignore le mode,
+        // la palette ne doit donc pas le prétendre actif.
+        if (!brainrotToggle) return;
+        brainrotToggle.setAttribute('aria-checked', String(brainrot));
+        // L'attribut porte la palette et choisit le logo ; le script d'en-tête
+        // l'a déjà posé au chargement, on ne fait que le suivre ensuite.
+        const root = document.documentElement;
+        if (brainrot) root.setAttribute('data-brainrot', 'on');
+        else root.removeAttribute('data-brainrot');
     }
     updateBrainrotSwitch();
+
+    // Le logo change au même instant que la palette : un coup de gonflement
+    // pour que l'œil aille le voir. Relancé à chaque clic en réarmant la classe.
+    function popDucky() {
+        duckyImgs.forEach((img) => {
+            img.classList.remove('popping');
+            void img.offsetWidth;
+            img.classList.add('popping');
+        });
+    }
+    duckyImgs.forEach((img) => {
+        img.addEventListener('animationend', (e) => {
+            if (e.animationName === 'logo-pop') img.classList.remove('popping');
+        });
+    });
 
     brainrotToggle?.addEventListener('click', () => {
         brainrot = !brainrot;
         localStorage.setItem('brainrot', brainrot ? 'on' : 'off');
         updateBrainrotSwitch();
+        popDucky();
     });
 
     // --- User menu ---
@@ -405,7 +432,7 @@ document.addEventListener('DOMContentLoaded', () => {
         inp.value = '';
         inp.style.height = 'auto';
 
-        duckyImg.classList.add('spinning');
+        setDuckySpinning(true);
         const thinkingDiv = appendThinking(randomFrom(THINKING_PHRASES));
         setStreaming(true);
 
@@ -493,7 +520,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (!trimmed) continue;
                     clearTimeout(slowTimer);
                     if (oiiaAudio) { oiiaAudio.pause(); oiiaAudio = null; }
-                    duckyImg.classList.remove('spinning');
+                    setDuckySpinning(false);
                     thinkingDiv.querySelector('em').textContent = randomFrom(WRITING_PHRASES);
                     const assistantMsgDiv = appendMessage('assistant', '');
                     textContainer = assistantMsgDiv.querySelector('.msg-text');
@@ -523,7 +550,7 @@ document.addEventListener('DOMContentLoaded', () => {
             clearTimeout(slowTimer);
             if (oiiaAudio) { oiiaAudio.pause(); oiiaAudio = null; }
             thinkingDiv.remove();
-            duckyImg.classList.remove('spinning');
+            setDuckySpinning(false);
             cancelPendingRender();
             if (textContainer) textContainer.classList.remove('streaming');
 

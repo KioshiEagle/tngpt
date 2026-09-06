@@ -13,6 +13,7 @@
 :root {
     --primary: #6d28d9;
     --primary-light: #f3e8ff;
+    --accent-2: #6d28d9;      /* seconde couleur des dégradés, cf. brainrot */
     --border: #cec6b8;        /* was #e7e0d5 — plus visible pour la structure */
     --bg: #faf8f5;
     --bg-sidebar: #f3f0eb;
@@ -28,6 +29,7 @@
 [data-theme="dark"] {
     --primary: #a78bfa;
     --primary-light: #2d1b69;
+    --accent-2: #a78bfa;
     --border: #3d3831;        /* was #2d2a26 — plus visible en dark */
     --bg: #1a1917;
     --bg-sidebar: #161513;
@@ -38,6 +40,47 @@
     --bubble-user-text: #fff;
     --bubble-assistant: #242220;
     --bubble-assistant-text: #edeae4;
+}
+
+/* Mode brainrot : toute la palette bascule, pour qu'on voie sans lire l'étiquette
+   qu'on ne parle plus au TN-GPT sérieux. Déclaré après les deux thèmes, et la
+   variante sombre est plus spécifique, donc elle gagne quel que soit l'ordre. */
+[data-brainrot="on"] {
+    --primary: #e6008f;
+    --primary-light: #ffdcf0;
+    --accent-2: #7a00ff;
+    --border: #efa2d2;
+    --bg: #fff4fb;
+    --bg-sidebar: #ffe7f6;
+    --bg-input: #fff0f9;
+    --text-main: #1c0616;
+    --text-muted: #7d2b5d;
+    --bubble-user: #e6008f;
+    --bubble-user-text: #fff;
+    --bubble-assistant: #ffdcf0;
+    --bubble-assistant-text: #1c0616;
+}
+
+[data-theme="dark"][data-brainrot="on"] {
+    --primary: #ff4fd8;
+    --primary-light: #4a0733;
+    --accent-2: #ccff00;
+    --border: #62244c;
+    --bg: #16020f;
+    --bg-sidebar: #1e0416;
+    --bg-input: #26071c;
+    --text-main: #ffe9f8;
+    --text-muted: #e7a9cf;
+    --bubble-user: #ff2fbf;
+    --bubble-user-text: #fff;
+    --bubble-assistant: #2c0a20;
+    --bubble-assistant-text: #ffe9f8;
+}
+
+/* La bascule se voit mieux si les grandes surfaces fondent d'une palette à l'autre.
+   Limité au fond : les petits éléments ont déjà leurs propres transitions. */
+body, .sidebar {
+    transition: background-color 0.35s ease, color 0.35s ease, border-color 0.35s ease;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -125,6 +168,22 @@ body {
 }
 .logo-img-mini:hover:not(.spinning) { animation: duck-wobble 0.5s ease-in-out infinite; }
 .logo-img-mini.spinning { animation: spin 1s linear infinite; }
+
+/* Le coup de gonflement au changement de mode. La règle :hover répète la
+   sélection pour passer devant le wobble, à spécificité égale mais plus bas. */
+.logo-img-mini.popping,
+.logo-img-mini.popping:hover { animation: logo-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+/* Les deux logos sont dans la page et c'est l'attribut, posé avant le premier
+   rendu, qui choisit : pas de canard qui clignote au chargement. */
+.logo-img-mini--brainrot { display: none; }
+[data-brainrot="on"] .logo-img-mini--normal { display: none; }
+[data-brainrot="on"] .logo-img-mini--brainrot { display: block; }
+
+/* En brainrot le logo garde un halo, sinon la bascule ne se lit qu'au moment du clic */
+[data-brainrot="on"] .logo-img-mini {
+    box-shadow: 0 0 0 2px var(--primary), 0 0 16px color-mix(in srgb, var(--primary) 55%, transparent);
+}
 
 .speech-bubble.mini {
     background: var(--bg);
@@ -747,6 +806,19 @@ body {
 .switch-row[aria-checked="true"] .switch-track { background: var(--primary); }
 .switch-row[aria-checked="true"] .switch-knob { transform: translateX(12px); }
 
+/* Variante « néon » : l'interrupteur du brainrot porte la couleur du mode qu'il
+   déclenche. Les autres variantes essayées vivent dans la maquette de l'artifact. */
+#brainrot-toggle[aria-checked="true"] {
+    border-color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+    color: var(--text-main);
+}
+#brainrot-toggle[aria-checked="true"]:hover { background: color-mix(in srgb, var(--primary) 20%, transparent); }
+#brainrot-toggle[aria-checked="true"] .switch-track {
+    background: linear-gradient(90deg, var(--primary), var(--accent-2));
+    box-shadow: 0 0 10px color-mix(in srgb, var(--primary) 60%, transparent);
+}
+
 .user-tab {
     display: flex;
     align-items: center;
@@ -940,6 +1012,10 @@ body.landing .empty {
     margin-bottom: 12px;
 }
 body.landing .landing-ducky { display: block; }
+/* Même bascule que dans la sidebar : le canard d'accueil suit la palette */
+body.landing .landing-ducky--brainrot { display: none; }
+[data-brainrot="on"] body.landing .landing-ducky--normal { display: none; }
+[data-brainrot="on"] body.landing .landing-ducky--brainrot { display: block; }
 body.landing .hero-title { font-size: 48px; text-align: center; }
 body.landing .hero-subtitle { text-align: center; }
 body.landing .input-area {
@@ -1069,6 +1145,12 @@ body.login-page {
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 @keyframes duck-wobble { 0%, 100% { transform: rotate(0deg); } 25% { transform: rotate(-12deg); } 75% { transform: rotate(12deg); } }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+@keyframes logo-pop {
+    0%   { transform: scale(1) rotate(0deg); }
+    35%  { transform: scale(1.45) rotate(-8deg); }
+    62%  { transform: scale(0.93) rotate(5deg); }
+    100% { transform: scale(1) rotate(0deg); }
+}
 @keyframes blink-cursor { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 
 /* Message affiché à un utilisateur dont l'accès a été suspendu */
@@ -1088,4 +1170,12 @@ body.login-page {
     border-color: #7f1d1d;
     background: #450a0a;
     color: #fecaca;
+}
+
+/* Le gonflement du logo et le fondu de palette sont du décor : on les coupe
+   pour qui demande moins de mouvement, le changement de couleur suffit. */
+@media (prefers-reduced-motion: reduce) {
+    .logo-img-mini.popping,
+    .logo-img-mini.popping:hover { animation: none; }
+    body, .sidebar { transition: none; }
 }
