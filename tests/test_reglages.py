@@ -13,7 +13,8 @@ from flask import Flask
 from app.back.models import db
 from app.back.reglages import FLAMME, basculer, est_actif
 
-_TEMPLATES = Path(__file__).resolve().parent.parent / "app" / "front" / "templates"
+_FRONT = Path(__file__).resolve().parent.parent / "app" / "front"
+_TEMPLATES = _FRONT / "templates"
 
 
 @pytest.fixture
@@ -49,6 +50,19 @@ def test_le_chat_ne_donne_aucune_prise_sur_la_flamme() -> None:
     index = (_TEMPLATES / "index.html").read_text(encoding="utf-8")
     assert '{% if flamme %} data-flamme="on"{% endif %}' in index
     assert "localStorage.getItem('flamme')" not in index
+
+
+def test_le_brainrot_reste_neon_sous_l_habillage_flamme() -> None:
+    """Régression : la braise s'invitait sur le toggle brainrot, qui doit rester rose.
+
+    L'habillage flamme cède la place au brainrot ; chacune de ses règles porte
+    donc le `:not`, faute de quoi un clic sur « mode brainrot » rallume le feu.
+    """
+    css = (_FRONT / "static" / "style.css").read_text(encoding="utf-8")
+    regles = [ligne for ligne in css.splitlines() if '[data-flamme="on"]' in ligne]
+    assert regles, "aucune règle d'habillage flamme dans la feuille de style"
+    sans_garde = [r for r in regles if ':not([data-brainrot="on"])' not in r]
+    assert not sans_garde, f"règles flamme sans garde brainrot : {sans_garde}"
 
 
 def test_seul_un_admin_bascule_l_habillage() -> None:

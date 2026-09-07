@@ -1188,11 +1188,12 @@ body.login-page {
 }
 
 /* --- Habillage flamme -------------------------------------------------------
-   Allumé globalement depuis le panel admin, jamais depuis le chat. Il repeint
-   le brainrot en braise ; hors brainrot l'app garde sa palette habituelle.
-   Déclaré après les deux palettes brainrot, qu'il remplace à égale spécificité.
+   Allumé globalement depuis le panel admin, jamais depuis le chat, et sans
+   rapport avec le brainrot : il habille l'app telle quelle. Il lui cède même
+   la place — « mode brainrot » ramène toujours le néon rose, d'où le :not()
+   sur chaque règle, qui la désarme dès que le brainrot est allumé.
    -------------------------------------------------------------------------- */
-[data-flamme="on"][data-brainrot="on"] {
+[data-flamme="on"]:not([data-brainrot="on"]) {
     --primary: #ff5a1f;
     --primary-light: #3a0d04;
     --accent-2: #ffb42a;
@@ -1208,10 +1209,26 @@ body.login-page {
     --bubble-assistant-text: #ffe6d5;
 }
 
-/* Le canard flamme prend la place du canard brainrot quand l'habillage est mis */
+/* La conversation brûle. Le voile sombre par-dessus garde la prose lisible :
+   l'incendie ne reste vif qu'en bas, là où aucune bulle ne vient se poser.
+   Posé sur `.messages`, pas sur `.main` : la zone de saisie reste au calme. */
+[data-flamme="on"]:not([data-brainrot="on"]) .messages {
+    background-image:
+        linear-gradient(to bottom,
+            rgba(13, 5, 3, 0.92) 0%,
+            rgba(13, 5, 3, 0.75) 40%,
+            rgba(13, 5, 3, 0.35) 72%,
+            rgba(13, 5, 3, 0) 100%),
+        url('/static/flamme_fond.svg');
+    background-repeat: no-repeat, no-repeat;
+    background-position: center, bottom center;
+    background-size: cover, cover;
+}
+
+/* Le canard flamme remplace le canard habituel, pas celui du brainrot */
 .logo-img-mini--flamme { display: none; }
 body.landing .landing-ducky--flamme { display: none; }
-[data-flamme="on"][data-brainrot="on"] .logo-img-mini--brainrot { display: none; }
-[data-flamme="on"][data-brainrot="on"] .logo-img-mini--flamme { display: block; }
-[data-flamme="on"][data-brainrot="on"] body.landing .landing-ducky--brainrot { display: none; }
-[data-flamme="on"][data-brainrot="on"] body.landing .landing-ducky--flamme { display: block; }
+[data-flamme="on"]:not([data-brainrot="on"]) .logo-img-mini--normal { display: none; }
+[data-flamme="on"]:not([data-brainrot="on"]) .logo-img-mini--flamme { display: block; }
+[data-flamme="on"]:not([data-brainrot="on"]) body.landing .landing-ducky--normal { display: none; }
+[data-flamme="on"]:not([data-brainrot="on"]) body.landing .landing-ducky--flamme { display: block; }

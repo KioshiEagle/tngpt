@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" width="1200" height="800" preserveAspectRatio="xMidYMax slice" role="presentation">
+  <defs>
+    <linearGradient id="ff-ciel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d0503"/>
+      <stop offset="0.42" stop-color="#3d0a00"/>
+      <stop offset="0.72" stop-color="#a81e00"/>
+      <stop offset="0.88" stop-color="#ff6a00"/>
+      <stop offset="1" stop-color="#ffb42a"/>
+    </linearGradient>
+    <radialGradient id="ff-brasier" cx="0.5" cy="1" r="0.75">
+      <stop offset="0" stop-color="#ffd166" stop-opacity="0.85"/>
+      <stop offset="0.45" stop-color="#ff6a00" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#ff6a00" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="800" fill="url(#ff-ciel)"/>
+  <rect width="1200" height="800" fill="url(#ff-brasier)"/>
+
+  <!-- Sigils tracés au mur, comme sur la référence -->
+  <g fill="none" stroke="#ff2a00" stroke-width="3" opacity="0.45" stroke-linecap="round">
+    <circle cx="150" cy="430" r="26"/>
+    <path d="M150 396 L150 464 M116 430 L184 430 M128 408 L172 452 M172 408 L128 452"/>
+    <path d="M1010 380 q22 -26 44 0 q-22 12 -44 0 Z M1032 358 L1032 330 M1018 340 L1046 340"/>
+    <path d="M980 470 q26 -20 52 0 M990 486 q20 -14 32 0"/>
+    <path d="M300 500 L300 458 M286 470 L314 470 M292 444 q8 -14 16 0"/>
+  </g>
+
+  <!-- Ville en flammes : deux plans de toits, le plus sombre devant -->
+  <g fill="#1a0500" opacity="0.9">
+    <path d="M0 640 L0 800 L1200 800 L1200 620 L1150 620 L1150 570 L1100 570 L1100 650 L1020 650 L1020 596 L960 596 L960 660 L860 660 L860 604 L800 604 L800 664 L700 664 L700 616 L640 616 L640 672 L520 672 L520 620 L460 620 L460 668 L360 668 L360 600 L300 600 L300 656 L200 656 L200 612 L140 612 L140 660 L60 660 L60 630 L0 630 Z"/>
+  </g>
+  <g fill="#0d0200">
+    <path d="M0 700 L0 800 L1200 800 L1200 690 L1130 690 L1130 730 L1050 730 L1050 684 L980 684 L980 722 L900 722 L900 696 L820 696 L820 736 L740 736 L740 700 L660 700 L660 728 L560 728 L560 690 L480 690 L480 726 L400 726 L400 698 L320 698 L320 734 L240 734 L240 702 L160 702 L160 728 L80 728 L80 694 L0 694 Z"/>
+  </g>
+
+  <!-- Fenêtres allumées dans les tours -->
+  <g fill="#ffb42a" opacity="0.75">
+    <rect x="1160" y="640" width="10" height="12"/>
+    <rect x="1112" y="596" width="10" height="12"/>
+    <rect x="972" y="620" width="10" height="12"/>
+    <rect x="812" y="628" width="10" height="12"/>
+    <rect x="652" y="640" width="10" height="12"/>
+    <rect x="472" y="644" width="10" height="12"/>
+    <rect x="312" y="624" width="10" height="12"/>
+    <rect x="152" y="636" width="10" height="12"/>
+  </g>
+
+  <!-- Flammes qui montent d'entre les immeubles -->
+  <g fill="#ff6a00" opacity="0.85">
+    <path d="M240 800 C240 740 290 720 272 660 C336 706 330 762 312 800 Z"/>
+    <path d="M700 800 C700 748 742 730 726 678 C782 718 776 766 760 800 Z"/>
+    <path d="M1040 800 C1040 752 1076 736 1062 692 C1110 726 1104 768 1090 800 Z"/>
+  </g>
+  <!-- Langues plus courtes le long des toits : c'est toute la ville qui brûle,
+       pas trois feux isolés -->
+  <g fill="#ff5a00" opacity="0.8">
+    <path d="M96 800 C96 768 124 756 114 722 C150 750 146 778 134 800 Z"/>
+    <path d="M370 800 C370 772 394 762 386 732 C418 756 414 780 404 800 Z"/>
+    <path d="M520 800 C520 766 548 754 538 720 C574 748 570 776 558 800 Z"/>
+    <path d="M840 800 C840 774 862 764 855 736 C884 758 880 780 871 800 Z"/>
+    <path d="M930 800 C930 770 956 758 947 726 C980 752 976 778 965 800 Z"/>
+    <path d="M1160 800 C1160 772 1184 762 1176 732 C1208 756 1204 780 1194 800 Z"/>
+  </g>
+  <g fill="#ffd166" opacity="0.8">
+    <path d="M258 800 C258 762 286 750 276 714 C314 742 310 776 298 800 Z"/>
+    <path d="M718 800 C718 766 742 756 733 724 C766 748 762 778 752 800 Z"/>
+    <path d="M534 800 C534 776 552 768 546 746 C570 764 567 784 559 800 Z"/>
+    <path d="M943 800 C943 778 960 770 954 750 C976 766 973 785 966 800 Z"/>
+  </g>
+
+  <!-- Braises -->
+  <g fill="#ffb42a" opacity="0.7">
+    <circle cx="180" cy="320" r="3"/>
+    <circle cx="420" cy="250" r="2.4"/>
+    <circle cx="560" cy="380" r="3.4"/>
+    <circle cx="760" cy="220" r="2.6"/>
+    <circle cx="880" cy="340" r="3"/>
+    <circle cx="1080" cy="270" r="2.4"/>
+    <circle cx="330" cy="410" r="2.8"/>
+    <circle cx="640" cy="460" r="2.2"/>
+    <circle cx="940" cy="440" r="3.2"/>
+  </g>
+</svg>
