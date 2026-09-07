@@ -3,6 +3,8 @@
 Le flag commité est le risque principal : il résout le challenge par `git clone`.
 """
 
+from pathlib import Path
+
 import pytest
 
 from app.back import ctf
@@ -80,16 +82,30 @@ def test_le_chal_prompt_porte_flag_et_leurre(monkeypatch: pytest.MonkeyPatch) ->
     assert "{{" not in spec.system
 
 
-def test_le_chal_social_exige_trois_informations() -> None:
+def test_le_chal_social_exige_le_nom_et_le_role() -> None:
     """La règle exploitable du chal 1 : c'est elle qui rend la forge payante.
 
-    Prénom, nom et poste doivent être réclamés, et la `FICHE OFFICIELLE` reste
+    Le nom et le rôle doivent être réclamés, et la `FICHE OFFICIELLE` reste
     l'autorité qui dit qui siège au bureau.
     """
     source = ctf.chemin(ctf.SOCIAL).read_text(encoding="utf-8")
     assert "FICHE OFFICIELLE" in source
-    for information in ("prénom", "nom de famille", "poste"):
-        assert information in source, f"le prompt ne réclame plus le {information}"
+    for information in ("le nom de la personne", "le rôle qu'elle y occupe"):
+        assert information in source, f"le prompt ne réclame plus « {information} »"
+
+
+def test_le_chal_social_epingle_la_fiche_du_bureau() -> None:
+    """Régression : la fiche s'évaporait dès qu'un message ne nommait pas le CETEN.
+
+    Les fiches se cherchent sur le seul message courant. Répondre « responsable
+    événements » n'en ramenait donc aucune, et le modèle, sans rien à quoi
+    comparer l'identité annoncée, retombait sur son repli d'archives.
+    """
+    source = (Path(__file__).resolve().parent.parent / "app" / "routes.py").read_text(
+        encoding="utf-8"
+    )
+    assert "CETEN" in source, "la fiche du bureau n'est plus épinglée"
+    assert "_FICHE_DU_BUREAU if chal == SOCIAL else user_message" in source
 
 
 def test_le_chal_social_ignore_le_compte_connecte(

@@ -15,7 +15,7 @@ from flask_login import current_user, login_required
 
 from .back.brainrot import BRAINROT_SPEC
 from .back.clubs import lookup_context
-from .back.ctf import spec_for
+from .back.ctf import SOCIAL, spec_for
 from .back.generate import (
     CHAT_SPEC,
     CallSpec,
@@ -46,6 +46,9 @@ HISTORY_CONTEXT_SIZE = 4
 # troncature déjà faite côté front (voir shortTitle dans main.js).
 TITLE_MAX_LENGTH = 40
 _HTTP_TOO_MANY_REQUESTS = 429
+# `lookup_context` cherche des entités dans un texte : on lui en fournit un qui
+# nomme le CETEN, pour épingler la fiche de son bureau quel que soit le message.
+_FICHE_DU_BUREAU = "le bureau du CETEN"
 
 
 def _make_title(message: str) -> str:
@@ -157,15 +160,17 @@ def ctf_chat(chal: str) -> Response | tuple[Response, int]:
     spec = spec_for(chal)
     if spec is None:
         abort(404)
-    return _run_chat(spec=spec, is_ctf=True)
+    return _run_chat(spec=spec, is_ctf=True, chal=chal)
 
 
-def _run_chat(*, spec: CallSpec, is_ctf: bool) -> Response | tuple[Response, int]:
+def _run_chat(
+    *, spec: CallSpec, is_ctf: bool, chal: str | None = None
+) -> Response | tuple[Response, int]:
     """Traite un message : quota, retrieval, fiches, streaming, persistance.
 
     `spec` porte le prompt et les paramètres Groq — chat normal ou challenge.
     `is_ctf` coupe la carte au trésor et le mode brainrot, qui contourneraient
-    les règles du challenge.
+    les règles du challenge. `chal` nomme l'épreuve, dont dépendent les fiches.
     """
     data = request.get_json()
     if not data or "message" not in data:
@@ -246,8 +251,13 @@ def _run_chat(*, spec: CallSpec, is_ctf: bool) -> Response | tuple[Response, int
         personnes = lookup_personnes(user_message) or lookup_soi(
             user_message, f"{current_user.user_firstname} {current_user.user_surname}"
         )
+        # Le chal social se joue contre la fiche du bureau : elle doit être là à
+        # chaque tour. Cherchée sur le seul message courant, elle disparaissait
+        # dès qu'on répondait « responsable événements » sans nommer le CETEN,
+        # et le modèle retombait sur « je trouve pas dans mes archives ».
+        question_fiches = _FICHE_DU_BUREAU if chal == SOCIAL else user_message
         req.fiches = personnes + lookup_context(
-            user_message, avec_annuaire=not personnes
+            question_fiches, avec_annuaire=not personnes
         )
 
     log_retrieval(

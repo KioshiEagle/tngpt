@@ -111,8 +111,8 @@ def spec_for(chal: str) -> CallSpec | None:
     if not enabled(chal):
         return None
     if chal == SOCIAL:
-        # Croiser prénom, nom et poste avec la fiche dépasse le petit modèle,
-        # qui refuse alors jusqu'aux identités justes : le chal serait mort.
+        # Croiser nom et rôle avec la fiche dépasse le petit modèle, qui refuse
+        # alors jusqu'aux identités justes : le chal serait mort.
         return CallSpec(
             system=_rendre(SOCIAL),
             params=CHAT_GROQ_PARAMS,
