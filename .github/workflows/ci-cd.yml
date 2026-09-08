@@ -107,6 +107,12 @@ jobs:
             ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
             ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.serie }}
             ${{ env.IMAGE_NAME }}:latest
+          # Les labels décrivent l'image de l'extérieur ; les build-args la
+          # renseignent de l'intérieur, seul moyen pour le panel admin d'afficher
+          # la version qu'il exécute.
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.version }}
+            APP_REVISION=${{ github.sha }}
           labels: |
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
             org.opencontainers.image.revision=${{ github.sha }}

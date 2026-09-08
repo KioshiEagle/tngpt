@@ -32,6 +32,9 @@ instance/
 # fichiers déposés dans le panel admin, en attente d'ingestion
 uploads/
 
+# journaux de l'application, servis au téléchargement depuis le panel admin
+logs/
+
 # exports de mails bruts : données personnelles (noms, adresses, pièces
 # jointes) de vraies personnes. Ne doivent jamais partir sur le remote.
 *.eml

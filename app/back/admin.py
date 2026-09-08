@@ -1,5 +1,9 @@
+import io
 import logging
 import os
+import subprocess  # nosec B404 # seul pg_dump est lancé, sur une commande fixe
+import zipfile
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -15,7 +19,8 @@ from flask import (
     url_for,
 )
 from flask_login import current_user
-from sqlalchemy import Select
+from sqlalchemy import Row, Select
+from sqlalchemy.engine import make_url
 from werkzeug.utils import secure_filename
 from werkzeug.wrappers import Response
 
@@ -61,6 +66,7 @@ from .permissions import (
 )
 from .reglages import FLAMME, basculer, est_actif
 from .usage import daily_quota, groq_calls_today_by_key, questions_today_all
+from .version import GRAVEE, PUBLIEE, REVISION, url_release, version_affichee
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +88,25 @@ _MODERATION_ACTIONS = {
     USER_BANNED: "accès suspendu",
 }
 _MAX_QUOTA = 100_000
+_TOP_QUESTIONS = 10
+# Une base d'école se dumpe en quelques secondes ; au-delà, quelque chose cloche
+# et il vaut mieux rendre la main que faire attendre le navigateur.
+_DUMP_TIMEOUT = 120
+
+
+@admin_bp.context_processor
+def version_courante() -> dict[str, object]:
+    """Expose aux gabarits du panel la version affichée et d'où elle sort."""
+    nom, provenance = version_affichee()
+    return {
+        "app_version": nom,
+        "app_revision": REVISION,
+        "app_version_url": url_release(nom),
+        # Deux booléens plutôt que la provenance brute : le gabarit dit ce qu'il
+        # sait sans avoir à connaître les constantes du module.
+        "app_version_gravee": provenance == GRAVEE,
+        "app_version_publiee": provenance == PUBLIEE,
+    }
 
 
 @admin_bp.app_template_filter("bitwise_has")
@@ -117,7 +142,121 @@ def index() -> str:
         )
         or 0,
     }
-    return render_template("admin/index.html", stats=stats, flamme=est_actif(FLAMME))
+    return render_template(
+        "admin/index.html",
+        stats=stats,
+        flamme=est_actif(FLAMME),
+        questions=_questions_frequentes(_TOP_QUESTIONS),
+        top_n=_TOP_QUESTIONS,
+    )
+
+
+def _questions_frequentes(limite: int) -> Sequence[Row[tuple[str, int, int]]]:
+    """Questions les plus posées, regroupées à la casse et aux espaces près.
+
+    Args:
+        limite: Nombre de questions à rapporter.
+
+    Returns:
+        Lignes `(question, occurrences, personnes)`, la plus posée en tête.
+
+    """
+    normalisee = db.func.lower(db.func.trim(Query.question))
+    occurrences = db.func.count(Query.query_id)
+    return db.session.execute(
+        db.select(
+            normalisee.label("question"),
+            occurrences.label("occurrences"),
+            db.func.count(db.distinct(Query.user_id)).label("personnes"),
+        )
+        .group_by(normalisee)
+        .order_by(occurrences.desc())
+        .limit(limite)
+    ).all()
+
+
+@admin_bp.route("/export/base")
+@admin_required
+def export_base() -> Response:
+    """Sauvegarde pg_dump de la base, au format restaurable par `pg_restore`.
+
+    Le mot de passe passe par l'environnement : en argument, il s'afficherait
+    dans la liste des processus du conteneur.
+    """
+    url = make_url(current_app.config["SQLALCHEMY_DATABASE_URI"])
+    commande = [
+        "pg_dump",
+        "--format=custom",
+        "--no-owner",
+        "--no-privileges",
+        f"--host={url.host or 'localhost'}",
+        f"--port={url.port or 5432}",
+        f"--username={url.username or ''}",
+        url.database or "",
+    ]
+    environnement = {**os.environ, "PGPASSWORD": url.password or ""}
+    try:
+        dump = subprocess.run(  # nosec B603 # commande fixe, sans shell
+            commande,
+            env=environnement,
+            capture_output=True,
+            check=True,
+            timeout=_DUMP_TIMEOUT,
+        )
+    except FileNotFoundError:
+        flash("pg_dump est absent : sauvegarde impossible ici.", "warning")
+        return redirect(url_for("admin.index"))
+    except subprocess.TimeoutExpired:
+        flash(f"pg_dump n'a pas rendu la main en {_DUMP_TIMEOUT} s.", "warning")
+        return redirect(url_for("admin.index"))
+    except subprocess.CalledProcessError as erreur:
+        logger.exception(
+            "pg_dump a échoué : %s", erreur.stderr.decode("utf-8", "replace")
+        )
+        flash("pg_dump a échoué, voir les journaux de l'application.", "warning")
+        return redirect(url_for("admin.index"))
+
+    return _fichier_a_telecharger(
+        dump.stdout, f"tngpt-{datetime.now(UTC):%Y%m%d-%H%M}.dump"
+    )
+
+
+@admin_bp.route("/export/logs")
+@admin_required
+def export_logs() -> Response:
+    """Journaux de l'application en archive zip, rotations comprises."""
+    dossier = Path(current_app.config["LOG_DIR"])
+    fichiers = sorted(dossier.glob("tngpt.log*")) if dossier.is_dir() else []
+    if not fichiers:
+        flash("Aucun journal à télécharger pour le moment.", "warning")
+        return redirect(url_for("admin.index"))
+
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zip_archive:
+        for fichier in fichiers:
+            zip_archive.write(fichier, fichier.name)
+
+    return _fichier_a_telecharger(
+        archive.getvalue(), f"tngpt-logs-{datetime.now(UTC):%Y%m%d-%H%M}.zip"
+    )
+
+
+def _fichier_a_telecharger(contenu: bytes, nom: str) -> Response:
+    """Réponse binaire que le navigateur enregistre au lieu de l'afficher.
+
+    Args:
+        contenu: Octets du fichier servi.
+        nom: Nom de fichier proposé à l'enregistrement.
+
+    Returns:
+        La réponse, en pièce jointe.
+
+    """
+    return Response(
+        contenu,
+        mimetype="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{nom}"'},
+    )
 
 
 @admin_bp.route("/apparence/flamme", methods=["POST"])

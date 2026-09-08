@@ -56,6 +56,16 @@
         <div class="admin-sidebar-footer">
             <span class="admin-whoami">{{ current_user.user_firstname }} {{ current_user.user_surname }}</span>
             <a href="/" class="admin-back">← Retour au chat</a>
+            {# Version de l'image en cours, gravée au build : c'est ce qui tourne
+               réellement, pas la dernière release publiée. #}
+            <span class="admin-version" title="Version de l'image en cours d'exécution">
+                {% if app_version_url %}
+                    <a href="{{ app_version_url }}" target="_blank" rel="noopener">{{ app_version }}</a>
+                {% else %}
+                    {{ app_version }}
+                {% endif %}
+                {% if app_revision %}<span class="admin-version-sha">{{ app_revision }}</span>{% endif %}
+            </span>
         </div>
     </aside>
 

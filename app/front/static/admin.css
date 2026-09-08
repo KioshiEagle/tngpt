@@ -98,16 +98,56 @@
 .admin-whoami { color: var(--text-muted); }
 .admin-back { color: var(--primary); text-decoration: none; }
 
+/* Version en tête de la vue d'ensemble : le nom de la release se lit d'un coup */
+.admin-release {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 14px;
+}
+.admin-release-nom {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 1.5rem;
+    font-weight: 500;
+    color: var(--text-main);
+}
+.admin-release-nom a { color: var(--primary); text-decoration: none; }
+.admin-release-nom a:hover { text-decoration: underline; }
+.admin-release-detail {
+    flex: 1 1 260px;
+    max-width: 74ch;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+.admin-release-detail code { font-family: 'IBM Plex Mono', monospace; font-size: 0.95em; }
+
+/* Version de l'image : une mention de pied, lisible sans voler l'attention */
+.admin-version {
+    display: flex;
+    gap: 6px;
+    align-items: baseline;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+}
+.admin-version a { color: inherit; }
+.admin-version a:hover { color: var(--primary); }
+.admin-version-sha { opacity: 0.7; }
+
 /* --- Contenu --- */
 
+/* Colonne unique, espacée par `gap` : chaque bloc respire de la même façon,
+   sans marges ad hoc qui s'additionnent d'une page à l'autre. */
 .admin-main {
     flex: 1;
     min-width: 0;
-    padding: 32px 36px;
+    display: flex;
+    flex-direction: column;
+    gap: 26px;
+    padding: 40px 44px 56px;
     overflow-y: auto;   /* c'est ici que le contenu long défile */
 }
-
-.admin-header { margin-bottom: 24px; }
 
 .admin-header h1 {
     margin: 0;
@@ -126,7 +166,6 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    margin-bottom: 20px;
 }
 
 .admin-flash {
@@ -145,16 +184,15 @@
 
 .admin-stats {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 14px;
-    margin-bottom: 22px;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 18px;
 }
 
 .admin-stat {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    padding: 18px;
+    gap: 6px;
+    padding: 20px 22px;
     border: 1px solid var(--border);
     border-radius: 12px;
     background: var(--bg-sidebar);
@@ -174,19 +212,20 @@
 /* --- Carte générique --- */
 
 .admin-card {
-    padding: 20px;
+    padding: 24px 26px;
     border: 1px solid var(--border);
     border-radius: 12px;
     background: var(--bg-sidebar);
 }
 
 .admin-card h2 {
-    margin: 0 0 8px;
+    margin: 0 0 12px;
     font-size: 1rem;
 }
 
 .admin-note {
     margin: 14px 0 0;
+    max-width: 78ch;
     color: var(--text-muted);
     font-size: 0.84rem;
     line-height: 1.55;
@@ -336,7 +375,6 @@
 /* --- Zone de dépôt --- */
 
 .admin-drop {
-    margin-bottom: 16px;
     padding: 26px 20px;
     border: 2px dashed var(--border);
     border-radius: 12px;
@@ -386,7 +424,6 @@
     align-items: center;
     justify-content: space-between;
     gap: 10px;
-    margin-bottom: 16px;
 }
 
 .admin-search {
@@ -590,6 +627,13 @@
     justify-content: flex-end;
 }
 
+/* Dans une carte, les actions s'alignent sur le texte qu'elles suivent */
+.admin-actions-row--debut {
+    justify-content: flex-start;
+    gap: 10px;
+    margin-top: 16px;
+}
+
 .admin-empty {
     padding: 28px 10px;
     color: var(--text-muted);
@@ -611,7 +655,7 @@
 .chart {
     display: flex;
     flex-direction: column;
-    gap: 2px;            /* respiration entre aplats voisins */
+    gap: 5px;            /* respiration entre aplats voisins */
     margin: 16px 0 0;
     padding: 0;
     list-style: none;
@@ -621,8 +665,8 @@
     display: grid;
     grid-template-columns: minmax(0, 260px) 1fr;
     align-items: center;
-    gap: 12px;
-    padding: 3px 0;
+    gap: 16px;
+    padding: 6px 0;
 }
 
 .chart-row:hover { background: var(--bg-input); }
@@ -669,7 +713,8 @@
 
 .admin-chart-lede { margin-top: 6px; }
 
-.admin-card--spaced { margin-top: 16px; }
+/* Espacement repris par le `gap` de .admin-main ; conservée pour les gabarits. */
+.admin-card--spaced { margin-top: 0; }
 
 /* --- Sélecteur de fenêtre temporelle --- */
 

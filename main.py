@@ -1,5 +1,6 @@
 import logging
 import os
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -20,12 +21,24 @@ from app.routes import bp
 
 load_dotenv()
 
+# Un fichier tournant en plus de la sortie standard : le panel admin propose les
+# journaux au téléchargement, et `docker logs` n'est pas lisible depuis l'app.
+LOG_DIR = Path(os.environ.get("LOG_DIR") or Path(__file__).parent / "logs")
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+LOG_FILE = LOG_DIR / "tngpt.log"
+
 # INFO par défaut : en DEBUG, chaque question déverse ses chunks Qdrant dans
 # les logs — volume et contenu des archives que la prod n'a pas à écrire.
 logging.basicConfig(
     level=os.environ.get("LOG_LEVEL", "INFO").upper(),
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     datefmt="%H:%M:%S",
+    handlers=[
+        logging.StreamHandler(),
+        RotatingFileHandler(
+            LOG_FILE, maxBytes=5_000_000, backupCount=3, encoding="utf-8"
+        ),
+    ],
 )
 
 app = Flask(
@@ -47,6 +60,7 @@ app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 # Fichiers déposés dans le panel admin : zone de transit uniquement. Ils sont
 # supprimés dès l'ingestion terminée, le contenu vivant ensuite dans Qdrant.
 app.config["UPLOAD_DIR"] = Path(__file__).parent / "uploads"
+app.config["LOG_DIR"] = LOG_DIR
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024  # 32 Mo par requête
 
 # Quota de questions par jour appliqué aux utilisateurs sans surcharge explicite.
