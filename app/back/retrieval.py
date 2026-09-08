@@ -148,6 +148,47 @@ def _interleave(
     return merged
 
 
+def chunks_du_document(source_id: str, limite: int) -> list[SearchResult]:
+    """Tous les chunks d'un document, lus par filtre et non par ressemblance.
+
+    Pour les documents qu'on veut au complet — un planning découpé en semaines
+    qui se ressemblent toutes —, la recherche vectorielle choisit mal. Le filtre
+    sur la source, lui, rend exactement ce qu'on demande.
+
+    Args:
+        source_id: Identifiant du document, tel qu'il est en charge utile.
+        limite: Nombre maximal de chunks à rendre.
+
+    Returns:
+        Les chunks du document, sans score de pertinence (fraîcheur seule).
+
+    """
+    points, _ = get_client().scroll(
+        collection_name="documents",
+        scroll_filter=models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="source", match=models.MatchValue(value=source_id)
+                )
+            ]
+        ),
+        limit=limite,
+        with_payload=True,
+        with_vectors=False,
+    )
+    return [
+        SearchResult(
+            point_id=str(point.id),
+            content=(point.payload or {}).get("text", ""),
+            metadata={k: v for k, v in (point.payload or {}).items() if k != "text"},
+            score=1.0,
+            semantic_score=1.0,
+            freshness_score=_freshness_score((point.payload or {}).get("date", "")),
+        )
+        for point in points
+    ]
+
+
 def search(
     query: str,
     top_k: int = 5,

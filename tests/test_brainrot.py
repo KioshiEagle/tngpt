@@ -45,3 +45,16 @@ def test_spec_reste_un_chat() -> None:
 def test_temperature_plus_haute_que_le_chat() -> None:
     """La voix brainrot a besoin de latitude, là où le chat restitue."""
     assert BRAINROT_SPEC.temperature > CHAT_SPEC.temperature
+
+
+def test_la_couche_ne_contredit_pas_le_quatrieme_mur() -> None:
+    """Régression : le brainrot rendait à TN-GPT le droit d'exposer ses sources.
+
+    La couche disait « quand l'archive manque, il le dit », juste après un prompt
+    de base qui l'interdit. Venant en dernier, c'est elle que le modèle suivait :
+    il annonçait la période couverte par ses documents, ce qui n'a aucun sens
+    pour la personne en face.
+    """
+    couche = BRAINROT_PROMPT_PATH.read_text(encoding="utf-8")
+    assert "quand l'archive manque, il le dit" not in couche.lower()
+    assert "quatrième mur" in couche

@@ -1,9 +1,10 @@
 import logging
+import os
 import re
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -21,7 +22,8 @@ from .groqpool import (
     fournisseur_du_client,
 )
 from .personnes import parle_de_soi
-from .retrieval import search
+from .retrieval import chunks_du_document, search
+from .textnorm import strip_accents
 from .types import GroqParams, HistoryMessage, SearchResult
 
 load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
@@ -42,6 +44,7 @@ CHAT_SYSTEM = SYSTEM_PROMPT_PATH.read_text(encoding="utf-8").strip()
 _PROMPT_TEMPLATE = (
     "<contexte_execution>\n"
     "Date du jour : {today}\n"
+    "{relatif}"
     "{user_line}"
     "</contexte_execution>\n\n"
     "<archives>\n"
@@ -50,6 +53,16 @@ _PROMPT_TEMPLATE = (
     "<question>\n"
     "{question}\n"
     "</question>\n"
+)
+
+_JOURS = (
+    "lundi",
+    "mardi",
+    "mercredi",
+    "jeudi",
+    "vendredi",
+    "samedi",
+    "dimanche",
 )
 
 _MOIS = (
@@ -193,12 +206,118 @@ def _log_results(results: list[SearchResult]) -> None:
 
 
 def today_fr() -> str:
-    """Date du jour en français, sans dépendre de la locale du processus.
+    """Date du jour en français, jour de la semaine compris.
 
     `strftime("%B")` rendrait « August » sous la locale C du conteneur.
+
+    Le nom du jour n'est pas décoratif : le planning écrit ses lignes « Mardi
+    8 septembre », et sans lui le modèle devait déduire le jour de la semaine
+    d'un quantième — il se trompait de case, et donnait l'événement de jeudi
+    pour celui de ce soir.
     """
-    now = datetime.now(UTC)
-    return f"{now.day} {_MOIS[now.month - 1]} {now.year}"
+    return _date_fr(datetime.now(UTC))
+
+
+def _date_fr(jour: datetime) -> str:
+    """Date complète en français, jour de la semaine compris."""
+    return f"{_JOURS[jour.weekday()]} {jour.day} {_MOIS[jour.month - 1]} {jour.year}"
+
+
+# Le planning de l'intégration, épinglé par date plutôt que par ressemblance.
+# Son identifiant change chaque année : d'où la variable d'environnement.
+_SOURCE_PLANNING = os.getenv("PLANNING_SOURCE_ID", "planning_integration_2026")
+# Il tient en quelques chunks, un par semaine : les parcourir tous coûte moins
+# qu'une recherche vectorielle, et ne se trompe jamais de semaine.
+_CHUNKS_PLANNING_MAX = 20
+# Le planning de l'intégration, servi en entier tant qu'il est en base. Son
+# identifiant change chaque année : d'où la variable d'environnement.
+_SOURCE_PLANNING = os.getenv("PLANNING_SOURCE_ID", "planning_integration_2026")
+_CHUNKS_PLANNING_MAX = 20
+# Le document bouge une fois par an : le relire à chaque question est du gâchis.
+_TTL_PLANNING = 600
+_planning_cache: tuple[float, list[SearchResult]] | None = None
+
+
+def _planning_entier() -> list[SearchResult]:
+    """Tous les chunks du planning, ou rien s'il n'est pas en base.
+
+    Returns:
+        Le document entier, mis en cache dix minutes.
+
+    """
+    global _planning_cache  # noqa: PLW0603
+    if (
+        _planning_cache is not None
+        and time.monotonic() - _planning_cache[0] < _TTL_PLANNING
+    ):
+        return _planning_cache[1]
+
+    try:
+        chunks = chunks_du_document(_SOURCE_PLANNING, _CHUNKS_PLANNING_MAX)
+    except Exception:
+        # Le planning est un confort : son absence ne doit pas couper le chat.
+        logger.warning("Planning introuvable en base.", exc_info=True)
+        chunks = []
+
+    _planning_cache = (time.monotonic(), _dans_l_ordre(chunks))
+    return _planning_cache[1]
+
+
+def _dans_l_ordre(chunks: list[SearchResult]) -> list[SearchResult]:
+    """Remet le planning dans l'ordre du document : intro, semaines, repères.
+
+    Qdrant rend ses points dans l'ordre de leurs identifiants — ici semaine 5,
+    puis 6, puis 4. Un document servi en désordre se lit mal, y compris par un
+    modèle. Le motif ne porte pas sur la question posée mais sur nos propres
+    en-têtes de chunk, dont nous maîtrisons la forme.
+
+    Args:
+        chunks: Chunks du planning, dans l'ordre où la base les rend.
+
+    Returns:
+        Les mêmes, de l'introduction aux repères.
+
+    """
+    semaine = re.compile(r">\s*Semaine\s+(\d+)")
+
+    def rang(chunk: SearchResult) -> tuple[int, int]:
+        entete = chunk["content"].split("]")[0]
+        trouve = semaine.search(entete)
+        if trouve:
+            return (1, int(trouve.group(1)))
+        return (2, 0) if "Repères" in entete else (0, 0)
+
+    return sorted(chunks, key=rang)
+
+
+# Seule chose que le modèle ne fait pas de façon fiable : compter les jours.
+# Mesuré — avec le planning entier sous les yeux, il répond juste sur une date
+# écrite ou un repère nommé, et se trompe une fois sur deux sur « demain ». On
+# ne lui interprète donc pas la question : on lui pose l'arithmétique.
+_RELATIF: tuple[tuple[str, int], ...] = (
+    ("avant-hier", -2),
+    ("hier", -1),
+    ("demain", 1),
+)
+
+
+def _jour_relatif(question: str) -> str:
+    """Date que « hier » ou « demain » désigne, écrite en clair pour le modèle.
+
+    Args:
+        question: Question posée, telle quelle.
+
+    Returns:
+        La ligne à joindre au contexte d'exécution, vide s'il n'y a rien à dater.
+
+    """
+    pose = strip_accents(question).lower()
+    aujourdhui = datetime.now(UTC)
+    # « après-demain » contient « demain » : le plus long d'abord, et on s'arrête.
+    for mot, jours in _RELATIF:
+        if mot in pose:
+            return f"« {mot} » = {_date_fr(aujourdhui + timedelta(days=jours))}\n"
+    return ""
 
 
 def build_prompt(context: str, question: str, user_name: str | None = None) -> str:
@@ -206,6 +325,7 @@ def build_prompt(context: str, question: str, user_name: str | None = None) -> s
     user_line = f"Utilisateur connecté : {user_name}\n" if user_name else ""
     return _PROMPT_TEMPLATE.format(
         today=today_fr(),
+        relatif=_jour_relatif(question),
         user_line=user_line,
         context=context,
         question=question,
@@ -505,6 +625,17 @@ def retrieve(req: GenerateRequest) -> list[SearchResult]:
         top_k=req.top_k,
         context_query=_enrich_query(req.question, req.history),
     )
+
+    # Le planning en entier, devant, tant qu'il est en base. Il tient en mille
+    # tokens : moins cher qu'une machinerie qui devine quelle semaine servir, et
+    # le modèle y résout lui-même « hier soir », « le WEI » ou une faute de
+    # frappe — ce qu'aucun motif ne fera jamais aussi bien. Le retirer du
+    # catalogue suffit à le sortir du contexte, l'intégration finie.
+    planning = _planning_entier()
+    if planning:
+        deja = {r["point_id"] for r in planning}
+        results = planning + [r for r in results if r["point_id"] not in deja]
+
     vus = {r["content"] for r in results}
     pour_soi = [r for r in _sur_son_nom(req) if r["content"] not in vus]
     if pour_soi:

@@ -64,3 +64,30 @@ def test_la_vue_ctf_passe_sa_propre_route() -> None:
         encoding="utf-8"
     )
     assert 'nouvelle_conv=f"/ctf/{chal}"' in source
+
+
+def test_le_prompt_interdit_le_vocabulaire_de_plomberie() -> None:
+    """« je trouve pas dans mes archives » ne veut rien dire pour un élève.
+
+    La règle existait en prose ; elle nomme désormais les mots proscrits, ce qui
+    la rend vérifiable — ici comme à la lecture d'une réponse.
+    """
+    prompt = (
+        Path(__file__).resolve().parent.parent / "app" / "back" / "system_prompt.md"
+    ).read_text(encoding="utf-8")
+    assert "ne paraissent jamais dans une réponse" in prompt
+    for mot in ("« archive »", "« source »", "« document »"):
+        assert mot in prompt, f"le mot {mot} n'est plus listé comme proscrit"
+
+
+def test_le_prompt_borne_les_sources_au_jour_demande() -> None:
+    """Un mail de février répondait à « c'est quoi l'event de ce soir ».
+
+    La règle d'édition ne jouait qu'à l'année ; celle-ci descend au jour, seule
+    échelle qui écarte une annonce du 18 février quand on est le 8 septembre.
+    """
+    prompt = (
+        Path(__file__).resolve().parent.parent / "app" / "back" / "system_prompt.md"
+    ).read_text(encoding="utf-8")
+    assert "Le même piège existe au jour près" in prompt
+    assert "planning de la période en cours" in prompt
