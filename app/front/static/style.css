@@ -1232,3 +1232,56 @@ body.landing .landing-ducky--flamme { display: none; }
 [data-flamme="on"]:not([data-brainrot="on"]) .logo-img-mini--flamme { display: block; }
 [data-flamme="on"]:not([data-brainrot="on"]) body.landing .landing-ducky--normal { display: none; }
 [data-flamme="on"]:not([data-brainrot="on"]) body.landing .landing-ducky--flamme { display: block; }
+
+/* --- Encart de campagne ------------------------------------------------------
+   Posé dans le fil toutes les dix bulles, par promo.js. Volontairement distinct
+   d'une bulle : ce n'est pas TN-GPT qui parle, c'est une annonce. Peint avec
+   les variables du thème, donc juste en clair, en sombre et en brainrot.
+   -------------------------------------------------------------------------- */
+.promo {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px 18px;
+    border: 1px solid var(--primary);
+    border-left-width: 3px;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--primary) 7%, var(--bg-sidebar));
+    font-size: 15px;
+}
+
+.promo-titre {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--primary);
+}
+
+.promo-points {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    line-height: 1.5;
+}
+
+.promo-appel {
+    align-self: flex-start;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: var(--primary);
+    color: var(--bubble-user-text);
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: transform 0.12s, filter 0.12s;
+}
+.promo-appel:hover { transform: translateY(-1px); filter: brightness(1.08); }
+.promo-appel:focus-visible { outline: 2px solid var(--text-main); outline-offset: 2px; }
+
+.promo-pied {
+    color: var(--text-muted);
+    font-size: 13px;
+}

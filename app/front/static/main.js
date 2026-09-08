@@ -571,7 +571,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function appendThinking(phrase) {
         const div = document.createElement('div');
-        div.className = 'msg assistant';
+        div.className = 'msg assistant msg--attente';
         div.innerHTML = `<div class="msg-text thinking-text"><em>${phrase}</em></div>`;
         messagesContainer.appendChild(div);
         scrollToBottom();
@@ -618,6 +618,8 @@ document.addEventListener('DOMContentLoaded', () => {
         msgDiv.addEventListener('mouseenter', () => copyBtn.classList.add('visible'));
         msgDiv.addEventListener('mouseleave', () => copyBtn.classList.remove('visible'));
         messagesContainer.appendChild(msgDiv);
+        // Hors challenge : un encart y serait du bruit dans une épreuve.
+        if (window.CHAT_ENDPOINT === '/chat') window.TNGPT_PROMO?.apresBulle(messagesContainer);
         scrollToBottom();
         return msgDiv;
     }
