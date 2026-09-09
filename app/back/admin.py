@@ -2,7 +2,6 @@ import io
 import logging
 import os
 import zipfile
-from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -18,7 +17,7 @@ from flask import (
     url_for,
 )
 from flask_login import current_user
-from sqlalchemy import Row, Select
+from sqlalchemy import Select
 from werkzeug.utils import secure_filename
 from werkzeug.wrappers import Response
 
@@ -86,7 +85,6 @@ _MODERATION_ACTIONS = {
     USER_BANNED: "accès suspendu",
 }
 _MAX_QUOTA = 100_000
-_TOP_QUESTIONS = 10
 
 
 @admin_bp.context_processor
@@ -141,33 +139,7 @@ def index() -> str:
         "admin/index.html",
         stats=stats,
         flamme=est_actif(FLAMME),
-        questions=_questions_frequentes(_TOP_QUESTIONS),
-        top_n=_TOP_QUESTIONS,
     )
-
-
-def _questions_frequentes(limite: int) -> Sequence[Row[tuple[str, int, int]]]:
-    """Questions les plus posées, regroupées à la casse et aux espaces près.
-
-    Args:
-        limite: Nombre de questions à rapporter.
-
-    Returns:
-        Lignes `(question, occurrences, personnes)`, la plus posée en tête.
-
-    """
-    normalisee = db.func.lower(db.func.trim(Query.question))
-    occurrences = db.func.count(Query.query_id)
-    return db.session.execute(
-        db.select(
-            normalisee.label("question"),
-            occurrences.label("occurrences"),
-            db.func.count(db.distinct(Query.user_id)).label("personnes"),
-        )
-        .group_by(normalisee)
-        .order_by(occurrences.desc())
-        .limit(limite)
-    ).all()
 
 
 @admin_bp.route("/export/logs")

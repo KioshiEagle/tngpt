@@ -83,40 +83,6 @@
     </section>
 
     <section class="admin-card">
-        <h2>Questions les plus fréquentes</h2>
-        {% if questions %}
-            <p class="admin-note admin-chart-lede">
-                Regroupées à la casse et aux espaces près, depuis la mise en place du journal.
-                Une question qui revient souvent est une candidate au réflexe, ou le signe
-                d'une archive qui manque.
-            </p>
-
-            {% set max_occurrences = questions[0].occurrences %}
-            <ol class="chart" role="list">
-                {% for row in questions %}
-                    <li class="chart-row"
-                        title="{{ row.occurrences }} fois · {{ row.personnes }} personne(s)">
-                        <span class="chart-label">
-                            <span class="chart-label-title">{{ row.question }}</span>
-                            <span class="chart-label-sub">{{ row.personnes }} personne(s)</span>
-                        </span>
-                        <span class="chart-track">
-                            <span class="chart-bar"
-                                  style="width: {{ 100 * row.occurrences / max_occurrences }}%;"></span>
-                            <span class="chart-value">{{ row.occurrences }}</span>
-                        </span>
-                    </li>
-                {% endfor %}
-            </ol>
-        {% else %}
-            <p class="admin-note">
-                Aucune question posée pour le moment. Le journal se remplit à chaque question
-                du chat, et n'est pas reconstituable rétroactivement.
-            </p>
-        {% endif %}
-    </section>
-
-    <section class="admin-card">
         <h2>Journaux</h2>
         <p class="admin-note">
             Les journaux sont ceux du conteneur en cours ; un redémarrage repart d'un fichier
