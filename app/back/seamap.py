@@ -9,14 +9,18 @@ import logging
 import re
 from collections.abc import Iterator
 
-from groq import Stream
-from groq.types.chat import ChatCompletionChunk, ChatCompletionToolParam
-
 from .generate import CallSpec, GenerateRequest, generate_answer, today_fr
 from .groqpool import Client, acquire
+from .llm import Chunk
 from .retrieval import search
 from .textnorm import strip_accents
-from .types import GroqParams, MapClub, MapPayload, SearchResult
+from .types import (
+    ChatCompletionToolParam,
+    GroqParams,
+    MapClub,
+    MapPayload,
+    SearchResult,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -444,7 +448,7 @@ MAP_GROQ_PARAMS: GroqParams = {
 }
 
 
-def _collect_tool_arguments(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
+def _collect_tool_arguments(completion: Iterator[Chunk]) -> Iterator[str]:
     """Concatène les fragments d'arguments de l'outil, puis émet la charge utile.
 
     Les arguments arrivent découpés dans `delta.tool_calls[]` : rien n'est

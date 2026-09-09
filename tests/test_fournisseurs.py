@@ -1,10 +1,8 @@
 """Reconnaissance du fournisseur d'une clé, et ce qu'on en déduit."""
 
-from inspect import signature
+import json
 
 import pytest
-from groq.resources.chat.completions import Completions as GroqCompletions
-from openai.resources.chat.completions import Completions as OpenAICompletions
 
 from app.back.ctf import RAG_GROQ_PARAMS
 from app.back.fournisseurs import (
@@ -218,10 +216,7 @@ def test_fournisseur_inconnu_perd_le_vocabulaire_groq_sans_rien_inventer() -> No
     assert "extra_body" not in adapte
 
 
-# --- Garde-fou : ce qu'on émet doit exister dans la signature du SDK ----------
-
-# Ajoutés par `_attempt` autour des paramètres de la spec.
-_PARAMS_FIXES = frozenset({"model", "messages", "temperature", "stream"})
+# --- Garde-fou : ce qu'on émet doit pouvoir partir en JSON --------------------
 
 
 @pytest.mark.parametrize(
@@ -232,22 +227,23 @@ _PARAMS_FIXES = frozenset({"model", "messages", "temperature", "stream"})
         ("carte", MAP_GROQ_PARAMS),
     ],
 )
-@pytest.mark.parametrize(
-    ("cible", "completions"),
-    [(GROQ, GroqCompletions), (DEEPSEEK, OpenAICompletions)],
-)
-def test_aucun_parametre_hors_signature_du_sdk(
-    nom: str,
-    params: GroqParams,
-    cible: str,
-    completions: type[GroqCompletions] | type[OpenAICompletions],
+@pytest.mark.parametrize("cible", [GROQ, DEEPSEEK, MISTRAL, CEREBRAS])
+def test_les_parametres_emis_partent_en_json(
+    nom: str, params: GroqParams, cible: str
 ) -> None:
-    """Un paramètre hors signature lève un TypeError avant tout appel réseau.
+    """Le client poste le corps tel quel : un objet non sérialisable le casse.
 
-    C'est ainsi que `thinking` est passé : accepté par DeepSeek, mais refusé
-    par le SDK lui-même. Les extensions d'un fournisseur passent par
-    `extra_body`, que ce test ne franchit volontairement pas.
+    Les SDK validaient nos paramètres contre la signature de leur `create`, ce
+    qui interdisait au passage les extensions d'un fournisseur. Le client, lui,
+    transmet ce qu'on lui donne : la seule contrainte qui reste est celle du
+    format, et c'est elle qu'on vérifie ici.
     """
-    attendus = set(signature(completions.create).parameters)
-    emis = set(adapter_params(params, cible)) | _PARAMS_FIXES
-    assert emis <= attendus, f"{nom} → {cible} : {sorted(emis - attendus)}"
+    corps = {
+        "model": "m",
+        "messages": [{"role": "user", "content": "x"}],
+        "temperature": 0.3,
+        "stream": True,
+        **adapter_params(params, cible),
+    }
+
+    assert json.loads(json.dumps(corps)) == corps, nom

@@ -9,8 +9,8 @@ import os
 from collections.abc import Iterator
 from pathlib import Path
 
-from groq import Stream
-from groq.types.chat import ChatCompletionChunk, ChatCompletionToolParam
+from .llm import Chunk
+from .types import ChatCompletionToolParam
 
 OUTIL = "consulter_archives_scellees"
 
@@ -87,7 +87,7 @@ class LecteurScelle:
         self._reflexion = False
         self._repondu = False
 
-    def lire(self, completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
+    def lire(self, completion: Iterator[Chunk]) -> Iterator[str]:
         """Cède le flux au fil des chunks, puis le résultat de l'outil."""
         for chunk in completion:
             yield from self._delta(chunk.choices[0].delta)

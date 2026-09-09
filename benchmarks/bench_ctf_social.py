@@ -18,12 +18,12 @@ from pathlib import Path
 
 import requests
 from dotenv import load_dotenv
-from openai import APIError, OpenAI
 
 from app.back import ctf
 from app.back.clubs import NATURE_ASSO, Fiche, Ligne, format_fiches
 from app.back.fournisseurs import BASE_URLS, DEEPSEEK, adapter_params, modeles
 from app.back.generate import CHAT_GROQ_PARAMS, build_prompt
+from app.back.llm import Client, LLMError
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
@@ -121,7 +121,7 @@ def _cle(nom: str) -> str:
 class Joueur:
     """Appel local avec le prompt réel du chal social, tour par tour."""
 
-    def __init__(self, client: OpenAI, nom: str) -> None:
+    def __init__(self, client: Client, nom: str) -> None:
         """Fige le prompt système du chal et les paramètres du modèle."""
         spec = ctf.spec_for(ctf.SOCIAL)
         if spec is None:
@@ -140,12 +140,12 @@ class Joueur:
         """Un aller-retour, avec quelques reprises sur erreur transitoire."""
         for tentative in range(_REPRISES):
             try:
-                completion = self.client.chat.completions.create(  # ty: ignore[no-matching-overload]
+                completion = self.client.chat.completions.create(
                     model=self.modele,
                     messages=messages,
                     **self.params,
                 )
-            except APIError as erreur:
+            except LLMError as erreur:
                 attente = 3.0 * (tentative + 1)
                 logger.warning("erreur API (%s), reprise dans %.0f s", erreur, attente)
                 time.sleep(attente)
@@ -258,7 +258,7 @@ def _rediger(
 
 def _joueur_local(nom: str) -> Joueur:
     """Construit le joueur local et la clé du fournisseur visé."""
-    client = OpenAI(api_key=_cle(nom), base_url=BASE_URLS[nom])
+    client = Client(api_key=_cle(nom), base_url=BASE_URLS[nom])
     return Joueur(client, nom)
 
 

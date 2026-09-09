@@ -8,9 +8,6 @@ import os
 from collections.abc import Iterator
 from pathlib import Path
 
-from groq import Stream
-from groq.types.chat import ChatCompletionChunk
-
 from .ctf_filtre import censurer
 from .ctf_rag import OUTILS, LecteurScelle
 from .generate import (
@@ -20,6 +17,7 @@ from .generate import (
     _stream_chunks,
     build_prompt_anonyme,
 )
+from .llm import Chunk
 from .types import GroqParams
 
 SOCIAL = "social"
@@ -91,7 +89,7 @@ def enabled(chal: str) -> bool:
 def _consommateur_censure(secrets: tuple[str, ...]) -> CompletionConsumer:
     """Lecteur de complétion qui passe le flux au censeur avant de le rendre."""
 
-    def consume(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
+    def consume(completion: Iterator[Chunk]) -> Iterator[str]:
         return censurer(_stream_chunks(completion), secrets)
 
     return consume
@@ -100,7 +98,7 @@ def _consommateur_censure(secrets: tuple[str, ...]) -> CompletionConsumer:
 def _consommateur_rag() -> CompletionConsumer:
     """Lecteur du chal 3 : raisonnement visible et outil scellé."""
 
-    def consume(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
+    def consume(completion: Iterator[Chunk]) -> Iterator[str]:
         return LecteurScelle().lire(completion)
 
     return consume

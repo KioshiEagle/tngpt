@@ -11,9 +11,8 @@ from types import SimpleNamespace
 from typing import cast
 
 import pytest
-from groq import Stream
-from groq.types.chat import ChatCompletionChunk
 
+from app.back.llm import Chunk
 from app.back.seamap import (
     _LOGO_MOTS,
     _MAX_COMMENTAIRE,
@@ -199,7 +198,7 @@ def test_payload_none_quand_il_n_y_a_pas_de_carte(arguments: str) -> None:
 
 def _fausse_completion(
     fragments: Sequence[str | None],
-) -> Stream[ChatCompletionChunk]:
+) -> Iterator[Chunk]:
     """Imite un flux Groq d'appel d'outil, arguments fragmentés compris.
 
     Le cast assume ce que le canard fait déjà : seule la forme des deltas
@@ -213,7 +212,7 @@ def _fausse_completion(
                 choices=[SimpleNamespace(delta=SimpleNamespace(tool_calls=[call]))]
             )
 
-    return cast("Stream[ChatCompletionChunk]", flux())
+    return cast("Iterator[Chunk]", flux())
 
 
 def test_consommateur_recolle_les_arguments_fragmentes() -> None:

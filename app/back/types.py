@@ -1,9 +1,10 @@
-from typing import Literal, NotRequired, TypedDict
+from typing import Any, Literal, NotRequired, TypedDict
 
-from groq.types.chat import ChatCompletionToolParam
-from groq.types.chat.chat_completion_named_tool_choice_param import (
-    ChatCompletionNamedToolChoiceParam,
-)
+# Descriptions d'outils, telles que l'API les attend. Elles voyagent en JSON
+# jusqu'au fournisseur : les typer plus finement reviendrait à recopier un
+# schéma que nous ne validons pas.
+ChatCompletionToolParam = dict[str, Any]
+ChatCompletionNamedToolChoiceParam = dict[str, Any]
 
 
 class SearchResult(TypedDict):

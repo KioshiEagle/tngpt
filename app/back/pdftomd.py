@@ -7,9 +7,8 @@ from datetime import date
 from pathlib import Path
 
 from dotenv import load_dotenv
-from groq import Groq
 
-from .fournisseurs import GROQ, modeles
+from .fournisseurs import BASE_URLS, GROQ, modeles
 from .groqpool import (
     ERREURS_CONNEXION,
     ERREURS_STATUT,
@@ -23,10 +22,10 @@ from .groqpool import (
 os.environ.setdefault("PYMUPDF_SUGGEST_LAYOUT_ANALYZER", "0")
 import pymupdf4llm
 
-_env_client: Groq | None = None
+_env_client: Client | None = None
 
 
-def _fallback_client() -> Groq:
+def _fallback_client() -> Client:
     """Client Groq bâti sur GROQ_API_KEY (.env) : repli hors du pool.
 
     Utilisé quand aucun client du pool n'est fourni (ingestion standalone, hors
@@ -34,7 +33,9 @@ def _fallback_client() -> Groq:
     """
     global _env_client  # noqa: PLW0603
     if _env_client is None:
-        _env_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+        _env_client = Client(
+            api_key=os.getenv("GROQ_API_KEY", ""), base_url=BASE_URLS[GROQ]
+        )
     return _env_client
 
 

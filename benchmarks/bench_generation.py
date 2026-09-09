@@ -18,10 +18,11 @@ from typing import Any, TextIO
 import psycopg2
 import requests
 from dotenv import load_dotenv
-from groq import APIStatusError, Groq
 
 from app.back.clubs import lookup_context
+from app.back.fournisseurs import BASE_URLS, GROQ
 from app.back.generate import CHAT_SYSTEM, _Contexte, build_prompt
+from app.back.llm import Client, LLMStatutError
 from app.back.retrieval import search
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
@@ -225,7 +226,7 @@ def _generer_http(route: Route, modele: str, prompt: str) -> dict[str, Any]:
     return _depouiller(reponse.json())
 
 
-def _generer_groq(client: Groq, modele: str, prompt: str) -> dict[str, Any]:
+def _generer_groq(client: Client, modele: str, prompt: str) -> dict[str, Any]:
     """Appel au compte Groq — celui que se partage la production."""
     completion = client.chat.completions.create(
         model=modele,
@@ -240,7 +241,7 @@ def _generer_groq(client: Groq, modele: str, prompt: str) -> dict[str, Any]:
     return _depouiller(completion.model_dump())
 
 
-def generer(client: Groq, modele: str, prompt: str) -> dict[str, Any]:
+def generer(client: Client, modele: str, prompt: str) -> dict[str, Any]:
     """Aiguille vers le fournisseur du modèle et rend ses compteurs."""
     route = _route_de(modele)
     if route is not None:
@@ -330,18 +331,16 @@ def _deja_faites(sortie: Path) -> set[tuple[str, str]]:
     return faites
 
 
-def _pause_demandee(erreur: APIStatusError | QuotaEpuiseError) -> float:
+def _pause_demandee(erreur: LLMStatutError | QuotaEpuiseError) -> float:
     """Secondes à patienter, lues dans le message du 429 puis dans l'en-tête."""
     trouve = re.search(r"try again in (?:(\d+)m)?([\d.]+)s", str(erreur))
     if trouve:
         minutes = float(trouve.group(1) or 0)
         return minutes * 60 + float(trouve.group(2)) + 5
-    entete = (
-        erreur.retry_after
-        if isinstance(erreur, QuotaEpuiseError)
-        else erreur.response.headers.get("retry-after")
-    )
-    return float(entete) + 5 if entete else 300.0
+    # Les deux portent désormais le délai déjà lu : le client le parse à la
+    # source, là où le SDK laissait un en-tête brut à interpréter ici.
+    attente = erreur.retry_after
+    return float(attente) + 5 if attente else 300.0
 
 
 @dataclass(frozen=True)
@@ -354,7 +353,7 @@ class _Tache:
 
 
 def _mesurer_ou_reporter(
-    client: Groq,
+    client: Client,
     cadence: Cadence,
     tache: _Tache,
     reprise: dict[str, float],
@@ -368,7 +367,7 @@ def _mesurer_ou_reporter(
     """
     try:
         return _mesurer(client, cadence, tache.question, tache.contexte, tache.modele)
-    except (APIStatusError, QuotaEpuiseError) as erreur:
+    except (LLMStatutError, QuotaEpuiseError) as erreur:
         if _contexte_trop_grand(erreur):
             logger.warning(
                 "%s : contexte trop grand pour « %.40s », mesure abandonnée",
@@ -415,18 +414,18 @@ def _contexte_trop_grand(erreur: Exception) -> bool:
     La production réduit alors le contexte ; le banc ne le peut pas sans
     cesser de comparer des générateurs à contexte égal, et renonce donc.
     """
-    return isinstance(erreur, APIStatusError) and erreur.status_code == _HTTP_413
+    return isinstance(erreur, LLMStatutError) and erreur.status_code == _HTTP_413
 
 
 def _quota_atteint(erreur: Exception) -> bool:
     """Dit si l'erreur n'est qu'un quota épuisé, donc réessayable plus tard."""
     if isinstance(erreur, QuotaEpuiseError):
         return True
-    return isinstance(erreur, APIStatusError) and erreur.status_code == _HTTP_429
+    return isinstance(erreur, LLMStatutError) and erreur.status_code == _HTTP_429
 
 
 def _mesurer(
-    client: Groq, cadence: Cadence, question: str, contexte: str, modele: str
+    client: Client, cadence: Cadence, question: str, contexte: str, modele: str
 ) -> dict[str, Any]:
     """Une génération et sa notation, pour un seul modèle."""
     cadence.attendre(modele)
@@ -459,7 +458,11 @@ def _patienter(restantes: list[tuple[str, str]], reprise: dict[str, float]) -> N
 def _boucle(args: argparse.Namespace) -> None:
     """Avance modèle par modèle : celui qui a du quota continue sans l'autre."""
     # Réessais du SDK coupés : ils masqueraient les 429 qu'on veut compter.
-    client = Groq(api_key=os.environ["GROQ_API_KEY"], max_retries=0)
+    client = Client(
+        api_key=os.environ["GROQ_API_KEY"],
+        base_url=BASE_URLS[GROQ],
+        max_retries=0,
+    )
     cadence = Cadence()
 
     faites = _deja_faites(args.sortie)

@@ -8,8 +8,6 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
-from groq import Stream
-from groq.types.chat import ChatCompletionChunk, ChatCompletionMessageParam
 
 from .fournisseurs import GROQ, adapter_params, modeles
 from .groqpool import (
@@ -21,6 +19,7 @@ from .groqpool import (
     acquire,
     fournisseur_du_client,
 )
+from .llm import Chunk
 from .personnes import parle_de_soi
 from .retrieval import chunks_du_document, search
 from .textnorm import strip_accents
@@ -122,7 +121,7 @@ PromptBuilder = Callable[..., str]
 
 # Lecteur d'une complétion Groq. Le chat lit `delta.content` ; la carte lit
 # `delta.tool_calls`. Une seule échelle de repli, deux façons de la consommer.
-CompletionConsumer = Callable[[Stream[ChatCompletionChunk]], Iterator[str]]
+CompletionConsumer = Callable[[Iterator[Chunk]], Iterator[str]]
 
 
 # Ce que l'ingestion écrit faute d'auteur : l'afficher ferait croire à
@@ -397,7 +396,7 @@ class _ThinkFilter:
         return piece
 
 
-def _filter_think(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
+def _filter_think(completion: Iterator[Chunk]) -> Iterator[str]:
     """Streame les chunks en filtrant les blocs <think>...</think>, même multi-chunk."""
     think_filter = _ThinkFilter()
     for chunk in completion:
@@ -496,7 +495,7 @@ def _filter_entetes(pieces: Iterator[str]) -> Iterator[str]:
         yield _ENTETE_ARCHIVE.sub("", tampon)
 
 
-def _stream_chunks(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
+def _stream_chunks(completion: Iterator[Chunk]) -> Iterator[str]:
     """Filtre les <think> en garantissant une sortie non vide.
 
     Un flux coupé avant la balise fermante est filtré en entier, et le front
@@ -543,7 +542,7 @@ CHAT_GROQ_PARAMS: GroqParams = {
 }
 
 
-def _stream_chat_chunks(completion: Stream[ChatCompletionChunk]) -> Iterator[str]:
+def _stream_chat_chunks(completion: Iterator[Chunk]) -> Iterator[str]:
     """Lecture du chat : <think> filtrés, en-têtes d'archives, puis renvoi."""
     return _filter_renvoi(_filter_entetes(_stream_chunks(completion)))
 
@@ -565,12 +564,12 @@ def _trim(content: str) -> str:
 
 def _history_messages(
     history: list[HistoryMessage],
-) -> list[ChatCompletionMessageParam]:
+) -> list[dict[str, str]]:
     """Rejoue les tours passés de la conversation, dans l'ordre.
 
     Sans leurs archives : une réponse passée est un souvenir, pas une source.
     """
-    messages: list[ChatCompletionMessageParam] = []
+    messages: list[dict[str, str]] = []
     for message in history:
         content = _trim(message["content"])
         if message["role"] == "user":
@@ -695,15 +694,8 @@ class _RetryOutcome:
 
 
 def _retry_after(e: ErreurStatut) -> float | None:
-    """Délai réclamé par Groq en en-tête `retry-after`, en secondes."""
-    brut = e.response.headers.get("retry-after")
-    if not brut:
-        return None
-    try:
-        return float(brut)
-    except ValueError:
-        # Forme date HTTP : rare chez Groq, et sans intérêt à parser ici.
-        return None
+    """Délai réclamé par le fournisseur en en-tête `retry-after`, en secondes."""
+    return e.retry_after
 
 
 def _outcome_429(
@@ -846,7 +838,7 @@ def _attempt(
     history = _history_messages(req.history) if spec.send_history else []
     # Les deux SDK n'acceptent pas les mêmes paramètres (`reasoning_format` est
     # propre à Groq) : l'union ne peut pas typer cet appel. Voir `_params_pour`.
-    completion = client.chat.completions.create(  # ty: ignore[no-matching-overload]
+    completion = client.chat.completions.create(
         model=appel.modele,
         messages=[
             {"role": "system", "content": spec.system},

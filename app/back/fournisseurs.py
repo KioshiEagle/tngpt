@@ -23,9 +23,10 @@ MISTRAL = "mistral"
 # Valeurs admises dans la colonne `fournisseur` du pool, et proposées au panel.
 FOURNISSEURS = (GROQ, DEEPSEEK, CEREBRAS, MISTRAL)
 
-# Point d'entrée par fournisseur, pour les SDK compatibles OpenAI. Groq est
-# absent : son propre SDK connaît déjà son URL.
+# Point d'entrée par fournisseur. Les quatre exposent le même
+# `/chat/completions` ; Groq le sert sous un chemin `openai/v1`.
 BASE_URLS = {
+    GROQ: "https://api.groq.com/openai/v1",
     DEEPSEEK: "https://api.deepseek.com",
     CEREBRAS: "https://api.cerebras.ai/v1",
     MISTRAL: "https://api.mistral.ai/v1",
