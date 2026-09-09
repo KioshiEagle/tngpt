@@ -117,15 +117,13 @@
     </section>
 
     <section class="admin-card">
-        <h2>Sauvegardes</h2>
+        <h2>Journaux</h2>
         <p class="admin-note">
-            La sauvegarde de la base est un <code>pg_dump</code> au format custom, à restaurer
-            avec <code>pg_restore</code>. Elle contient tout : comptes, conversations et clés
-            du pool — à traiter comme un secret. Les journaux sont ceux du conteneur en cours ;
-            un redémarrage repart d'un fichier vide.
+            Les journaux sont ceux du conteneur en cours ; un redémarrage repart d'un fichier
+            vide. Ils portent des questions posées par de vraies personnes — à traiter comme
+            un secret.
         </p>
         <div class="admin-actions-row admin-actions-row--debut">
-            <a href="{{ url_for('admin.export_base') }}" class="admin-btn">Télécharger la base</a>
             <a href="{{ url_for('admin.export_logs') }}" class="admin-btn">Télécharger les journaux</a>
         </div>
     </section>

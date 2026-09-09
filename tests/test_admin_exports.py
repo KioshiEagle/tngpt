@@ -1,7 +1,7 @@
-"""Vue d'ensemble du panel : questions fréquentes et sauvegardes.
+"""Vue d'ensemble du panel : questions fréquentes et export des journaux.
 
-Le dump emporte les comptes, les conversations et les clés du pool : la garde
-d'accès sur ces deux routes vaut autant que le code qui les sert.
+Les journaux portent les questions de vraies personnes : la garde d'accès sur
+la route vaut autant que le code qui la sert.
 """
 
 from collections.abc import Iterator
@@ -94,25 +94,8 @@ def test_une_base_vide_ne_rapporte_aucune_question() -> None:
     assert list(_questions_frequentes(10)) == []
 
 
-@pytest.mark.parametrize("route", ["/export/base", "/export/logs"])
-def test_les_exports_sont_reserves_aux_admins(route: str) -> None:
-    """Le dump porte tous les secrets de l'app : la garde ne doit pas sauter."""
+def test_l_export_des_journaux_est_reserve_aux_admins() -> None:
+    """Les journaux portent les questions posées : la garde ne doit pas sauter."""
     source = _ADMIN.read_text(encoding="utf-8")
-    declaration = source.index(f'@admin_bp.route("{route}")')
+    declaration = source.index('@admin_bp.route("/export/logs")')
     assert "@admin_required" in source[declaration : declaration + 200]
-
-
-def test_le_dump_ne_met_pas_le_mot_de_passe_en_ligne_de_commande() -> None:
-    """Un argument de `pg_dump` se lit dans la liste des processus du conteneur."""
-    source = _ADMIN.read_text(encoding="utf-8")
-    assert '"PGPASSWORD": url.password' in source
-    commande = source[source.index("commande = [") : source.index("]")]
-    assert "url.password" not in commande
-
-
-def test_l_image_embarque_pg_dump() -> None:
-    """Sans le client Postgres dans l'image, le bouton ne sauvegarde rien."""
-    dockerfile = (Path(__file__).resolve().parent.parent / "Dockerfile").read_text(
-        encoding="utf-8"
-    )
-    assert "postgresql-client" in dockerfile

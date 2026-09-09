@@ -2,16 +2,10 @@ FROM ghcr.io/astral-sh/uv:0.11.19-python3.13-trixie
 
 WORKDIR /app
 
-# Plus aucune dépendance d'inférence : libgl1 et libglib2.0-0 servaient au local
-# (commit df03ee6, « Docker image using only CPU for inference »). Tout tourne
-# désormais sur API — Groq pour la génération, Workers AI pour les embeddings —
-# et PyMuPDF embarque ses propres binaires.
-#
-# Reste `pg_dump`, que le panel admin lance pour servir une sauvegarde de la
-# base. Sans lui, le bouton échoue proprement mais ne sauvegarde rien.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends postgresql-client \
-    && rm -rf /var/lib/apt/lists/*
+# Plus aucune dépendance système : libgl1 et libglib2.0-0 servaient à l'inférence
+# locale (commit df03ee6, « Docker image using only CPU for inference »). Tout
+# tourne désormais sur API — Groq pour la génération, Workers AI pour les
+# embeddings — et PyMuPDF embarque ses propres binaires.
 
 COPY pyproject.toml uv.lock ./
 

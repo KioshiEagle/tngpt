@@ -1,7 +1,6 @@
 import io
 import logging
 import os
-import subprocess  # nosec B404 # seul pg_dump est lancé, sur une commande fixe
 import zipfile
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
@@ -20,7 +19,6 @@ from flask import (
 )
 from flask_login import current_user
 from sqlalchemy import Row, Select
-from sqlalchemy.engine import make_url
 from werkzeug.utils import secure_filename
 from werkzeug.wrappers import Response
 
@@ -89,9 +87,6 @@ _MODERATION_ACTIONS = {
 }
 _MAX_QUOTA = 100_000
 _TOP_QUESTIONS = 10
-# Une base d'école se dumpe en quelques secondes ; au-delà, quelque chose cloche
-# et il vaut mieux rendre la main que faire attendre le navigateur.
-_DUMP_TIMEOUT = 120
 
 
 @admin_bp.context_processor
@@ -173,52 +168,6 @@ def _questions_frequentes(limite: int) -> Sequence[Row[tuple[str, int, int]]]:
         .order_by(occurrences.desc())
         .limit(limite)
     ).all()
-
-
-@admin_bp.route("/export/base")
-@admin_required
-def export_base() -> Response:
-    """Sauvegarde pg_dump de la base, au format restaurable par `pg_restore`.
-
-    Le mot de passe passe par l'environnement : en argument, il s'afficherait
-    dans la liste des processus du conteneur.
-    """
-    url = make_url(current_app.config["SQLALCHEMY_DATABASE_URI"])
-    commande = [
-        "pg_dump",
-        "--format=custom",
-        "--no-owner",
-        "--no-privileges",
-        f"--host={url.host or 'localhost'}",
-        f"--port={url.port or 5432}",
-        f"--username={url.username or ''}",
-        url.database or "",
-    ]
-    environnement = {**os.environ, "PGPASSWORD": url.password or ""}
-    try:
-        dump = subprocess.run(  # nosec B603 # commande fixe, sans shell
-            commande,
-            env=environnement,
-            capture_output=True,
-            check=True,
-            timeout=_DUMP_TIMEOUT,
-        )
-    except FileNotFoundError:
-        flash("pg_dump est absent : sauvegarde impossible ici.", "warning")
-        return redirect(url_for("admin.index"))
-    except subprocess.TimeoutExpired:
-        flash(f"pg_dump n'a pas rendu la main en {_DUMP_TIMEOUT} s.", "warning")
-        return redirect(url_for("admin.index"))
-    except subprocess.CalledProcessError as erreur:
-        logger.exception(
-            "pg_dump a échoué : %s", erreur.stderr.decode("utf-8", "replace")
-        )
-        flash("pg_dump a échoué, voir les journaux de l'application.", "warning")
-        return redirect(url_for("admin.index"))
-
-    return _fichier_a_telecharger(
-        dump.stdout, f"tngpt-{datetime.now(UTC):%Y%m%d-%H%M}.dump"
-    )
 
 
 @admin_bp.route("/export/logs")
