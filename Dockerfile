@@ -2,12 +2,9 @@ FROM ghcr.io/astral-sh/uv:0.11.19-python3.13-trixie
 
 WORKDIR /app
 
-# Plus aucune dépendance système : libgl1 et libglib2.0-0 servaient à l'inférence
-# locale (commit df03ee6, « Docker image using only CPU for inference »). Tout
-# tourne désormais sur API — Groq pour la génération, Workers AI pour les
-# embeddings — et PyMuPDF embarque ses propres binaires.
-
 COPY pyproject.toml uv.lock ./
+
+ENV UV_COMPILE_BYTECODE=1
 
 RUN uv sync --frozen --no-dev
 
@@ -17,9 +14,6 @@ EXPOSE 8501
 
 ENV FLASK_APP=main.py
 
-# Gravées au build par la CI (`--build-arg`) et affichées dans le pied du panel
-# admin : seule l'image sait quelle version elle porte. Sans elles, le panel
-# affiche « dev » — rien d'autre n'en dépend.
 ARG APP_VERSION=dev
 ARG APP_REVISION=""
 ENV APP_VERSION=$APP_VERSION
