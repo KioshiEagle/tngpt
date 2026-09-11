@@ -9,53 +9,81 @@
 
     const CAMPAGNE = {
         // Fuseau explicite : sinon l'échéance glisse d'une heure selon le
-        // réglage du navigateur, et la promo survit au tirage.
-        fin: new Date('2026-09-09T19:00:00+02:00'),
+        // réglage du navigateur. Fin de soirée : les retardataires comptent.
+        fin: new Date('2026-09-15T20:00:00+02:00'),
         toutesLesBulles: 10,
-        lien: 'https://www.helloasso.com/associations/cercle-des-eleves-de-telecom-nancy/evenements/tombola',
-        titre: "L'Intombola est ouverte 🎟️",
+        auteur: 'Tek’TN',
+        // Variante de style.css (.promo--vert) ; absente, l'encart prend le thème.
+        teinte: 'vert',
+        titre: "🐧 Install Party X Reunion Tek'TN",
         points: [
-            '🎁 Plus de 50 lots à gagner — télé, chaise gaming, LEGO, vélos, places au Gala…',
-            '✅ Un ticket est déjà compris dans ton Pack Inté',
-            '🍀 Tirage mercredi 9 septembre',
+            '📅 Mardi 15 septembre, à partir de 18 h',
+            '🤖 18 h — Présentation du club et lancement du pôle robotique pour la Coupe de France de Robotique 2027 : c’est le moment de rejoindre l’équipe',
+            '💻 18 h 30 — Install Party : viens avec ton ordi passer à Linux, en dual boot ou en remplacement. Hackin’TN y présente ses outils de cybersécurité',
+            '🍕 19 h 30 — Pizzas à 5 €, 2,50 € la demie, sur précommande obligatoire jusqu’au lundi 14 à 18 h',
         ],
-        appel: 'Prendre des tickets sur HelloAsso',
-        pied: 'Que la chance et Toutatis soient avec toi ⚔️',
+        appel: {
+            texte: 'Précommander ma pizza sur HelloAsso',
+            lien: 'https://www.helloasso.com/associations/cercle-des-eleves-de-telecom-nancy/boutiques/install-party',
+            // La billetterie ferme la veille : passé ce délai, le bouton
+            // mènerait à une page close.
+            fin: new Date('2026-09-14T18:00:00+02:00'),
+        },
+        pied: 'Bricolment vôtre, l’équipe Tek’TN',
     };
 
     function campagneOuverte() {
         return Date.now() < CAMPAGNE.fin.getTime();
     }
 
+    // Sans lien, ou billetterie close : l'annonce reste, le bouton non.
+    function appelOuvert() {
+        return Boolean(CAMPAGNE.appel.lien) && Date.now() < CAMPAGNE.appel.fin.getTime();
+    }
+
+    // Espaces insécables à la française : « 18 h 30 », « 5 € » et le « : »
+    // ne se retrouvent jamais seuls en début de ligne.
+    function insecables(texte) {
+        return texte
+            .replace(/(\d) (?=h\b|€)/g, '$1\u00a0')
+            .replace(/\bh (?=\d)/g, 'h\u00a0')
+            .replace(/ ([:;!?])/g, '\u00a0$1');
+    }
+
+    function construireAppel() {
+        const appel = document.createElement('a');
+        appel.className = 'promo-appel';
+        appel.href = CAMPAGNE.appel.lien;
+        appel.target = '_blank';
+        appel.rel = 'noopener';
+        appel.textContent = insecables(CAMPAGNE.appel.texte) + '\u00a0→';
+        return appel;
+    }
+
     function construireEncart() {
         const encart = document.createElement('aside');
-        encart.className = 'promo';
-        encart.setAttribute('aria-label', 'Annonce du BDE');
+        encart.className = CAMPAGNE.teinte ? 'promo promo--' + CAMPAGNE.teinte : 'promo';
+        encart.setAttribute('aria-label', 'Annonce de ' + CAMPAGNE.auteur);
 
         const titre = document.createElement('div');
         titre.className = 'promo-titre';
-        titre.textContent = CAMPAGNE.titre;
+        titre.textContent = insecables(CAMPAGNE.titre);
 
         const points = document.createElement('ul');
         points.className = 'promo-points';
         CAMPAGNE.points.forEach((texte) => {
             const point = document.createElement('li');
-            point.textContent = texte;
+            point.textContent = insecables(texte);
             points.appendChild(point);
         });
 
-        const appel = document.createElement('a');
-        appel.className = 'promo-appel';
-        appel.href = CAMPAGNE.lien;
-        appel.target = '_blank';
-        appel.rel = 'noopener';
-        appel.textContent = CAMPAGNE.appel + ' →';
-
         const pied = document.createElement('div');
         pied.className = 'promo-pied';
-        pied.textContent = CAMPAGNE.pied;
+        pied.textContent = insecables(CAMPAGNE.pied);
 
-        encart.append(titre, points, appel, pied);
+        encart.append(titre, points);
+        if (appelOuvert()) encart.appendChild(construireAppel());
+        encart.appendChild(pied);
         return encart;
     }
 

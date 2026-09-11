@@ -1239,14 +1239,18 @@ body.landing .landing-ducky--flamme { display: none; }
    les variables du thème, donc juste en clair, en sombre et en brainrot.
    -------------------------------------------------------------------------- */
 .promo {
+    /* Teinte du thème par défaut ; une campagne peut imposer une variante. */
+    --promo-accent: var(--primary);
+    --promo-accent-texte: var(--bubble-user-text);
+    --promo-accent-titre: var(--promo-accent);
     display: flex;
     flex-direction: column;
     gap: 10px;
     padding: 16px 18px;
-    border: 1px solid var(--primary);
+    border: 1px solid var(--promo-accent);
     border-left-width: 3px;
     border-radius: 14px;
-    background: color-mix(in srgb, var(--primary) 7%, var(--bg-sidebar));
+    background: color-mix(in srgb, var(--promo-accent) 7%, var(--bg-sidebar));
     font-size: 15px;
 }
 
@@ -1254,7 +1258,7 @@ body.landing .landing-ducky--flamme { display: none; }
     font-family: 'IBM Plex Mono', monospace;
     font-size: 14px;
     font-weight: 500;
-    color: var(--primary);
+    color: var(--promo-accent-titre);
 }
 
 .promo-points {
@@ -1271,8 +1275,8 @@ body.landing .landing-ducky--flamme { display: none; }
     align-self: flex-start;
     padding: 8px 14px;
     border-radius: 999px;
-    background: var(--primary);
-    color: var(--bubble-user-text);
+    background: var(--promo-accent);
+    color: var(--promo-accent-texte);
     font-size: 14px;
     font-weight: 600;
     text-decoration: none;
@@ -1284,4 +1288,16 @@ body.landing .landing-ducky--flamme { display: none; }
 .promo-pied {
     color: var(--text-muted);
     font-size: 13px;
+}
+
+/* Vert du logo Tek'TN. Trop clair pour du texte sur fond clair (2,7:1) : le
+   titre y prend la même teinte assombrie. La flamme compte comme fond sombre. */
+.promo--vert {
+    --promo-accent: #02a346;
+    --promo-accent-texte: #000;
+    --promo-accent-titre: #017633;
+}
+[data-theme="dark"] .promo--vert,
+[data-flamme="on"]:not([data-brainrot="on"]) .promo--vert {
+    --promo-accent-titre: #02a346;
 }
