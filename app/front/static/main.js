@@ -342,6 +342,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let currentConversationId = null;
 
+    // La conversation ouverte vit dans l'URL (?c=<id>) : un rechargement la rouvre,
+    // et « nouvelle conv. », qui mène au chemin sans paramètre, repart à vide.
+    function rememberConversation(id) {
+        const url = new URL(window.location.href);
+        if (id === null) url.searchParams.delete('c');
+        else url.searchParams.set('c', id);
+        history.replaceState(history.state, '', url);
+    }
+
     // --- Liste des conversations (sidebar) ---
     function setActiveConvItem(id) {
         convList.querySelectorAll('.conv-item').forEach((item) => {
@@ -358,6 +367,8 @@ document.addEventListener('DOMContentLoaded', () => {
         item.className = 'conv-item';
         item.dataset.id = String(conv.id);
         item.textContent = conv.title || 'Sans titre';
+        // La liste peut arriver après la conversation rouverte au chargement.
+        item.classList.toggle('active', item.dataset.id === String(currentConversationId));
         item.addEventListener('click', (e) => {
             e.preventDefault();
             if (item.dataset.id !== String(currentConversationId)) openConversation(conv.id);
@@ -400,7 +411,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function openConversation(id) {
         const res = await fetch(`/conversations/${id}`);
-        if (!res.ok) return;
+        if (!res.ok) return false;
         const conv = await res.json();
 
         currentConversationId = conv.id;
@@ -411,9 +422,24 @@ document.addEventListener('DOMContentLoaded', () => {
         conv.messages.forEach((m) => appendMessage(m.role, m.content));
         document.title = (conv.title || 'TN-GPT') + ' – TN-GPT';
         setActiveConvItem(id);
+        rememberConversation(conv.id);
+        return true;
     }
 
     loadConversations();
+
+    // Rechargement sur une conversation : on la rouvre. Supprimée ou à un autre
+    // compte, on nettoie l'URL ; réseau coupé, on la garde pour réessayer.
+    const requestedId = new URLSearchParams(window.location.search).get('c');
+    if (requestedId !== null) {
+        if (/^\d+$/.test(requestedId)) {
+            openConversation(requestedId)
+                .then((opened) => { if (!opened) rememberConversation(null); })
+                .catch(() => {});
+        } else {
+            rememberConversation(null);
+        }
+    }
 
     // --- Form submit ---
     form.addEventListener('submit', async (e) => {
@@ -502,6 +528,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const shortTitle = text.length > 40 ? text.slice(0, 40).trimEnd() + '…' : text;
                 addConvItem({ id: newId, title: shortTitle }, { prepend: true });
                 setActiveConvItem(newId);
+                rememberConversation(newId);
                 document.title = shortTitle + ' – TN-GPT';
             }
 
