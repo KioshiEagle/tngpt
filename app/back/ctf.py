@@ -120,10 +120,13 @@ def spec_for(chal: str) -> CallSpec | None:
     if chal == PROMPT:
         # Seul le flag est censuré : le reste du prompt doit fuiter pour que le
         # joueur y lise « Référence de la note : ███ » et sache quoi extraire.
+        # Gros modèle pour la même raison que le chal social : le petit refuse la
+        # note au nom de l'ancrage, ou recrache « diagnostic tn-gpt ». 0/5 jouable.
         return CallSpec(
             system=_rendre(PROMPT),
             params=CHAT_GROQ_PARAMS,
             consume=_consommateur_censure((os.environ["CTF_FLAG_PROMPT"],)),
+            gros_modele=True,
         )
     return CallSpec(
         system=_rendre(RAG),
