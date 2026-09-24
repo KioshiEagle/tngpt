@@ -67,6 +67,14 @@ def test_le_chal_rag_epingle_les_fournisseurs_qui_laissent_fuir_le_raisonnement(
     assert spec.fournisseurs == RAISONNEMENT_VISIBLE
 
 
+def test_le_chal_rag_demande_un_effort_qui_raisonne() -> None:
+    """Régression : qwen3.8 accepte « default » sans erreur, mais n'y raisonne pas.
+
+    Le raisonnement disparaissait alors en silence, et le chal avec lui.
+    """
+    assert ctf.RAG_GROQ_PARAMS["reasoning_effort"] not in ("none", "default")
+
+
 @pytest.mark.parametrize("chal", [ctf.SOCIAL, ctf.PROMPT, ctf.RAG])
 def test_aucun_flag_dans_le_depot(chal: str) -> None:
     """Les prompts versionnés portent des gabarits, jamais un flag.

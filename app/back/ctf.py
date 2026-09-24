@@ -45,9 +45,9 @@ _GABARITS: dict[str, tuple[tuple[str, str], ...]] = {
 # Raisonnement visible : c'est le canal de fuite du chal 3, celui qui trahit
 # l'existence de l'outil. Réservé à ce chal, qui paie donc seul son surcoût.
 RAG_GROQ_PARAMS: GroqParams = {
-    # Groq n'accepte que "none" ou "default" pour qwen3 ; "low" fait un 400 qui
-    # ferait tout retirer par le repli, outil compris.
-    "reasoning_effort": "default",
+    # qwen3.8 accepte "default" sans erreur mais n'y raisonne pas, au contraire
+    # de qwen3.6 qui refusait "low" : l'effort suit le modèle épinglé.
+    "reasoning_effort": "low",
     "reasoning_format": "parsed",
     "tools": OUTILS,
     "parallel_tool_calls": False,
