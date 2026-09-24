@@ -162,7 +162,8 @@ def _lire_delta(brut: dict[str, Any]) -> Delta:
     appels = brut.get("tool_calls")
     return Delta(
         content=brut.get("content"),
-        reasoning=brut.get("reasoning"),
+        # Groq nomme ce champ `reasoning`, DeepSeek `reasoning_content`.
+        reasoning=brut.get("reasoning") or brut.get("reasoning_content"),
         tool_calls=[
             ToolCall(
                 index=appel.get("index", 0),

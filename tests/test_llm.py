@@ -57,6 +57,24 @@ def test_les_appels_d_outil_sont_reconstruits() -> None:
     assert appel.function.arguments == '{"a":'
 
 
+def test_le_raisonnement_est_lu_sous_ses_deux_noms() -> None:
+    """Régression : le `reasoning_content` de DeepSeek était jeté au parsing.
+
+    C'est le canal de fuite du chal RAG, que DeepSeek a le droit de servir.
+    """
+    reponse = _flux(
+        [
+            'data: {"choices":[{"delta":{"reasoning":"groq pense"}}]}',
+            'data: {"choices":[{"delta":{"reasoning_content":"deepseek pense"}}]}',
+            "data: [DONE]",
+        ]
+    )
+
+    pensees = [c.choices[0].delta.reasoning for c in _chunks_du_flux(reponse)]
+
+    assert pensees == ["groq pense", "deepseek pense"]
+
+
 def test_une_ligne_illisible_ne_coupe_pas_le_flux() -> None:
     """Un fournisseur qui bafouille ne doit pas emporter la réponse en cours."""
     reponse = _flux(

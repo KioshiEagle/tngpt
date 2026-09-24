@@ -100,11 +100,8 @@ class LecteurScelle:
 
     def _delta(self, delta: object) -> Iterator[str]:
         """Cède ce qu'un delta apporte : réflexion, texte, arguments d'outil."""
-        # Groq nomme ce champ `reasoning`, DeepSeek `reasoning_content` : le
-        # chal doit fuiter par l'un comme par l'autre.
-        pensee = getattr(delta, "reasoning", None) or getattr(
-            delta, "reasoning_content", None
-        )
+        # `llm` range sous `reasoning` le champ de Groq comme celui de DeepSeek.
+        pensee = getattr(delta, "reasoning", None)
         if pensee:
             if not self._reflexion:
                 self._reflexion = True
