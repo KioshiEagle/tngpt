@@ -568,7 +568,7 @@ def test_le_repli_troque_les_parametres_de_raisonnement() -> None:
     """
     params = _params_pour("openai/gpt-oss-120b", {"reasoning_effort": "none"})
     assert params == {"reasoning_effort": "low"}
-    inchanges = _params_pour("qwen/qwen3.6-27b", {"reasoning_effort": "none"})
+    inchanges = _params_pour("qwen/qwen3.8-27b", {"reasoning_effort": "none"})
     assert inchanges == {"reasoning_effort": "none"}
 
 

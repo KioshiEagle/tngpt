@@ -29,7 +29,7 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 logger = logging.getLogger(__name__)
 
-BASELINE = "qwen/qwen3.6-27b"
+BASELINE = "qwen/qwen3.8-27b"
 CANDIDAT = "openai/gpt-oss-120b"
 
 # Candidats souverains : mêmes questions, mêmes contextes, mais inférence en

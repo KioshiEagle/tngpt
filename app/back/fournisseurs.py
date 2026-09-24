@@ -51,7 +51,9 @@ _PREFIXES = (
     ("sk-", DEEPSEEK),
 )
 
-_GROQ_CHAT = "qwen/qwen3.6-27b"
+# Groq a retiré qwen3.6-27b le 14/09 sans repli automatique (404 sec) ; son
+# successeur qwen3.8-27b garde le même pilotage du raisonnement.
+_GROQ_CHAT = "qwen/qwen3.8-27b"
 _GROQ_REPLI = "openai/gpt-oss-120b"
 _DEEPSEEK_CHAT = "deepseek-v4-flash"
 

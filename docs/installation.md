@@ -37,7 +37,7 @@ cp env.example .env
 | `POSTGRES_PASSWORD` | Mot de passe Postgres utilisé par `docker-compose.yml` |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Identifiants OAuth Google (voir §4) |
 | `GROQ_API_KEY` | Clé Groq de repli, utilisée si le pool de clés en base (panel admin) est vide |
-| `GROQ_CHAT_MODEL` | Modèle utilisé pour générer les réponses du chat (défaut `qwen/qwen3.6-27b`) |
+| `GROQ_CHAT_MODEL` | Modèle utilisé pour générer les réponses du chat (défaut `qwen/qwen3.8-27b`) |
 | `GROQ_METADATA_MODEL` | Modèle utilisé pour l'extraction de métadonnées à l'ingestion (défaut `llama-3.1-8b-instant`) |
 | `QDRANT_URL` / `QDRANT_API_KEY` | Connexion à la base vectorielle Qdrant |
 | `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN` | Accès Workers AI, pour les embeddings et le reranker |
