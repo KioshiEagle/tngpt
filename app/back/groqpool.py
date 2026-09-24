@@ -85,19 +85,32 @@ def _client_for(
         return client
 
 
-def acquire() -> tuple[Client, int | None]:
+def acquire(fournisseurs: frozenset[str] | None = None) -> tuple[Client, int | None]:
     """Retourne (client, id de clé) en répartissant la charge sur le pool.
 
     Round-robin par horodatage, donc cohérent entre workers ; repli sur
     GROQ_API_KEY et id None quand le pool est vide ou hors contexte applicatif.
+    `fournisseurs` restreint le tirage à ceux nommés — le chal RAG l'utilise
+    pour ne jamais tirer une clé dont le fournisseur tait le raisonnement.
     """
     key = None
     try:
-        key = db.session.scalars(
+        candidates = db.session.scalars(
             db.select(GroqKey)
             .where(GroqKey.active.is_(True))
             .order_by(GroqKey.last_used_at.asc().nullsfirst())
-        ).first()
+        ).all()
+        if fournisseurs is None:
+            key = candidates[0] if candidates else None
+        else:
+            key = next(
+                (
+                    k
+                    for k in candidates
+                    if resoudre(k.secret, k.fournisseur) in fournisseurs
+                ),
+                None,
+            )
     except (SQLAlchemyError, RuntimeError):
         # RuntimeError : appel hors contexte applicatif (pas de session).
         key = None

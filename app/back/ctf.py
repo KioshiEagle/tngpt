@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .ctf_filtre import censurer
 from .ctf_rag import OUTILS, LecteurScelle
+from .fournisseurs import RAISONNEMENT_VISIBLE
 from .generate import (
     CHAT_GROQ_PARAMS,
     CallSpec,
@@ -132,4 +133,7 @@ def spec_for(chal: str) -> CallSpec | None:
         system=_rendre(RAG),
         params=RAG_GROQ_PARAMS,
         consume=_consommateur_rag(),
+        # Le pool est multi-fournisseur ; Cerebras et Mistral taisent le
+        # raisonnement, seul canal de fuite du chal.
+        fournisseurs=RAISONNEMENT_VISIBLE,
     )

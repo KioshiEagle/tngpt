@@ -9,6 +9,7 @@ import pytest
 
 from app.back import ctf
 from app.back.ctf_filtre import COUPURE, censurer
+from app.back.fournisseurs import RAISONNEMENT_VISIBLE
 
 
 def _armer(monkeypatch: pytest.MonkeyPatch, *chals: str) -> None:
@@ -48,6 +49,22 @@ def test_les_trois_chals_cohabitent(monkeypatch: pytest.MonkeyPatch) -> None:
     assert ctf.spec_for(ctf.SOCIAL) is not None
     assert ctf.spec_for(ctf.PROMPT) is not None
     assert ctf.spec_for(ctf.RAG) is not None
+
+
+def test_le_chal_rag_epingle_les_fournisseurs_qui_laissent_fuir_le_raisonnement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Régression : le pool multi-fournisseur peut taire le raisonnement.
+
+    Cerebras et Mistral font disparaître ce canal sans lever d'erreur ; le
+    chal doit donc rester épinglé à ceux qui le laissent passer.
+    """
+    monkeypatch.setenv("CTF_FLAG_RAG", "NTN{rag}")
+    monkeypatch.setenv("CTF_RAG_TOKEN", "sceau-x")
+    monkeypatch.setenv("CTF_RAG_ARCHIVE", str(ctf.chemin(ctf.RAG)))
+    spec = ctf.spec_for(ctf.RAG)
+    assert spec is not None
+    assert spec.fournisseurs == RAISONNEMENT_VISIBLE
 
 
 @pytest.mark.parametrize("chal", [ctf.SOCIAL, ctf.PROMPT, ctf.RAG])

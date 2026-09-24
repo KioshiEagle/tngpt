@@ -532,6 +532,9 @@ class CallSpec:
     # social demande de croiser trois informations avec une fiche : le petit
     # modèle en est incapable et refuse jusqu'aux identités justes.
     gros_modele: bool = False
+    # Restreint le tirage du pool à ces fournisseurs (voir `acquire`). Réservé
+    # au chal RAG, dont le raisonnement doit ressortir du flux pour fuiter.
+    fournisseurs: frozenset[str] | None = None
 
 
 # Le chat restitue le contexte, il n'a rien à raisonner : laissé libre, qwen3

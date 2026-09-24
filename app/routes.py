@@ -229,9 +229,10 @@ def _run_chat(
         nom_complet=f"{current_user.user_firstname} {current_user.user_surname}",
     )
 
-    # Prélève une clé du pool Groq (round-robin) avant le streaming, pour pouvoir
-    # attribuer la question à cette clé dans le journal.
-    client, groq_key_id = acquire()
+    # Prélève une clé du pool (round-robin) avant le streaming, pour pouvoir
+    # attribuer la question à cette clé dans le journal. Restreinte au besoin
+    # du spec — le chal RAG exige un fournisseur qui laisse fuir le raisonnement.
+    client, groq_key_id = acquire(spec.fournisseurs)
 
     # Une demande de carte des mers emprunte un chemin distinct : le TOP_K du
     # chat ne suffit pas à énumérer les clubs à travers toutes les archives.

@@ -69,6 +69,12 @@ _EFFORTS_DEEPSEEK = frozenset({"low", "high", "max"})
 # Paramètres que Groq est seul à comprendre.
 _PARAMS_GROQ_SEULEMENT = ("reasoning_format", "reasoning_effort")
 
+# Fournisseurs dont le raisonnement ressort du flux (`reasoning` chez Groq,
+# `reasoning_content` chez DeepSeek). Chez Cerebras et Mistral, `adapter_params`
+# retire la demande sans rien y substituer : le canal de fuite du chal RAG y
+# resterait muet.
+RAISONNEMENT_VISIBLE = frozenset({GROQ, DEEPSEEK})
+
 
 def fournisseur(secret: str) -> str | None:
     """Fournisseur reconnu au préfixe du secret, ou None s'il est inconnu.
