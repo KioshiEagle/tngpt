@@ -20,6 +20,15 @@
         {% else %}
             <p><span class="admin-status admin-status--limited">fermée</span> — le bouton est caché tant que la partie n'est pas ouverte avec une cible et un code.</p>
         {% endif %}
+        {% if ticket %}
+            <form method="post" action="{{ url_for('admin.ticket_dor_basculer') }}"
+                  {% if ticket.ouvert %}onsubmit="return confirm('Désactiver le jeu pour tout le monde ?');"{% endif %}>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="admin-btn {{ 'admin-btn--danger' if ticket.ouvert else 'admin-btn--primary' }}">
+                    {{ "Désactiver le jeu" if ticket.ouvert else "Réactiver le jeu" }}
+                </button>
+            </form>
+        {% endif %}
     </div>
 
     <div class="admin-card admin-card--spaced">

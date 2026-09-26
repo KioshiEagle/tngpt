@@ -793,6 +793,20 @@ def ticket_dor_regler() -> Response:
     return redirect(url_for("admin.ticket_dor_page"))
 
 
+@admin_bp.route("/ticket-dor/bascule", methods=["POST"])
+@admin_required
+def ticket_dor_basculer() -> Response:
+    """Ouvre ou ferme le jeu pour tout le monde, sans toucher aux réglages."""
+    ticket = ticket_dor.partie_ou_nouvelle()
+    ticket.ouvert = not ticket.ouvert
+    ticket.updated_by = current_user.user_id
+    db.session.commit()
+    logger.info("Ticket d'or ouvert=%s par %s", ticket.ouvert, current_user.user_mail)
+    etat = "réactivé" if ticket.ouvert else "désactivé pour tout le monde"
+    flash(f"Ticket d'or {etat}.", "success")
+    return redirect(url_for("admin.ticket_dor_page"))
+
+
 @admin_bp.route("/ticket-dor/nouvelle-partie", methods=["POST"])
 @admin_required
 def ticket_dor_reinitialiser() -> Response:

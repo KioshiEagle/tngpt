@@ -58,6 +58,21 @@ def _joueur(app: Flask, uid: int) -> FlaskClient:
     return client
 
 
+def _monter_le_panel(app: Flask) -> None:
+    """Monte le panel admin et fait de Paul (joueur 2) un administrateur."""
+    from app.back.admin import admin_bp  # noqa: PLC0415
+    from app.extensions import csrf  # noqa: PLC0415
+
+    app.config["WTF_CSRF_ENABLED"] = False
+    csrf.init_app(app)
+    app.register_blueprint(admin_bp)
+    with app.app_context():
+        admin = db.session.get(User, 2)
+        assert admin is not None
+        admin.user_permissions = 1
+        db.session.commit()
+
+
 def _proposer(client: FlaskClient, nom: str) -> TestResponse:
     return client.post("/ticket-dor/chat", json={"message": nom, "proposition": True})
 
@@ -147,17 +162,7 @@ def test_la_page_ramene_le_joueur_sur_sa_conversation(app_jeu: Flask) -> None:
 
 def test_l_admin_regle_la_partie_et_voit_les_joueurs(app_jeu: Flask) -> None:
     """Le panel pose cible, code et ouverture, puis liste qui a joué."""
-    from app.back.admin import admin_bp  # noqa: PLC0415
-    from app.extensions import csrf  # noqa: PLC0415
-
-    app_jeu.config["WTF_CSRF_ENABLED"] = False
-    csrf.init_app(app_jeu)
-    app_jeu.register_blueprint(admin_bp)
-    with app_jeu.app_context():
-        admin = db.session.get(User, 2)
-        assert admin is not None
-        admin.user_permissions = 1
-        db.session.commit()
+    _monter_le_panel(app_jeu)
 
     _proposer(_joueur(app_jeu, 1), "Marie Durand")
     client = _joueur(app_jeu, 2)
@@ -178,3 +183,20 @@ def test_l_admin_regle_la_partie_et_voit_les_joueurs(app_jeu: Flask) -> None:
     page = client.get("/admin/ticket-dor").get_data(as_text=True)
     assert "alice@telecomnancy.net" in page
     assert f"1 / {ticket_dor.MAX_ESSAIS}" in page
+
+
+def test_l_admin_desactive_le_jeu_pour_tout_le_monde(app_jeu: Flask) -> None:
+    """Un clic ferme le jeu : bouton caché, propositions refusées, réglages intacts."""
+    _monter_le_panel(app_jeu)
+
+    _joueur(app_jeu, 2).post("/admin/ticket-dor/bascule")
+    joueur = _joueur(app_jeu, 1)
+    assert not joueur.get("/ticket-dor/etat").get_json()["visible"]
+    assert _proposer(joueur, _CIBLE).status_code == _HTTP_FORBIDDEN
+    with app_jeu.app_context():
+        ticket = ticket_dor.partie()
+        assert ticket is not None
+        assert (ticket.cible, ticket.code) == (_CIBLE, _CODE)
+
+    _joueur(app_jeu, 2).post("/admin/ticket-dor/bascule")
+    assert joueur.get("/ticket-dor/etat").get_json()["jouable"]
