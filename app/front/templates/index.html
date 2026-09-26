@@ -148,7 +148,7 @@
         <div class="input-area">
             <form class="input-row" id="chat-form">
                 {% if jeu %}
-                <textarea id="inp" placeholder="Demande un indice… ou tape un nom et clique sur proposer" autocomplete="off" rows="1"></textarea>
+                <textarea id="inp" placeholder="Demande un indice… ou tape « prénom nom » et clique sur proposer" autocomplete="off" rows="1"></textarea>
                 <button type="submit" class="send" id="sbtn">envoyer →</button>
                 <button type="button" class="send send--proposer" id="propose-btn">🎟️ proposer</button>
                 {% else %}
@@ -157,7 +157,7 @@
                 {% endif %}
             </form>
             {% if jeu %}
-            <div class="hint">« envoyer » demande un indice, c'est gratuit · « proposer » joue un nom et coûte un essai.</div>
+            <div class="hint">« envoyer » demande un indice, gratuit · « proposer » joue un prénom + nom et coûte un essai · chaque essai raté débloque un indice.</div>
             {% else %}
             <div class="hint">TN-GPT peut faire des erreurs. Il est aussi fiable que le BDE.</div>
             {% endif %}

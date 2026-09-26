@@ -431,6 +431,8 @@ def _etat_json(etat: ticket_dor.Etat) -> dict[str, object]:
         "gagnant": etat.gagnant,
         "code": etat.code,
         "conversation_id": etat.conversation_id,
+        "indices_debloques": etat.indices_debloques,
+        "indices_total": etat.indices_total,
     }
 
 
@@ -499,6 +501,13 @@ def _ticket_dor_proposer(user_id: int, nom: str) -> Response | tuple[Response, i
     """Juge une proposition sans le modèle, et la consigne dans la conversation."""
     if len(nom) > ticket_dor.MAX_PROPOSITION:
         msg = f"Un nom, pas un roman (max {ticket_dor.MAX_PROPOSITION} caractères)."
+        return jsonify({"error": msg}), 400
+    # Refusée avant tout comptage : l'essai n'est pas consommé.
+    if not ticket_dor.proposition_valide(nom):
+        msg = (
+            "Pour proposer, donne le prénom ET le nom du 2A. "
+            "Proposition refusée, aucun essai n'a été compté."
+        )
         return jsonify({"error": msg}), 400
 
     # Ouverte avant de juger : le commit de `proposer` l'emporte avec lui.

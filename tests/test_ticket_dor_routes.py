@@ -200,3 +200,14 @@ def test_l_admin_desactive_le_jeu_pour_tout_le_monde(app_jeu: Flask) -> None:
 
     _joueur(app_jeu, 2).post("/admin/ticket-dor/bascule")
     assert joueur.get("/ticket-dor/etat").get_json()["jouable"]
+
+
+def test_une_proposition_d_un_seul_mot_ne_coute_pas_d_essai(app_jeu: Flask) -> None:
+    """Refusée avec une explication, et le compteur reste à cinq."""
+    client = _joueur(app_jeu, 1)
+    reponse = _proposer(client, "Dupont")
+    assert reponse.status_code == 400  # noqa: PLR2004
+    assert "prénom ET le nom" in reponse.get_json()["error"]
+    assert (
+        client.get("/ticket-dor/etat").get_json()["restants"] == ticket_dor.MAX_ESSAIS
+    )

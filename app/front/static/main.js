@@ -456,7 +456,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!etat.visible) return 'La partie est fermée.';
         if (etat.restants === 0) return "Plus d'essais : l'étoile t'échappe.";
         const s = etat.restants > 1 ? 's' : '';
-        return `${etat.restants} essai${s} restant${s} sur ${etat.max_essais}`;
+        const indices = etat.indices_total
+            ? ` · ${etat.indices_debloques} indice${etat.indices_debloques > 1 ? 's' : ''} sur ${etat.indices_total}`
+            : '';
+        return `${etat.restants} essai${s} restant${s} sur ${etat.max_essais}${indices}`;
     }
 
     // L'appel à jouer du chat : invite, relance une partie entamée, ou constate la fin.

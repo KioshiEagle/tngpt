@@ -193,3 +193,37 @@ def test_une_nouvelle_partie_efface_gagnant_essais_et_plateaux() -> None:
     assert ticket_dor.etat(1).jouable
     assert ticket_dor.etat(2).restants == ticket_dor.MAX_ESSAIS
     assert ticket_dor.conversation_de(1) is None
+
+
+@pytest.mark.parametrize("proposition", ["Jean", "DUPONT", "  jean  ", "Jean ?"])
+def test_un_mot_seul_n_est_pas_une_proposition(proposition: str) -> None:
+    """Prénom et nom exigés : un mot seul est refusé avant de coûter un essai."""
+    assert not ticket_dor.proposition_valide(proposition)
+    assert ticket_dor.proposition_valide("Jean Dupont")
+
+
+def _systeme() -> str:
+    ticket = ticket_dor.partie()
+    assert ticket is not None
+    return ticket_dor.spec_for(ticket, 1, 1).system
+
+
+@pytest.mark.usefixtures("app_base")
+def test_un_indice_d_office_puis_un_par_proposition_ratee() -> None:
+    """Réclamer ne débloque rien : seule une proposition ratée ouvre le suivant."""
+    _lancer(indices="- Joue du ukulélé.\n\n- Aime les crêpes.\n• Vient de Brest.")
+    assert (ticket_dor.etat(1).indices_debloques, ticket_dor.etat(1).indices_total) == (
+        1,
+        3,
+    )
+    system = _systeme()
+    assert "Joue du ukulélé." in system
+    assert "crêpes" not in system
+
+    verdict = ticket_dor.proposer(1, "Marie Durand")
+    assert verdict is not None
+    assert "nouvel indice" in verdict.reponse
+    assert ticket_dor.etat(1).indices_debloques == 2  # noqa: PLR2004
+    assert "crêpes" in _systeme()
+    assert "Brest" not in _systeme()
+    assert ticket_dor.etat(2).indices_debloques == 1

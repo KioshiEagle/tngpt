@@ -23,6 +23,8 @@ from .models import Conversation, TicketDor, TicketDorProposition, db
 JEU = "ticket_dor"
 MAX_ESSAIS = 5
 MAX_PROPOSITION = 100
+# Prénom et nom : un mot seul viserait plusieurs personnes et brûlerait un essai.
+MIN_MOTS_PROPOSITION = 2
 _PARTIE_ID = 1
 _PROMPT = Path(__file__).with_name("ticket_dor_prompt.md")
 _SANS_INDICES = "(aucun indice : TN-GPT ne sait rien d'autre que le nom)"
@@ -39,6 +41,8 @@ class Etat:
     gagnant: bool
     code: str | None
     conversation_id: int | None
+    indices_debloques: int = 0
+    indices_total: int = 0
 
 
 @dataclass(frozen=True)
@@ -56,6 +60,11 @@ class Verdict:
 def _mots(texte: str) -> list[str]:
     """Mots d'un nom, sans accents ni casse ni ponctuation."""
     return [m for m in re.split(r"[^0-9a-z]+", normalize(texte)) if m]
+
+
+def proposition_valide(proposition: str) -> bool:
+    """Vrai si la proposition compte au moins un prénom et un nom."""
+    return len(_mots(proposition)) >= MIN_MOTS_PROPOSITION
 
 
 def proposition_juste(proposition: str, cible: str) -> bool:
@@ -122,10 +131,22 @@ def conversation_de(user_id: int) -> Conversation | None:
     ).first()
 
 
+def liste_indices(ticket: TicketDor | None) -> list[str]:
+    """Les indices saisis en admin, un par ligne, puces retirées."""
+    lignes = (ticket.indices or "").splitlines() if ticket is not None else []
+    return [ligne.strip().lstrip("-•*").strip() for ligne in lignes if ligne.strip()]
+
+
+def indices_debloques(ticket: TicketDor | None, utilises: int) -> list[str]:
+    """Un indice d'office, puis un de plus par proposition ratée."""
+    return liste_indices(ticket)[: 1 + utilises]
+
+
 def etat(user_id: int) -> Etat:
     """L'état du jeu vu par ce joueur : bouton, essais, victoire."""
     ticket = partie()
-    restants = max(0, MAX_ESSAIS - essais_utilises(user_id))
+    utilises = essais_utilises(user_id)
+    restants = max(0, MAX_ESSAIS - utilises)
     termine = ticket is not None and ticket.gagnant_id is not None
     gagnant = termine and ticket is not None and ticket.gagnant_id == user_id
     conversation = conversation_de(user_id)
@@ -137,6 +158,8 @@ def etat(user_id: int) -> Etat:
         gagnant=gagnant,
         code=ticket.code if gagnant and ticket is not None else None,
         conversation_id=conversation.conversation_id if conversation else None,
+        indices_debloques=len(indices_debloques(ticket, utilises)),
+        indices_total=len(liste_indices(ticket)),
     )
 
 
@@ -193,6 +216,10 @@ def proposer(user_id: int, proposition: str) -> Verdict | None:
     elif restants > 0:
         pluriel = "s" if restants > 1 else ""
         reponse = f"Raté ! Il te reste {restants} essai{pluriel}."
+        if len(indices_debloques(ticket, utilises + 1)) > len(
+            indices_debloques(ticket, utilises)
+        ):
+            reponse += " Un nouvel indice est débloqué : demande-le à tn-gpt."
     else:
         reponse = "Raté… C'était ton dernier essai : le ticket d'or t'échappe."
     db.session.commit()
@@ -246,7 +273,9 @@ def _consommateur(user_id: int, conversation_id: int) -> CompletionConsumer:
 
 def spec_for(ticket: TicketDor, user_id: int, conversation_id: int) -> CallSpec:
     """CallSpec du chat de jeu : nom et indices dans le prompt, aucune archive."""
-    indices = (ticket.indices or "").strip() or _SANS_INDICES
+    # Le modèle ne voit que les indices débloqués : insister n'en arrache pas d'autres.
+    debloques = indices_debloques(ticket, essais_utilises(user_id))
+    indices = "\n".join(f"- {i}" for i in debloques) or _SANS_INDICES
     system = (
         _PROMPT.read_text(encoding="utf-8")
         .replace("{{CIBLE}}", (ticket.cible or "").strip())
