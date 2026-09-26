@@ -754,8 +754,8 @@ document.addEventListener('DOMContentLoaded', () => {
         msgDiv.addEventListener('mouseenter', () => copyBtn.classList.add('visible'));
         msgDiv.addEventListener('mouseleave', () => copyBtn.classList.remove('visible'));
         messagesContainer.appendChild(msgDiv);
-        // Hors challenge : un encart y serait du bruit dans une épreuve.
-        if (window.CHAT_ENDPOINT === '/chat') window.TNGPT_PROMO?.apresBulle(messagesContainer);
+        // Chat et Ticket d'or, mais pas les chals CTF : un encart y serait du bruit dans une épreuve.
+        if (window.CHAT_ENDPOINT === '/chat' || window.JEU) window.TNGPT_PROMO?.apresBulle(messagesContainer);
         scrollToBottom();
         return msgDiv;
     }
