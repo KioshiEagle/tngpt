@@ -328,6 +328,37 @@ def spec_for(ticket: TicketDor, user_id: int, conversation_id: int) -> CallSpec:
 # --- Administration ------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class NomPropose:
+    """Un nom proposé, toutes graphies confondues, et combien de fois."""
+
+    nom: str
+    nombre: int
+    joueurs: int
+    juste: bool
+
+
+def classement_propositions() -> list[NomPropose]:
+    """Les noms proposés, du plus au moins joué ; casse, accents et ordre confondus."""
+    groupes: dict[tuple[str, ...], list[TicketDorProposition]] = {}
+    for proposition in db.session.scalars(
+        db.select(TicketDorProposition).order_by(TicketDorProposition.created_at)
+    ):
+        cle = tuple(sorted(_mots(proposition.texte)))
+        groupes.setdefault(cle, []).append(proposition)
+    classement = [
+        NomPropose(
+            # La graphie la plus récente : c'est celle qu'on vient de voir passer.
+            nom=props[-1].texte,
+            nombre=len(props),
+            joueurs=len({p.user_id for p in props}),
+            juste=any(p.juste for p in props),
+        )
+        for props in groupes.values()
+    ]
+    return sorted(classement, key=lambda n: n.nombre, reverse=True)
+
+
 def nouvelle_partie() -> None:
     """Remet les compteurs à zéro : plus de gagnant, plus d'essais joués.
 

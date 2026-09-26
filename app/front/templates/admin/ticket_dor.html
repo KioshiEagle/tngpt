@@ -56,6 +56,23 @@
     </div>
 
     <div class="admin-card admin-card--spaced">
+        <h2>Noms proposés <span class="admin-badge" id="classement-direct">en direct</span></h2>
+        <p class="admin-cell-muted" id="classement-vide">Aucun nom proposé pour l'instant.</p>
+        <div class="admin-table-scroll">
+            <table class="admin-table" id="classement" hidden>
+                <thead>
+                    <tr>
+                        <th>Nom proposé</th>
+                        <th class="admin-td-num">Propositions</th>
+                        <th class="admin-td-num">Joueurs</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="admin-card admin-card--spaced">
         <h2>Joueurs</h2>
         {% if joueurs %}
             <div class="admin-table-scroll">
@@ -94,5 +111,42 @@
             <button type="submit" class="admin-btn admin-btn--danger">Nouvelle partie</button>
         </form>
     </div>
+
+    <script>
+        // Relu toutes les 5 s. Noms saisis par les joueurs : textContent, jamais innerHTML.
+        (function () {
+            var table = document.getElementById('classement');
+            var vide = document.getElementById('classement-vide');
+            var badge = document.getElementById('classement-direct');
+            function cellule(texte, classe) {
+                var td = document.createElement('td');
+                td.textContent = texte;
+                if (classe) td.className = classe;
+                return td;
+            }
+            function rafraichir() {
+                fetch("{{ url_for('admin.ticket_dor_propositions') }}")
+                    .then(function (r) { if (!r.ok) throw new Error(); return r.json(); })
+                    .then(function (noms) {
+                        var lignes = noms.map(function (n) {
+                            var tr = document.createElement('tr');
+                            tr.append(
+                                cellule(n.juste ? '✅ ' + n.nom : n.nom),
+                                cellule(n.nombre, 'admin-td-num'),
+                                cellule(n.joueurs, 'admin-td-num')
+                            );
+                            return tr;
+                        });
+                        table.tBodies[0].replaceChildren.apply(table.tBodies[0], lignes);
+                        table.hidden = noms.length === 0;
+                        vide.hidden = noms.length > 0;
+                        badge.textContent = 'en direct · ' + new Date().toLocaleTimeString('fr-FR');
+                    })
+                    .catch(function () { badge.textContent = 'hors ligne'; });
+            }
+            rafraichir();
+            setInterval(rafraichir, 5000);
+        })();
+    </script>
 
 {% endblock %}

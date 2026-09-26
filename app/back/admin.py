@@ -771,6 +771,18 @@ def ticket_dor_page() -> str:
     )
 
 
+@admin_bp.route("/ticket-dor/propositions")
+@admin_required
+def ticket_dor_propositions() -> Response:
+    """Classement des noms proposés, relu en direct par la page du panel."""
+    return jsonify(
+        [
+            {"nom": n.nom, "nombre": n.nombre, "joueurs": n.joueurs, "juste": n.juste}
+            for n in ticket_dor.classement_propositions()
+        ]
+    )
+
+
 @admin_bp.route("/ticket-dor", methods=["POST"])
 @admin_required
 def ticket_dor_regler() -> Response:

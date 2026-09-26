@@ -241,3 +241,17 @@ def test_un_indice_d_office_puis_un_par_proposition_ratee() -> None:
     assert "crêpes" in _systeme()
     assert "Brest" not in _systeme()
     assert ticket_dor.etat(2).indices_debloques == 1
+
+
+@pytest.mark.usefixtures("app_base")
+def test_le_classement_regroupe_les_graphies_et_trie_par_nombre() -> None:
+    """« DURAND Marie » et « marie durand » sont le même nom, compté deux fois."""
+    _lancer()
+    ticket_dor.proposer(1, "Paul Petit")
+    ticket_dor.proposer(1, "Marie Durand")
+    ticket_dor.proposer(2, "Marie DURAND")
+    ticket_dor.proposer(2, "durand marie")
+    classement = ticket_dor.classement_propositions()
+    assert [(n.nombre, n.joueurs) for n in classement] == [(3, 2), (1, 1)]
+    assert classement[0].nom == "durand marie"
+    assert not classement[0].juste

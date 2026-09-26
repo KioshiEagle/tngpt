@@ -211,3 +211,14 @@ def test_une_proposition_d_un_seul_mot_ne_coute_pas_d_essai(app_jeu: Flask) -> N
     assert (
         client.get("/ticket-dor/etat").get_json()["restants"] == ticket_dor.MAX_ESSAIS
     )
+
+
+def test_le_panel_sert_le_classement_en_direct(app_jeu: Flask) -> None:
+    """La page relit ce JSON : il doit exister et suivre les propositions."""
+    _monter_le_panel(app_jeu)
+    _proposer(_joueur(app_jeu, 1), "Marie Durand")
+    admin = _joueur(app_jeu, 2)
+    assert admin.get("/admin/ticket-dor/propositions").get_json() == [
+        {"nom": "Marie Durand", "nombre": 1, "joueurs": 1, "juste": False}
+    ]
+    assert "classement-direct" in admin.get("/admin/ticket-dor").get_data(as_text=True)
