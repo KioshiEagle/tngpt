@@ -7,12 +7,15 @@ from flask import (
     Response,
     abort,
     jsonify,
+    redirect,
     render_template,
     request,
     stream_with_context,
 )
 from flask_login import current_user, login_required
+from werkzeug.wrappers import Response as Redirection
 
+from .back import ticket_dor
 from .back.brainrot import BRAINROT_SPEC
 from .back.clubs import lookup_context
 from .back.ctf import SOCIAL, spec_for
@@ -45,6 +48,8 @@ HISTORY_CONTEXT_SIZE = 4
 # Longueur du titre auto-généré à partir du premier message, alignée sur la
 # troncature déjà faite côté front (voir shortTitle dans main.js).
 TITLE_MAX_LENGTH = 40
+_HTTP_FORBIDDEN = 403
+_HTTP_CONFLICT = 409
 _HTTP_TOO_MANY_REQUESTS = 429
 # `lookup_context` cherche des entités dans un texte : on lui en fournit un qui
 # nomme le CETEN, pour épingler la fiche de son bureau quel que soit le message.
@@ -131,6 +136,23 @@ def _reflex_response(
     return response
 
 
+def _quota_depasse() -> tuple[Response, int] | None:
+    """Réponse 429 si le quota journalier du compte est atteint, sinon None."""
+    status = quota_status(current_user)  # ty: ignore[invalid-argument-type]
+    if not status.exceeded:
+        return None
+    return jsonify(
+        {
+            "error": (
+                f"Quota journalier atteint ({status.limit} questions). Réessaie demain."
+            ),
+            "quota": status.limit,
+            "used": status.used,
+            "reset_in": seconds_until_reset(),
+        }
+    ), _HTTP_TOO_MANY_REQUESTS
+
+
 def _resolve_conversation(
     conversation_id: int | None, user_id: int, user_message: str
 ) -> Conversation:
@@ -188,19 +210,9 @@ def _run_chat(
 
     # Quota journalier, là où le rate-limiter ne borne que la rafale. Vérifié
     # avant le retrieval pour ne rien consommer une fois la limite atteinte.
-    status = quota_status(current_user)  # ty: ignore[invalid-argument-type]
-    if status.exceeded:
-        return jsonify(
-            {
-                "error": (
-                    f"Quota journalier atteint ({status.limit} questions). "
-                    "Réessaie demain."
-                ),
-                "quota": status.limit,
-                "used": status.used,
-                "reset_in": seconds_until_reset(),
-            }
-        ), _HTTP_TOO_MANY_REQUESTS
+    depasse = _quota_depasse()
+    if depasse is not None:
+        return depasse
 
     # Résolus hors du générateur : le contexte de requête ne doit pas être
     # une dépendance du streaming.
@@ -210,6 +222,9 @@ def _run_chat(
     conversation = _resolve_conversation(
         data.get("conversation_id"), user_id, user_message
     )
+    if conversation.jeu is not None:
+        msg = "Cette conversation est un plateau de jeu, elle se joue sur sa page."
+        return jsonify({"error": msg}), _HTTP_CONFLICT
 
     # Plaisanteries maison : la réponse est connue d'avance, elle ne vaut ni un
     # aller-retour Qdrant ni un appel Groq (voir `back/reflexes.py`).
@@ -301,6 +316,7 @@ def list_conversations() -> Response:
                 "id": c.conversation_id,
                 "title": c.title,
                 "updated_at": c.updated_at.isoformat(),
+                "jeu": c.jeu,
             }
             for c in conversations
         ]
@@ -317,6 +333,7 @@ def get_conversation(conversation_id: int) -> Response:
             "id": conversation.conversation_id,
             "title": conversation.title,
             "messages": conversation.messages,
+            "jeu": conversation.jeu,
         }
     )
 
@@ -396,3 +413,148 @@ def ctf_index(chal: str) -> str:
         chat_endpoint=f"/ctf/{chal}/chat",
         nouvelle_conv=f"/ctf/{chal}",
     )
+
+
+# --- Ticket d'or ---------------------------------------------------------------
+
+_TITRE_TICKET = "🎟️ Ticket d'or"
+
+
+def _etat_json(etat: ticket_dor.Etat) -> dict[str, object]:
+    """L'état du jeu tel que le front le lit."""
+    return {
+        "visible": etat.visible,
+        "jouable": etat.jouable,
+        "restants": etat.restants,
+        "max_essais": ticket_dor.MAX_ESSAIS,
+        "termine": etat.termine,
+        "gagnant": etat.gagnant,
+        "code": etat.code,
+        "conversation_id": etat.conversation_id,
+    }
+
+
+@bp.route("/ticket-dor/etat", methods=["GET"])
+@login_required
+def ticket_dor_etat() -> Response:
+    """État du jeu pour le compte connecté : bouton, essais, victoire."""
+    return jsonify(_etat_json(ticket_dor.etat(current_user.user_id)))
+
+
+@bp.route("/ticket-dor", strict_slashes=False)
+@login_required
+def ticket_dor_index() -> str | Redirection:
+    """Page du jeu, rouverte sur la conversation du joueur s'il en a une."""
+    etat = ticket_dor.etat(current_user.user_id)
+    if etat.conversation_id is None and not etat.jouable:
+        return redirect("/")
+    # Une seule conversation de jeu par joueur : on y retourne toujours.
+    if etat.conversation_id is not None and request.args.get("c") != str(
+        etat.conversation_id
+    ):
+        return redirect(f"/ticket-dor?c={etat.conversation_id}")
+    return render_template(
+        "index.html",
+        quote=quote(),
+        chat_endpoint="/ticket-dor/chat",
+        nouvelle_conv="/ticket-dor",
+        jeu=ticket_dor.JEU,
+    )
+
+
+def _conversation_de_jeu(user_id: int) -> Conversation:
+    """La conversation de jeu du joueur, ouverte au besoin."""
+    conversation = ticket_dor.conversation_de(user_id)
+    if conversation is None:
+        conversation = Conversation(
+            user_id=user_id, title=_TITRE_TICKET, messages=[], jeu=ticket_dor.JEU
+        )
+        db.session.add(conversation)
+        db.session.flush()
+    return conversation
+
+
+@bp.route("/ticket-dor/chat", methods=["POST"])
+@login_required
+@limiter.limit(chat_rate_limit)
+def ticket_dor_chat() -> Response | tuple[Response, int]:
+    """Un tour de jeu : proposition jugée par le serveur, ou chat pour des indices."""
+    data = request.get_json(silent=True) or {}
+    message = str(data.get("message", "")).strip()
+    if not message:
+        return jsonify({"error": "Message manquant"}), 400
+
+    user_id = current_user.user_id
+    if not ticket_dor.etat(user_id).jouable:
+        msg = "Le Ticket d'or n'est plus jouable pour toi."
+        return jsonify({"error": msg}), _HTTP_FORBIDDEN
+
+    if data.get("proposition"):
+        return _ticket_dor_proposer(user_id, message)
+    return _ticket_dor_discuter(user_id, message)
+
+
+def _ticket_dor_proposer(user_id: int, nom: str) -> Response | tuple[Response, int]:
+    """Juge une proposition sans le modèle, et la consigne dans la conversation."""
+    if len(nom) > ticket_dor.MAX_PROPOSITION:
+        msg = f"Un nom, pas un roman (max {ticket_dor.MAX_PROPOSITION} caractères)."
+        return jsonify({"error": msg}), 400
+
+    # Ouverte avant de juger : le commit de `proposer` l'emporte avec lui.
+    conversation = _conversation_de_jeu(user_id)
+    verdict = ticket_dor.proposer(user_id, nom)
+    if verdict is None:
+        msg = "Le Ticket d'or n'est plus jouable pour toi."
+        return jsonify({"error": msg}), _HTTP_FORBIDDEN
+
+    conversation.messages = [
+        *conversation.messages,
+        {"role": "user", "content": f"🎟️ Je propose : {nom}"},
+        {"role": "assistant", "content": verdict.reponse},
+    ]
+    db.session.commit()
+    response = Response(verdict.reponse, mimetype="text/plain")
+    response.headers["X-Conversation-Id"] = str(conversation.conversation_id)
+    response.headers["X-Essais-Restants"] = str(verdict.restants)
+    return response
+
+
+def _ticket_dor_discuter(user_id: int, message: str) -> Response | tuple[Response, int]:
+    """Chat d'indices : sans archives ni fiches, et gagnant si le nom échappe."""
+    if len(message) > MAX_MESSAGE_LENGTH:
+        msg = f"Message trop long (max {MAX_MESSAGE_LENGTH} caractères)"
+        return jsonify({"error": msg}), 400
+    depasse = _quota_depasse()
+    if depasse is not None:
+        return depasse
+
+    ticket = ticket_dor.partie()
+    if ticket is None:
+        abort(404)
+    conversation = _conversation_de_jeu(user_id)
+    spec = ticket_dor.spec_for(ticket, user_id, conversation.conversation_id)
+    req = GenerateRequest(
+        question=message,
+        history=conversation.messages[-HISTORY_CONTEXT_SIZE:],
+        top_k=0,
+        user_name=current_user.user_firstname,
+    )
+    client, groq_key_id = acquire(spec.fournisseurs)
+    log_retrieval(
+        user_id=user_id,
+        question=message,
+        top_k=0,
+        results=[],
+        groq_key_id=groq_key_id,
+    )
+    conversation.messages = [
+        *conversation.messages,
+        {"role": "user", "content": message},
+    ]
+    db.session.commit()
+    conversation_id = conversation.conversation_id
+
+    flux = _stream_answer(req, [], client, conversation_id, spec)
+    response = Response(stream_with_context(flux), mimetype="text/plain")
+    response.headers["X-Conversation-Id"] = str(conversation_id)
+    return response

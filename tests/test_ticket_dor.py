@@ -172,7 +172,7 @@ def test_un_seul_gagnant_meme_par_le_chat() -> None:
 @pytest.mark.usefixtures("app_base")
 def test_le_prompt_porte_cible_et_indices_mais_jamais_le_code() -> None:
     """Le code ne doit pas être extractible : le modèle ne le connaît pas."""
-    spec = ticket_dor.spec_for(_lancer(indices="Joue du ukulélé."))
+    spec = ticket_dor.spec_for(_lancer(indices="Joue du ukulélé."), 1, 1)
     assert _CIBLE in spec.system
     assert "Joue du ukulélé." in spec.system
     assert _CODE not in spec.system

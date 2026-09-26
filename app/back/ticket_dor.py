@@ -4,12 +4,20 @@ Cible, code et indices viennent du panel admin : rien de nominatif dans le dép�
 """
 
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
 from .clubs import motif_mot, normalize
-from .generate import CHAT_GROQ_PARAMS, CallSpec, build_prompt_anonyme
+from .generate import (
+    CHAT_GROQ_PARAMS,
+    CallSpec,
+    CompletionConsumer,
+    _stream_chunks,
+    build_prompt_anonyme,
+)
+from .llm import Chunk
 from .models import Conversation, TicketDor, TicketDorProposition, db
 
 JEU = "ticket_dor"
@@ -219,7 +227,24 @@ def victoire_par_le_chat(
 # --- Modèle --------------------------------------------------------------------
 
 
-def spec_for(ticket: TicketDor) -> CallSpec:
+def _consommateur(user_id: int, conversation_id: int) -> CompletionConsumer:
+    """Lecteur du chat de jeu : la réponse, puis l'annonce si le nom y a échappé."""
+
+    def consume(completion: Iterator[Chunk]) -> Iterator[str]:
+        sortie = ""
+        for morceau in _stream_chunks(completion):
+            sortie += morceau
+            yield morceau
+        conversation = db.session.get(Conversation, conversation_id)
+        messages = conversation.messages if conversation is not None else []
+        annonce = victoire_par_le_chat(user_id, messages, sortie)
+        if annonce:
+            yield f"\n\n{annonce}"
+
+    return consume
+
+
+def spec_for(ticket: TicketDor, user_id: int, conversation_id: int) -> CallSpec:
     """CallSpec du chat de jeu : nom et indices dans le prompt, aucune archive."""
     indices = (ticket.indices or "").strip() or _SANS_INDICES
     system = (
@@ -233,6 +258,7 @@ def spec_for(ticket: TicketDor) -> CallSpec:
         system=system,
         params=CHAT_GROQ_PARAMS,
         build=build_prompt_anonyme,
+        consume=_consommateur(user_id, conversation_id),
         gros_modele=True,
     )
 
