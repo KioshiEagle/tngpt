@@ -136,6 +136,11 @@ function renderReflexion(bubble, text) {
     box.querySelector('.msg-reasoning-body').textContent = text;
 }
 
+// Sur la page du jeu, la bulle qui annonce le gagnant brille (voir ticket_dor.annonce_victoire).
+function marquerVictoire(msg, raw) {
+    if (window.JEU && msg) msg.classList.toggle('msg--victoire', raw.includes("**Ticket d'or !**"));
+}
+
 // Point d'entrée unique : raisonnement dans son <details>, prose dans .msg-text,
 // carte dans son voisin.
 function renderAssistant(bubble, raw) {
@@ -144,6 +149,7 @@ function renderAssistant(bubble, raw) {
     if (reflexion !== null) renderReflexion(bubble, reflexion);
     const { prose, carte, complete } = splitResponse(rest);
     if (textEl) textEl.innerHTML = marked.parse(prose);
+    marquerVictoire(bubble.closest('.msg'), raw);
     bubble.dataset.raw = raw;
     if (carte && complete) renderTreasureMap(bubble, carte);
 }
@@ -437,36 +443,58 @@ document.addEventListener('DOMContentLoaded', () => {
     loadConversations();
 
     // --- Ticket d'or ---
-    const ticketBtn = document.getElementById('ticket-btn');
+    const ticketCtas = document.querySelectorAll('.ticket-cta');
     const proposeBtn = document.getElementById('propose-btn');
-    const ticketHint = document.getElementById('ticket-hint');
+    const jeuEssais = document.getElementById('jeu-essais');
+    const jeuStatut = document.getElementById('jeu-statut');
     let ticketJouable = false;
     let pendingProposition = false;
 
-    function ticketMessage(etat) {
-        if (etat.gagnant) return `🎟️ Gagné ! Ton code : ${etat.code} — à remettre en main propre au 2A.`;
+    function ticketStatut(etat) {
+        if (etat.gagnant) return `Gagné ! Ton code : ${etat.code} — à remettre en main propre au 2A.`;
         if (etat.termine) return "Le ticket d'or a été trouvé : partie terminée.";
         if (!etat.visible) return 'La partie est fermée.';
-        if (etat.restants === 0) return "Plus d'essais : le ticket d'or t'échappe.";
+        if (etat.restants === 0) return "Plus d'essais : l'étoile t'échappe.";
         const s = etat.restants > 1 ? 's' : '';
-        return `${etat.restants} essai${s} restant${s} sur ${etat.max_essais} · un seul gagnant`;
+        return `${etat.restants} essai${s} restant${s} sur ${etat.max_essais}`;
     }
 
-    function applyTicketEtat(etat) {
-        ticketJouable = etat.jouable;
-        ticketBtn.hidden = !etat.visible;
-        ticketBtn.classList.toggle('ticket-btn--grise', !etat.jouable);
-        ticketBtn.setAttribute('aria-disabled', String(!etat.jouable));
-        ticketBtn.classList.toggle('active', Boolean(window.JEU));
-        if (etat.gagnant) ticketBtn.textContent = '🎟️ Ticket d\'or gagné !';
-        else if (etat.termine) ticketBtn.textContent = '🎟️ Ticket d\'or trouvé';
-        else if (!etat.jouable) ticketBtn.textContent = '🎟️ Plus d\'essais';
-        if (!window.JEU) return;
-        ticketHint.textContent = ticketMessage(etat);
+    // L'appel à jouer du chat : invite, relance une partie entamée, ou constate la fin.
+    function applyCta(etat) {
+        const [detail, jouer] = etat.gagnant ? ['Tu as trouvé le 2A mystère !', 'Gagné']
+            : etat.termine ? ["Le 2A mystère a été trouvé", 'Terminé']
+            : !etat.jouable ? ["Tu as joué tous tes essais", 'Terminé']
+            : etat.conversation_id ? [`Il te reste ${etat.restants} essai${etat.restants > 1 ? 's' : ''}`, 'Reprendre →']
+            : ['Trouve le 2A mystère et gagne une étoile', 'Jouer →'];
+        ticketCtas.forEach((cta) => {
+            cta.hidden = !etat.visible;
+            cta.classList.toggle('ticket-cta--grise', !etat.jouable);
+            cta.setAttribute('aria-disabled', String(!etat.jouable));
+            cta.querySelector('.ticket-cta-detail').textContent = detail;
+            cta.querySelector('.ticket-cta-jouer').textContent = jouer;
+        });
+    }
+
+    // Le bandeau du jeu : un ticket par essai, barré une fois joué.
+    function applyBandeau(etat) {
+        jeuEssais.replaceChildren(...Array.from({ length: etat.max_essais }, (_, i) => {
+            const ticket = document.createElement('span');
+            ticket.className = i < etat.restants ? 'jeu-ticket' : 'jeu-ticket jeu-ticket--joue';
+            ticket.textContent = '🎟️';
+            return ticket;
+        }));
+        jeuStatut.textContent = ticketStatut(etat);
+        document.documentElement.toggleAttribute('data-jeu-fini', !etat.jouable);
         // Pendant un flux, le bouton envoyer sert de stop : on n'y touche pas.
         if (!sendBtn.classList.contains('stop-mode')) sendBtn.disabled = !etat.jouable;
         proposeBtn.disabled = !etat.jouable;
         inp.disabled = !etat.jouable;
+    }
+
+    function applyTicketEtat(etat) {
+        ticketJouable = etat.jouable;
+        if (window.JEU) applyBandeau(etat);
+        else applyCta(etat);
     }
 
     async function refreshTicket() {
@@ -474,13 +502,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch('/ticket-dor/etat');
             if (res.ok) applyTicketEtat(await res.json());
         } catch {
-            // Hors ligne : le bouton reste caché, le chat fonctionne quand même.
+            // Hors ligne : l'appel reste caché, le chat fonctionne quand même.
         }
     }
 
-    ticketBtn.addEventListener('click', (e) => {
-        if (!ticketJouable || window.JEU) e.preventDefault();
-    });
+    ticketCtas.forEach((cta) => cta.addEventListener('click', (e) => {
+        if (!ticketJouable) e.preventDefault();
+    }));
 
     proposeBtn?.addEventListener('click', () => {
         if (!inp.value.trim() || sendBtn.classList.contains('stop-mode')) return;
@@ -684,7 +712,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const whoDiv = document.createElement('div');
         whoDiv.className = 'msg-who';
-        whoDiv.innerHTML = `${role === 'user' ? 'vous' : 'TN-GPT'} <span class="msg-time">${time}</span>`;
+        const auteur = role === 'user' ? 'vous' : window.JEU ? 'TN-GPT · maître du jeu' : 'TN-GPT';
+        whoDiv.innerHTML = `${auteur} <span class="msg-time">${time}</span>`;
+        if (window.JEU && role === 'user' && content.startsWith('🎟️ Je propose')) {
+            msgDiv.classList.add('msg--proposition');
+        }
 
         const bubbleDiv = document.createElement('div');
         bubbleDiv.className = 'msg-bubble';
@@ -713,6 +745,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         msgDiv.appendChild(whoDiv);
         msgDiv.appendChild(bubbleDiv);
+        // Rendue avant d'être rattachée : `renderAssistant` n'a pas pu trouver son .msg.
+        if (role === 'assistant') marquerVictoire(msgDiv, content);
         msgDiv.appendChild(copyBtn);
         msgDiv.addEventListener('mouseenter', () => copyBtn.classList.add('visible'));
         msgDiv.addEventListener('mouseleave', () => copyBtn.classList.remove('visible'));

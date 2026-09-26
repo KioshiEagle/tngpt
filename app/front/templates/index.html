@@ -42,8 +42,6 @@
         </div>
 
         <a href="{{ nouvelle_conv | default('/') }}" class="new-btn">+ nouvelle conv.</a>
-        {# Caché tant que /ticket-dor/etat ne dit pas la partie lancée : main.js l'affiche. #}
-        <a href="/ticket-dor" class="ticket-btn" id="ticket-btn" hidden>🎟️ Ticket d'or</a>
 
         <div class="conv-section">Récent</div>
         <nav class="conv-list" id="conv-list"></nav>
@@ -88,7 +86,26 @@
     </aside>
 
     <main class="main">
+        {% if jeu %}
+        {# Bandeau du jeu : rappelle à chaque instant qu'on est dans une partie, et son score. #}
+        <div class="jeu-bandeau">
+            <div class="jeu-bandeau-titre">🎟️ Ticket d'or <span>mini-jeu</span></div>
+            <div class="jeu-bandeau-regle">Tire des indices à tn-gpt, puis propose un nom. Un seul 1A gagnera l'étoile.</div>
+            <div class="jeu-bandeau-score">
+                <span class="jeu-essais" id="jeu-essais" aria-hidden="true"></span>
+                <span class="jeu-statut" id="jeu-statut">Chargement de la partie…</span>
+            </div>
+        </div>
+        {% endif %}
         <div class="authors-corner">
+            {% if not jeu %}
+            {# Caché tant que /ticket-dor/etat ne dit pas la partie lancée : main.js l'affiche. #}
+            <a href="/ticket-dor" class="ticket-cta ticket-cta--haut" hidden>
+                    <span class="ticket-cta-icone" aria-hidden="true">🎟️</span>
+                    <span class="ticket-cta-texte"><strong>Ticket d'or</strong> <span class="ticket-cta-detail">Trouve le 2A mystère et gagne une étoile</span></span>
+                    <span class="ticket-cta-jouer">Jouer →</span>
+                </a>
+            {% endif %}
             <a href="https://ceten.fr" target="_blank" rel="noopener" class="author-link">
                 <img src="/static/logo_ceten.webp" class="author-logo" alt="CETEN" title="CETEN" width="277" height="112">
             </a>
@@ -104,6 +121,13 @@
         </div>
         <div class="messages" id="messages">
             <div class="empty" id="empty-state">
+                {% if not jeu %}
+                <a href="/ticket-dor" class="ticket-cta" hidden>
+                    <span class="ticket-cta-icone" aria-hidden="true">🎟️</span>
+                    <span class="ticket-cta-texte"><strong>Ticket d'or</strong> <span class="ticket-cta-detail">Trouve le 2A mystère et gagne une étoile</span></span>
+                    <span class="ticket-cta-jouer">Jouer →</span>
+                </a>
+                {% endif %}
                 <img src="/static/ducky_cassis.webp" class="landing-ducky landing-ducky--normal" alt="NeuraTN" width="96" height="96">
                 <img src="{{ asset('ducky_brainrot.svg') }}" class="landing-ducky landing-ducky--brainrot" alt="NeuraTN, mode brainrot" width="96" height="96">
                 <img src="{{ asset('ducky_flamme.svg') }}" class="landing-ducky landing-ducky--flamme" alt="NeuraTN, mode brainrot flamme" width="96" height="96">
@@ -133,7 +157,7 @@
                 {% endif %}
             </form>
             {% if jeu %}
-            <div class="hint" id="ticket-hint">Chargement de la partie…</div>
+            <div class="hint">« envoyer » demande un indice, c'est gratuit · « proposer » joue un nom et coûte un essai.</div>
             {% else %}
             <div class="hint">TN-GPT peut faire des erreurs. Il est aussi fiable que le BDE.</div>
             {% endif %}

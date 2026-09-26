@@ -258,36 +258,6 @@ body {
 [data-jeu] { --primary: var(--or); --primary-light: var(--or-clair); --bubble-user: #b45309; }
 [data-theme="dark"][data-jeu] { --bubble-user: #b45309; }
 
-.ticket-btn {
-    display: block;
-    text-decoration: none;
-    border-radius: 8px;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 13px;
-    font-weight: 600;
-    color: #451a03;
-    padding: 10px 12px;
-    margin: -8px 0 20px;
-    background: var(--or-degrade);
-    box-shadow: 0 2px 10px rgba(245, 158, 11, 0.35);
-    transition: transform 0.15s, box-shadow 0.15s;
-}
-[data-theme="dark"] .ticket-btn { color: #fffbeb; }
-.ticket-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(245, 158, 11, 0.5); }
-.ticket-btn.active { outline: 2px solid var(--or); outline-offset: 2px; }
-.ticket-btn[hidden] { display: none; }
-.ticket-btn--grise,
-.ticket-btn--grise:hover {
-    background: var(--bg-input);
-    color: var(--text-muted);
-    box-shadow: none;
-    transform: none;
-    cursor: not-allowed;
-    border: 1px dashed var(--border);
-}
-
-.send--proposer { color: var(--or); }
-.input-row textarea:disabled { cursor: not-allowed; }
 
 .conv-section {
     font-family: 'IBM Plex Mono', monospace;
@@ -1363,4 +1333,135 @@ body.landing .landing-ducky--flamme { display: none; }
 [data-flamme="on"]:not([data-brainrot="on"]) .promo--bleu {
     --promo-accent: #3f51e0;
     --promo-accent-titre: #9aa6ff;
+}
+
+/* --- Ticket d'or : appel à jouer sur le chat, et page de jeu --- */
+.ticket-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px 8px 14px;
+    border-radius: 999px;
+    background: var(--or-degrade);
+    color: #451a03;
+    text-decoration: none;
+    font-size: 15px;
+    box-shadow: 0 3px 14px rgba(245, 158, 11, 0.4);
+    transition: transform 0.15s, box-shadow 0.15s;
+    animation: ticket-appel 2.8s ease-in-out infinite;
+}
+[data-theme="dark"] .ticket-cta { color: #fffbeb; }
+.ticket-cta[hidden] { display: none; }
+.ticket-cta:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(245, 158, 11, 0.55); }
+.ticket-cta-icone { font-size: 20px; }
+.ticket-cta-texte strong { font-weight: 800; margin-right: 4px; }
+.ticket-cta-jouer {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 5px 12px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.55);
+}
+[data-theme="dark"] .ticket-cta-jouer { background: rgba(0, 0, 0, 0.25); }
+@keyframes ticket-appel {
+    0%, 100% { box-shadow: 0 3px 14px rgba(245, 158, 11, 0.35); }
+    50% { box-shadow: 0 3px 22px rgba(245, 158, 11, 0.7); }
+}
+@media (prefers-reduced-motion: reduce) { .ticket-cta { animation: none; } }
+.ticket-cta--grise,
+.ticket-cta--grise:hover {
+    background: var(--bg-input);
+    color: var(--text-muted);
+    box-shadow: none;
+    transform: none;
+    animation: none;
+    cursor: not-allowed;
+    border: 1px dashed var(--border);
+}
+/* Accueil : au-dessus du canard. Dans une conv : en haut à gauche, face aux logos. */
+body.landing .empty .ticket-cta { margin-bottom: 20px; }
+.ticket-cta--haut { margin-right: auto; }
+body.landing .ticket-cta--haut { display: none; }
+
+/* Page du jeu : fond doré, bandeau fixe, tickets comme compteur d'essais. */
+[data-jeu] .main {
+    background:
+        radial-gradient(ellipse at top, color-mix(in srgb, var(--or) 14%, transparent), transparent 60%),
+        var(--bg);
+}
+[data-jeu] .authors-corner { display: none; }
+.jeu-bandeau {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 6px 18px;
+    padding: 12px 24px;
+    background: var(--or-degrade);
+    color: #451a03;
+    box-shadow: 0 2px 12px rgba(245, 158, 11, 0.3);
+}
+[data-theme="dark"] .jeu-bandeau { color: #fffbeb; }
+body.landing .jeu-bandeau { position: absolute; left: 0; right: 0; }
+.jeu-bandeau-titre {
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 700;
+    font-size: 16px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+}
+.jeu-bandeau-titre span {
+    font-size: 11px;
+    padding: 2px 8px;
+    margin-left: 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.55);
+    vertical-align: middle;
+}
+[data-theme="dark"] .jeu-bandeau-titre span { background: rgba(0, 0, 0, 0.25); }
+.jeu-bandeau-regle { font-size: 14px; }
+.jeu-bandeau-score { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.jeu-essais { display: flex; gap: 4px; font-size: 20px; }
+.jeu-ticket--joue { filter: grayscale(1); opacity: 0.35; }
+.jeu-statut { font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; }
+
+[data-jeu] .msg.user .msg-who { color: var(--or); }
+[data-jeu] .msg.assistant .msg-who { color: var(--or); font-weight: 600; }
+[data-jeu] .input-row { border-color: color-mix(in srgb, var(--or) 55%, var(--border)); }
+[data-jeu] .input-row textarea:disabled { cursor: not-allowed; }
+[data-jeu-fini] .input-row { opacity: 0.6; }
+
+/* Une proposition se lit comme un ticket déchiré, pas comme un message. */
+.msg.user.msg--proposition .msg-text {
+    background: var(--or-clair);
+    color: var(--or);
+    font-weight: 700;
+    border: 2px dashed var(--or);
+}
+/* La victoire, elle, brille. */
+.msg.assistant.msg--victoire .msg-text {
+    background: var(--or-degrade);
+    color: #451a03;
+    box-shadow: 0 0 0 3px var(--or-clair), 0 6px 24px rgba(245, 158, 11, 0.5);
+}
+[data-theme="dark"] .msg.assistant.msg--victoire .msg-text { color: #fffbeb; }
+
+.send--proposer {
+    color: #451a03;
+    background: var(--or-degrade);
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-weight: 700;
+}
+[data-theme="dark"] .send--proposer { color: #fffbeb; }
+.send--proposer:disabled { background: none; color: #c7c7cc; }
+
+@media (max-width: 768px) {
+    .ticket-cta-detail { display: none; }
+    .jeu-bandeau { grid-template-columns: 1fr auto; padding: 10px 16px 10px 60px; }
+    .jeu-bandeau-regle { display: none; }
 }
