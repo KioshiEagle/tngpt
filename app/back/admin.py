@@ -23,6 +23,7 @@ from werkzeug.wrappers import Response
 
 from app.extensions import CHAT_RATE_DEFAULT, CHAT_RATE_LIMITED
 
+from . import ticket_dor
 from .catalog import (
     delete_document,
     reset_stale_ingestions,
@@ -45,6 +46,7 @@ from .models import (
     GroqKey,
     Query,
     RetrievalEvent,
+    TicketDorProposition,
     User,
     db,
 )
@@ -743,3 +745,59 @@ def update_permissions(user_id: int) -> Response:
     )
     flash(f"Permissions de {user.user_firstname} mises à jour.", "success")
     return redirect(url_for("admin.permissions_page"))
+
+
+@admin_bp.route("/ticket-dor")
+@admin_required
+def ticket_dor_page() -> str:
+    """Réglages du Ticket d'or, gagnant et essais joués par chaque joueur."""
+    ticket = ticket_dor.partie()
+    joueurs = db.session.execute(
+        db.select(
+            User,
+            db.func.count(TicketDorProposition.proposition_id),
+            db.func.max(TicketDorProposition.created_at),
+        )
+        .join(TicketDorProposition, TicketDorProposition.user_id == User.user_id)
+        .group_by(User.user_id)
+        .order_by(db.func.max(TicketDorProposition.created_at).desc())
+    ).all()
+    return render_template(
+        "admin/ticket_dor.html",
+        ticket=ticket,
+        lancee=ticket_dor.lancee(ticket),
+        joueurs=joueurs,
+        max_essais=ticket_dor.MAX_ESSAIS,
+    )
+
+
+@admin_bp.route("/ticket-dor", methods=["POST"])
+@admin_required
+def ticket_dor_regler() -> Response:
+    """Enregistre cible, code, indices et ouverture de la partie."""
+    ticket = ticket_dor.partie_ou_nouvelle()
+    ticket.cible = (request.form.get("cible") or "").strip()[:150] or None
+    ticket.code = (request.form.get("code") or "").strip()[:100] or None
+    ticket.indices = (request.form.get("indices") or "").strip() or None
+    ticket.ouvert = request.form.get("ouvert") == "on"
+    ticket.updated_by = current_user.user_id
+    db.session.commit()
+    # Ni cible ni code au journal : il est lisible par plus de monde que le panel.
+    logger.info(
+        "Ticket d'or réglé par %s (ouvert=%s)", current_user.user_mail, ticket.ouvert
+    )
+    if ticket.ouvert and not ticket_dor.lancee(ticket):
+        flash("Ouvert, mais invisible tant que cible et code manquent.", "warning")
+    else:
+        flash("Ticket d'or enregistré.", "success")
+    return redirect(url_for("admin.ticket_dor_page"))
+
+
+@admin_bp.route("/ticket-dor/nouvelle-partie", methods=["POST"])
+@admin_required
+def ticket_dor_reinitialiser() -> Response:
+    """Efface gagnant et essais : tout le monde repart à cinq."""
+    ticket_dor.nouvelle_partie()
+    logger.info("Ticket d'or remis à zéro par %s", current_user.user_mail)
+    flash("Nouvelle partie : gagnant et essais effacés.", "success")
+    return redirect(url_for("admin.ticket_dor_page"))

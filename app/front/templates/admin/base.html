@@ -51,6 +51,10 @@
                class="admin-nav-item {% if request.endpoint == 'admin.groq_keys_page' %}is-active{% endif %}">
                 Clés API
             </a>
+            <a href="{{ url_for('admin.ticket_dor_page') }}"
+               class="admin-nav-item {% if request.endpoint == 'admin.ticket_dor_page' %}is-active{% endif %}">
+                Ticket d'or
+            </a>
         </nav>
 
         <div class="admin-sidebar-footer">

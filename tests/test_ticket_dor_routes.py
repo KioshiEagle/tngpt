@@ -143,3 +143,38 @@ def test_la_page_ramene_le_joueur_sur_sa_conversation(app_jeu: Flask) -> None:
     reponse = client.get("/ticket-dor")
     assert reponse.status_code == _HTTP_FOUND
     assert "/ticket-dor?c=" in reponse.headers["Location"]
+
+
+def test_l_admin_regle_la_partie_et_voit_les_joueurs(app_jeu: Flask) -> None:
+    """Le panel pose cible, code et ouverture, puis liste qui a joué."""
+    from app.back.admin import admin_bp  # noqa: PLC0415
+    from app.extensions import csrf  # noqa: PLC0415
+
+    app_jeu.config["WTF_CSRF_ENABLED"] = False
+    csrf.init_app(app_jeu)
+    app_jeu.register_blueprint(admin_bp)
+    with app_jeu.app_context():
+        admin = db.session.get(User, 2)
+        assert admin is not None
+        admin.user_permissions = 1
+        db.session.commit()
+
+    _proposer(_joueur(app_jeu, 1), "Marie Durand")
+    client = _joueur(app_jeu, 2)
+    reponse = client.post(
+        "/admin/ticket-dor",
+        data={"cible": "Paul PETIT", "code": "NOUVEAU", "indices": "", "ouvert": "on"},
+    )
+    assert reponse.status_code == _HTTP_FOUND
+    with app_jeu.app_context():
+        ticket = ticket_dor.partie()
+        assert ticket is not None
+        assert (ticket.cible, ticket.code, ticket.ouvert) == (
+            "Paul PETIT",
+            "NOUVEAU",
+            True,
+        )
+
+    page = client.get("/admin/ticket-dor").get_data(as_text=True)
+    assert "alice@telecomnancy.net" in page
+    assert f"1 / {ticket_dor.MAX_ESSAIS}" in page

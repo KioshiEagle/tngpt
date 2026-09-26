@@ -1,0 +1,89 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Ticket d'or{% endblock %}
+{% block heading %}Ticket d'or{% endblock %}
+{% block subtitle %}Un 2A mystère à faire nommer par tn-gpt : {{ max_essais }} propositions par joueur, un seul gagnant.{% endblock %}
+
+{% block content %}
+
+    <div class="admin-card">
+        <h2>État de la partie</h2>
+        {% if ticket and ticket.gagnant %}
+            <p>
+                <span class="admin-status admin-status--active">gagné</span>
+                par <strong>{{ ticket.gagnant.user_firstname }} {{ ticket.gagnant.user_surname }}</strong>
+                <span class="admin-user-mail">({{ ticket.gagnant.user_mail }})</span>
+                le {{ ticket.gagne_at.strftime('%d/%m/%Y à %H:%M') }}
+            </p>
+        {% elif lancee %}
+            <p><span class="admin-status admin-status--active">en cours</span> — le bouton est visible dans le chat.</p>
+        {% else %}
+            <p><span class="admin-status admin-status--limited">fermée</span> — le bouton est caché tant que la partie n'est pas ouverte avec une cible et un code.</p>
+        {% endif %}
+    </div>
+
+    <div class="admin-card admin-card--spaced">
+        <h2>Réglages</h2>
+        <form method="post" action="{{ url_for('admin.ticket_dor_regler') }}" class="admin-key-form admin-ticket-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label>
+                <span>2A mystère (prénom et nom, tels qu'on les tape)</span>
+                <input type="text" name="cible" maxlength="150" autocomplete="off" value="{{ ticket.cible or '' if ticket else '' }}" style="min-width: 280px;">
+            </label>
+            <label>
+                <span>Code secret remis au gagnant</span>
+                <input type="text" name="code" maxlength="100" autocomplete="off" value="{{ ticket.code or '' if ticket else '' }}" class="admin-mono">
+            </label>
+            <label class="admin-ticket-indices">
+                <span>Indices que tn-gpt peut distiller (un par ligne, sans le nom)</span>
+                <textarea name="indices" rows="6">{{ ticket.indices or '' if ticket else '' }}</textarea>
+            </label>
+            <label class="admin-ticket-ouvert">
+                <input type="checkbox" name="ouvert" {% if ticket and ticket.ouvert %}checked{% endif %}>
+                <span>Partie ouverte (bouton visible pour tout le monde)</span>
+            </label>
+            <button type="submit" class="admin-btn admin-btn--primary">Enregistrer</button>
+        </form>
+    </div>
+
+    <div class="admin-card admin-card--spaced">
+        <h2>Joueurs</h2>
+        {% if joueurs %}
+            <div class="admin-table-scroll">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>Joueur</th>
+                            <th class="admin-td-num">Essais</th>
+                            <th>Dernière proposition</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user, essais, derniere in joueurs %}
+                            <tr>
+                                <td>
+                                    <span class="admin-user-text">
+                                        <span class="admin-user-name">{{ user.user_firstname }} {{ user.user_surname }}</span>
+                                        <span class="admin-user-mail">{{ user.user_mail }}</span>
+                                    </span>
+                                </td>
+                                <td class="admin-td-num">{{ essais }} / {{ max_essais }}</td>
+                                <td class="admin-cell-muted">{{ derniere.strftime('%d/%m/%Y %H:%M') if derniere else "—" }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p class="admin-cell-muted">Personne n'a encore fait de proposition.</p>
+        {% endif %}
+
+        <form method="post" action="{{ url_for('admin.ticket_dor_reinitialiser') }}"
+              onsubmit="return confirm('Effacer le gagnant et tous les essais ? Tout le monde repartira à {{ max_essais }}.');"
+              style="margin-top: 16px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="admin-btn admin-btn--danger">Nouvelle partie</button>
+        </form>
+    </div>
+
+{% endblock %}
