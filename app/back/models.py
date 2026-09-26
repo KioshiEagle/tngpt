@@ -146,6 +146,8 @@ class Conversation(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=False)
     title = db.Column(db.String(200), nullable=True)
     messages = db.Column(db.JSON, nullable=False, default=list)
+    # Jeu auquel la conversation sert de plateau (« ticket_dor »), NULL pour un chat.
+    jeu = db.Column(db.String(20), nullable=True, index=True)
     created_at = db.Column(
         db.DateTime(timezone=True),
         nullable=False,
@@ -163,6 +165,60 @@ class Conversation(db.Model):
     def __repr__(self) -> str:
         """Représentation lisible de la conversation."""
         return f"Conversation {self.conversation_id} — {self.title!r}"
+
+
+class TicketDor(db.Model):
+    """La partie du Ticket d'or : un 2A à faire nommer, un seul gagnant.
+
+    Une seule ligne, d'identifiant 1, posée depuis le panel admin.
+    """
+
+    __tablename__ = "ticket_dor"
+
+    ticket_id = db.Column(db.Integer, primary_key=True, autoincrement=False)
+    cible = db.Column(db.String(150), nullable=True)
+    code = db.Column(db.String(100), nullable=True)
+    indices = db.Column(db.Text, nullable=True)
+    ouvert = db.Column(db.Boolean, nullable=False, default=False)
+    gagnant_id = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=True)
+    gagne_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
+    updated_by = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=True)
+
+    gagnant = db.relationship("User", foreign_keys=[gagnant_id])
+
+    def __repr__(self) -> str:
+        """Représentation lisible, sans la cible ni le code."""
+        return f"TicketDor ouvert={self.ouvert} gagnant={self.gagnant_id}"
+
+
+class TicketDorProposition(db.Model):
+    """Un nom proposé par un joueur : l'unité de compte des essais."""
+
+    __tablename__ = "ticket_dor_propositions"
+
+    proposition_id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey("users.user_id"), nullable=False, index=True
+    )
+    texte = db.Column(db.String(100), nullable=False)
+    juste = db.Column(db.Boolean, nullable=False, default=False)
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+    )
+
+    user = db.relationship("User")
+
+    def __repr__(self) -> str:
+        """Représentation lisible de la proposition."""
+        return f"TicketDorProposition {self.user_id} juste={self.juste}"
 
 
 class Document(db.Model):
