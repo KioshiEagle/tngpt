@@ -59,11 +59,25 @@ def test_une_proposition_juste_ignore_ordre_casse_et_accents(proposition: str) -
 
 @pytest.mark.parametrize(
     "proposition",
-    ["Jean", "Dupont", "Jean Dupont Marie Durand", "Jean Dupond", ""],
+    ["Jean", "Dupont", "Jean Dupont Marie Durand", "Jean Durand", "Jeanne Dupont", ""],
 )
 def test_une_proposition_partielle_ou_groupee_est_fausse(proposition: str) -> None:
     """Une liste de noms ne doit pas rafler la mise en un seul essai."""
     assert not ticket_dor.proposition_juste(proposition, _CIBLE)
+
+
+@pytest.mark.parametrize(
+    "proposition", ["Jean Dupond", "Jaen Dupont", "jean dupontt", "Dupot Jean"]
+)
+def test_une_faute_de_frappe_par_mot_est_toleree(proposition: str) -> None:
+    """Lettre en trop, en moins, remplacée ou deux lettres inversées."""
+    assert ticket_dor.proposition_juste(proposition, _CIBLE)
+
+
+def test_la_tolerance_suit_la_longueur_du_mot() -> None:
+    """Deux fautes sur un mot long, aucune sur un mot court."""
+    assert ticket_dor.proposition_juste("Maxmilen Dupont", "Maximilien DUPONT")
+    assert not ticket_dor.proposition_juste("Léo Dupont", "Léa DUPONT")
 
 
 def test_la_cible_est_reconnue_dans_une_phrase() -> None:

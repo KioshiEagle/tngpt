@@ -7,6 +7,7 @@ import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from itertools import permutations
 from pathlib import Path
 
 from .clubs import motif_mot, normalize
@@ -25,6 +26,9 @@ MAX_ESSAIS = 5
 MAX_PROPOSITION = 100
 # Prénom et nom : un mot seul viserait plusieurs personnes et brûlerait un essai.
 MIN_MOTS_PROPOSITION = 2
+# Fautes de frappe tolérées par mot : aucune jusqu'à 3 lettres, 2 dès 8, sinon 1.
+_MOT_COURT = 3
+_MOT_LONG = 8
 _PARTIE_ID = 1
 _PROMPT = Path(__file__).with_name("ticket_dor_prompt.md")
 _SANS_INDICES = "(aucun indice : TN-GPT ne sait rien d'autre que le nom)"
@@ -67,13 +71,42 @@ def proposition_valide(proposition: str) -> bool:
     return len(_mots(proposition)) >= MIN_MOTS_PROPOSITION
 
 
-def proposition_juste(proposition: str, cible: str) -> bool:
-    """Vrai si la proposition est exactement le nom, dans n'importe quel ordre.
+def _fautes(a: str, b: str) -> int:
+    """Distance d'édition, une inversion de deux lettres voisines comptant pour une."""
+    precedente, ligne = None, list(range(len(b) + 1))
+    for i, ca in enumerate(a, start=1):
+        courante = [i] + [0] * len(b)
+        for j, cb in enumerate(b, start=1):
+            courante[j] = min(
+                ligne[j] + 1, courante[j - 1] + 1, ligne[j - 1] + (ca != cb)
+            )
+            if precedente and i > 1 and j > 1 and ca == b[j - 2] and a[i - 2] == cb:
+                courante[j] = min(courante[j], precedente[j - 2] + 1)
+        precedente, ligne = ligne, courante
+    return ligne[-1]
 
-    L'égalité stricte, et non l'inclusion : sinon une liste de noms gagnerait.
+
+def _tolerance(mot: str) -> int:
+    """Fautes admises sur un mot : aucune s'il est court, sinon « Léa » vaut « Léo »."""
+    if len(mot) <= _MOT_COURT:
+        return 0
+    return 1 if len(mot) < _MOT_LONG else 2
+
+
+def proposition_juste(proposition: str, cible: str) -> bool:
+    """Vrai si la proposition est le nom, à des fautes de frappe près, en tout ordre.
+
+    Autant de mots que le nom, pas plus : sinon une liste de noms gagnerait.
     """
-    attendus = _mots(cible)
-    return bool(attendus) and sorted(_mots(proposition)) == sorted(attendus)
+    attendus, proposes = _mots(cible), _mots(proposition)
+    if not attendus or len(proposes) != len(attendus):
+        return False
+    return any(
+        all(
+            _fautes(p, a) <= _tolerance(a) for p, a in zip(ordre, attendus, strict=True)
+        )
+        for ordre in permutations(proposes)
+    )
 
 
 def nomme_la_cible(texte: str, cible: str) -> bool:
