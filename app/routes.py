@@ -457,7 +457,8 @@ def ticket_dor_index() -> str | Redirection:
         "index.html",
         quote=quote(),
         chat_endpoint="/ticket-dor/chat",
-        nouvelle_conv="/ticket-dor",
+        # Une seule partie par joueur : « nouvelle conv. » ramène au chat.
+        nouvelle_conv="/",
         jeu=ticket_dor.JEU,
     )
 

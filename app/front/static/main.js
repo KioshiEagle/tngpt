@@ -277,7 +277,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Chips aléatoires ---
     const chipsContainer = document.getElementById('chips-container');
-    shuffle(ALL_CHIPS).slice(0, 4).forEach(chip => {
+    // Pas de raccourcis sur la page du jeu : ce sont des questions de chat.
+    shuffle(ALL_CHIPS).slice(0, window.JEU ? 0 : 4).forEach(chip => {
         const btn = document.createElement('button');
         btn.className = 'chip';
         btn.textContent = chip.label;
@@ -367,6 +368,7 @@ document.addEventListener('DOMContentLoaded', () => {
         item.className = 'conv-item';
         item.dataset.id = String(conv.id);
         item.textContent = conv.title || 'Sans titre';
+        if (conv.jeu) item.classList.add('conv-item--ticket');
         // La liste peut arriver après la conversation rouverte au chargement.
         item.classList.toggle('active', item.dataset.id === String(currentConversationId));
         item.addEventListener('click', (e) => {
@@ -414,6 +416,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!res.ok) return false;
         const conv = await res.json();
 
+        // Chaque conv se rouvre sur la page qui la sert : jeu ou chat.
+        if ((conv.jeu || '') !== (window.JEU || '')) {
+            window.location.assign(conv.jeu ? `/ticket-dor?c=${conv.id}` : `/?c=${conv.id}`);
+            return true;
+        }
+
         currentConversationId = conv.id;
         messagesContainer.innerHTML = '';
         document.getElementById('empty-state')?.remove();
@@ -427,6 +435,60 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     loadConversations();
+
+    // --- Ticket d'or ---
+    const ticketBtn = document.getElementById('ticket-btn');
+    const proposeBtn = document.getElementById('propose-btn');
+    const ticketHint = document.getElementById('ticket-hint');
+    let ticketJouable = false;
+    let pendingProposition = false;
+
+    function ticketMessage(etat) {
+        if (etat.gagnant) return `🎟️ Gagné ! Ton code : ${etat.code} — à remettre en main propre au 2A.`;
+        if (etat.termine) return "Le ticket d'or a été trouvé : partie terminée.";
+        if (!etat.visible) return 'La partie est fermée.';
+        if (etat.restants === 0) return "Plus d'essais : le ticket d'or t'échappe.";
+        const s = etat.restants > 1 ? 's' : '';
+        return `${etat.restants} essai${s} restant${s} sur ${etat.max_essais} · un seul gagnant`;
+    }
+
+    function applyTicketEtat(etat) {
+        ticketJouable = etat.jouable;
+        ticketBtn.hidden = !etat.visible;
+        ticketBtn.classList.toggle('ticket-btn--grise', !etat.jouable);
+        ticketBtn.setAttribute('aria-disabled', String(!etat.jouable));
+        ticketBtn.classList.toggle('active', Boolean(window.JEU));
+        if (etat.gagnant) ticketBtn.textContent = '🎟️ Ticket d\'or gagné !';
+        else if (etat.termine) ticketBtn.textContent = '🎟️ Ticket d\'or trouvé';
+        else if (!etat.jouable) ticketBtn.textContent = '🎟️ Plus d\'essais';
+        if (!window.JEU) return;
+        ticketHint.textContent = ticketMessage(etat);
+        // Pendant un flux, le bouton envoyer sert de stop : on n'y touche pas.
+        if (!sendBtn.classList.contains('stop-mode')) sendBtn.disabled = !etat.jouable;
+        proposeBtn.disabled = !etat.jouable;
+        inp.disabled = !etat.jouable;
+    }
+
+    async function refreshTicket() {
+        try {
+            const res = await fetch('/ticket-dor/etat');
+            if (res.ok) applyTicketEtat(await res.json());
+        } catch {
+            // Hors ligne : le bouton reste caché, le chat fonctionne quand même.
+        }
+    }
+
+    ticketBtn.addEventListener('click', (e) => {
+        if (!ticketJouable || window.JEU) e.preventDefault();
+    });
+
+    proposeBtn?.addEventListener('click', () => {
+        if (!inp.value.trim() || sendBtn.classList.contains('stop-mode')) return;
+        pendingProposition = true;
+        form.requestSubmit();
+    });
+
+    refreshTicket();
 
     // Rechargement sur une conversation : on la rouvre. Supprimée ou à un autre
     // compte, on nettoie l'URL ; réseau coupé, on la garde pour réessayer.
@@ -445,6 +507,8 @@ document.addEventListener('DOMContentLoaded', () => {
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const text = inp.value.trim();
+        const proposition = pendingProposition;
+        pendingProposition = false;
         if (!text || sendBtn.classList.contains('stop-mode')) return;
 
         const emptyState = document.getElementById('empty-state');
@@ -454,7 +518,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.body.classList.remove('landing');
         }
 
-        appendMessage('user', text);
+        appendMessage('user', proposition ? `🎟️ Je propose : ${text}` : text);
         inp.value = '';
         inp.style.height = 'auto';
 
@@ -499,7 +563,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch(window.CHAT_ENDPOINT || '/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: text, conversation_id: currentConversationId, brainrot }),
+                body: JSON.stringify({ message: text, conversation_id: currentConversationId, brainrot, proposition }),
                 signal: abortController.signal,
             });
 
@@ -517,7 +581,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            if (!response.ok) throw new Error();
+            // Refus motivé du serveur (jeu terminé, message trop long…) : on l'affiche.
+            if (!response.ok) {
+                const data = await response.json().catch(() => null);
+                if (!data || !data.error) throw new Error();
+                appendMessage('assistant', data.error);
+                return;
+            }
 
             // La conversation est créée côté serveur dès le premier message : on
             // l'ajoute à la sidebar dès que son id est connu, sans attendre la
@@ -525,8 +595,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const newId = response.headers.get('X-Conversation-Id');
             if (newId && currentConversationId === null) {
                 currentConversationId = newId;
-                const shortTitle = text.length > 40 ? text.slice(0, 40).trimEnd() + '…' : text;
-                addConvItem({ id: newId, title: shortTitle }, { prepend: true });
+                const shortTitle = window.JEU ? "🎟️ Ticket d'or"
+                    : text.length > 40 ? text.slice(0, 40).trimEnd() + '…' : text;
+                addConvItem({ id: newId, title: shortTitle, jeu: window.JEU || null }, { prepend: true });
                 setActiveConvItem(newId);
                 rememberConversation(newId);
                 document.title = shortTitle + ' – TN-GPT';
@@ -593,6 +664,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // rendu final propre ; à défaut, le texte brut vaut mieux qu'une
             // bulle vide.
             if (bubbleContainer) safeRenderAssistant(bubbleContainer, rawText);
+            if (window.JEU) refreshTicket();
         }
     });
 

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- L'habillage flamme est un réglage global posé en admin : il vient du serveur,
      pas du navigateur, et personne ne le bascule depuis le chat. -->
-<html lang="fr"{% if flamme %} data-flamme="on"{% endif %}>
+<html lang="fr"{% if flamme %} data-flamme="on"{% endif %}{% if jeu %} data-jeu="{{ jeu }}"{% endif %}>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -42,6 +42,8 @@
         </div>
 
         <a href="{{ nouvelle_conv | default('/') }}" class="new-btn">+ nouvelle conv.</a>
+        {# Caché tant que /ticket-dor/etat ne dit pas la partie lancée : main.js l'affiche. #}
+        <a href="/ticket-dor" class="ticket-btn" id="ticket-btn" hidden>🎟️ Ticket d'or</a>
 
         <div class="conv-section">Récent</div>
         <nav class="conv-list" id="conv-list"></nav>
@@ -106,8 +108,13 @@
                 <img src="{{ asset('ducky_brainrot.svg') }}" class="landing-ducky landing-ducky--brainrot" alt="NeuraTN, mode brainrot" width="96" height="96">
                 <img src="{{ asset('ducky_flamme.svg') }}" class="landing-ducky landing-ducky--flamme" alt="NeuraTN, mode brainrot flamme" width="96" height="96">
                 <div class="hero-zone">
+                    {% if jeu %}
+                    <h1 class="hero-title">🎟️ Ticket <span>d'or</span></h1>
+                    <p class="hero-subtitle">Un 2A mystère se cache derrière tn-gpt. Tire-lui des indices, puis tape un nom et clique sur « proposer ». Cinq essais, et un seul 1A gagnera l'étoile.</p>
+                    {% else %}
                     <h1 class="hero-title">TN-<span>GPT</span></h1>
                     <p class="hero-subtitle">Pose-moi n'importe quelle question et j'y répondrai intelligemment :)</p>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -116,10 +123,20 @@
 
         <div class="input-area">
             <form class="input-row" id="chat-form">
+                {% if jeu %}
+                <textarea id="inp" placeholder="Demande un indice… ou tape un nom et clique sur proposer" autocomplete="off" rows="1"></textarea>
+                <button type="submit" class="send" id="sbtn">envoyer →</button>
+                <button type="button" class="send send--proposer" id="propose-btn">🎟️ proposer</button>
+                {% else %}
                 <textarea id="inp" placeholder="Donne 5 raisons de se gooner en public (urgent)..." autocomplete="off" rows="1"></textarea>
                 <button type="submit" class="send" id="sbtn">envoyer →</button>
+                {% endif %}
             </form>
+            {% if jeu %}
+            <div class="hint" id="ticket-hint">Chargement de la partie…</div>
+            {% else %}
             <div class="hint">TN-GPT peut faire des erreurs. Il est aussi fiable que le BDE.</div>
+            {% endif %}
         </div>
 
         <div class="chips" id="chips-container"></div>
@@ -129,6 +146,8 @@
         // Endpoint de chat de la page : /chat pour le TN-GPT normal, /ctf/<chal>/chat
         // pour un challenge. Un défaut au cas où le template ne le fournirait pas.
         window.CHAT_ENDPOINT = "{{ chat_endpoint | default('/chat') }}";
+        // Jeu servi par la page (« ticket_dor »), vide pour un chat.
+        window.JEU = "{{ jeu | default('') }}";
     </script>
     <script src="{{ asset('marked.min.js') }}"></script>
     <script src="{{ asset('treasuremap.js') }}"></script>

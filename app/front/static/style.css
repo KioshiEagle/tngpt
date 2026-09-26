@@ -244,6 +244,51 @@ body {
     background: var(--primary-light);
 }
 
+/* --- Ticket d'or : l'or remplace le violet partout où le jeu se montre. --- */
+:root {
+    --or: #b45309;
+    --or-clair: #fef3c7;
+    --or-degrade: linear-gradient(135deg, #fde68a, #f59e0b);
+}
+[data-theme="dark"] {
+    --or: #fbbf24;
+    --or-clair: #3b2f12;
+    --or-degrade: linear-gradient(135deg, #92400e, #d97706);
+}
+[data-jeu] { --primary: var(--or); --primary-light: var(--or-clair); --bubble-user: #b45309; }
+[data-theme="dark"][data-jeu] { --bubble-user: #b45309; }
+
+.ticket-btn {
+    display: block;
+    text-decoration: none;
+    border-radius: 8px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    color: #451a03;
+    padding: 10px 12px;
+    margin: -8px 0 20px;
+    background: var(--or-degrade);
+    box-shadow: 0 2px 10px rgba(245, 158, 11, 0.35);
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+[data-theme="dark"] .ticket-btn { color: #fffbeb; }
+.ticket-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(245, 158, 11, 0.5); }
+.ticket-btn.active { outline: 2px solid var(--or); outline-offset: 2px; }
+.ticket-btn[hidden] { display: none; }
+.ticket-btn--grise,
+.ticket-btn--grise:hover {
+    background: var(--bg-input);
+    color: var(--text-muted);
+    box-shadow: none;
+    transform: none;
+    cursor: not-allowed;
+    border: 1px dashed var(--border);
+}
+
+.send--proposer { color: var(--or); }
+.input-row textarea:disabled { cursor: not-allowed; }
+
 .conv-section {
     font-family: 'IBM Plex Mono', monospace;
     font-size: 13px;
@@ -269,6 +314,12 @@ body {
 .conv-item.active { background: rgba(0, 0, 0, 0.08); color: var(--text-main); font-weight: 600; }
 [data-theme="dark"] .conv-item:hover { background: rgba(255, 255, 255, 0.08); }
 [data-theme="dark"] .conv-item.active { background: rgba(255, 255, 255, 0.14); }
+/* Après les règles de base, qui l'emporteraient à spécificité égale. */
+.conv-item--ticket { color: var(--or); font-weight: 600; background: var(--or-clair); }
+.conv-item--ticket:hover,
+[data-theme="dark"] .conv-item--ticket:hover { background: var(--or-clair); filter: brightness(0.97); }
+.conv-item--ticket.active,
+[data-theme="dark"] .conv-item--ticket.active { background: var(--or-clair); color: var(--or); box-shadow: inset 3px 0 0 var(--or); }
 
 .conv-row { position: relative; display: flex; align-items: center; }
 .conv-row .conv-item { flex: 1; min-width: 0; }
