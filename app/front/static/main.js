@@ -465,7 +465,7 @@ document.addEventListener('DOMContentLoaded', () => {
             : etat.termine ? ["Le 2A mystère a été trouvé", 'Terminé']
             : !etat.jouable ? ["Tu as joué tous tes essais", 'Terminé']
             : etat.conversation_id ? [`Il te reste ${etat.restants} essai${etat.restants > 1 ? 's' : ''}`, 'Reprendre →']
-            : ['Trouve le 2A mystère et gagne une étoile', 'Jouer →'];
+            : ["Trouve le 2A mystère et gagne une étoile sur le site de l'inté", 'Jouer →'];
         ticketCtas.forEach((cta) => {
             cta.hidden = !etat.visible;
             cta.classList.toggle('ticket-cta--grise', !etat.jouable);
