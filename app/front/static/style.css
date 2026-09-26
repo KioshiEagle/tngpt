@@ -1352,3 +1352,15 @@ body.landing .landing-ducky--flamme { display: none; }
 [data-flamme="on"]:not([data-brainrot="on"]) .promo--vert {
     --promo-accent-titre: #02a346;
 }
+
+/* Campagne WEI : le bleu de l'affiche. Plus clair en sombre, pour rester lisible. */
+.promo--bleu {
+    --promo-accent: #0c1cb0;
+    --promo-accent-texte: #fff;
+    --promo-accent-titre: #0c1cb0;
+}
+[data-theme="dark"] .promo--bleu,
+[data-flamme="on"]:not([data-brainrot="on"]) .promo--bleu {
+    --promo-accent: #3f51e0;
+    --promo-accent-titre: #9aa6ff;
+}

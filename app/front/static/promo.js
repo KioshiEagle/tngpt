@@ -9,27 +9,26 @@
 
     const CAMPAGNE = {
         // Fuseau explicite : sinon l'échéance glisse d'une heure selon le
-        // réglage du navigateur. Fin de soirée : les retardataires comptent.
-        fin: new Date('2026-09-15T20:00:00+02:00'),
+        // réglage du navigateur. La billetterie ferme « au plus tard le 7 ».
+        fin: new Date('2026-10-07T23:59:59+02:00'),
         toutesLesBulles: 10,
-        auteur: 'Tek’TN',
-        // Variante de style.css (.promo--vert) ; absente, l'encart prend le thème.
-        teinte: 'vert',
-        titre: "🐧 Install Party X Reunion Tek'TN",
+        auteur: 'l’Inté',
+        // Variante de style.css (.promo--bleu) ; absente, l'encart prend le thème.
+        teinte: 'bleu',
+        titre: '🐗 LE WEI ARRIVE — OUVERTURE DES INSCRIPTIONS !',
         points: [
-            '📅 Mardi 15 septembre, à partir de 18 h',
-            '🤖 18 h — Présentation du club et lancement du pôle robotique pour la Coupe de France de Robotique 2027 : c’est le moment de rejoindre l’équipe',
-            '💻 18 h 30 — Install Party : viens avec ton ordi passer à Linux, en dual boot ou en remplacement. Hackin’TN y présente ses outils de cybersécurité',
-            '🍕 19 h 30 — Pizzas à 5 €, 2,50 € la demie, sur précommande obligatoire jusqu’au lundi 14 à 18 h',
+            '🎟️ Billetterie ouverte jusqu’au 7 octobre au plus tard : n’attendez pas le dernier moment',
+            '⚔️ Déguisement obligatoire en soirée, choisissez votre camp : 🐗 Les Inté’ductibles Gaulois, 🚀 L’Empire Inte’galactique, 🎮 La N’Intendo ou 🦸 L’Int’heros',
+            '🛏️ Sac de couchage indispensable pour le week-end',
+            '💳 Deux cautions avant le départ : 100 € numérique pour le WEI, 200 € par chèque pour le CETEN',
+            '💰 Pack Inté : 40 € de réduction sur le WEI',
         ],
         appel: {
-            texte: 'Précommander ma pizza sur HelloAsso',
-            lien: 'https://www.helloasso.com/associations/cercle-des-eleves-de-telecom-nancy/boutiques/install-party',
-            // La billetterie ferme la veille : passé ce délai, le bouton
-            // mènerait à une page close.
-            fin: new Date('2026-09-14T18:00:00+02:00'),
+            texte: 'S’inscrire au WEI sur HelloAsso',
+            lien: 'https://www.helloasso.com/associations/cercle-des-eleves-de-telecom-nancy/evenements/wei-2',
+            fin: new Date('2026-10-07T23:59:59+02:00'),
         },
-        pied: 'Bricolment vôtre, l’équipe Tek’TN',
+        pied: 'Choisissez votre camp, sortez le sac de couchage… LE WEI ARRIVE. 🐗🔥',
     };
 
     function campagneOuverte() {
