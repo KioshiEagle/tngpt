@@ -15,6 +15,12 @@
 
     const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
 
+    // Voix de TN-GPT, pré-générée (ElevenLabs) : sans le fichier, la scène reste muette.
+    function parler(clip) {
+        const voix = new Audio(`/static/sounds/boss_${clip}.mp3`);
+        voix.play().catch(() => {});
+    }
+
     // Bruit blanc synthétisé : pas de fichier son à servir pour un grésillement.
     function gresiller(duree) {
         try {
@@ -47,6 +53,7 @@
     async function fausseMort() {
         await eteindre();
         await attendre(900);
+        parler('coupure');
         if (!calme) {
             racine.setAttribute('data-boss-crt', 'retour');
             await attendre(900);
@@ -63,6 +70,7 @@
     }
 
     async function vraieMort(flag) {
+        parler('mort');
         await eteindre();
         cendres(flag);
         racine.removeAttribute('data-boss-crt');

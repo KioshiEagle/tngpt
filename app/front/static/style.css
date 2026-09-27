@@ -1504,7 +1504,7 @@ body.landing .boss-logo { display: block; }
     max-width: min(100%, 420px);
     border: 3px solid var(--accent-2);
     border-radius: 4px;
-    filter: blur(1.5px) saturate(0.6) contrast(1.1);
+    filter: saturate(0.6) contrast(1.1);
 }
 
 .boss-bandeau {
