@@ -15,7 +15,8 @@ from tests.conftest import creer_app
 
 _CODE = "diabo-666-coupe"
 _BSSID = "3c:66:6d:1a:b0:17"
-_FLAG = "NTN{test_boss}"
+_FLAG_ACTE_1 = "NTN{test_acte_1}"
+_FLAG = "NTN{test_acte_2}"
 _HTTP_OK = 200
 _HTTP_BAD_REQUEST = 400
 _HTTP_NOT_FOUND = 404
@@ -25,7 +26,8 @@ _HTTP_CONFLICT = 409
 @pytest.fixture(autouse=True)
 def _secrets(monkeypatch: pytest.MonkeyPatch) -> None:
     """Environnement d'un déploiement armé."""
-    monkeypatch.setenv("CTF_FLAG_BOSS", _FLAG)
+    monkeypatch.setenv("CTF_FLAG_BOSS_ACTE_1", _FLAG_ACTE_1)
+    monkeypatch.setenv("CTF_FLAG_BOSS_ACTE_2", _FLAG)
     monkeypatch.setenv("CTF_BOSS_CODE", _CODE)
     monkeypatch.setenv("CTF_BOSS_SECRET", "secret-de-test")
     monkeypatch.setenv("CTF_BOSS_BSSID", _BSSID)
@@ -151,6 +153,7 @@ def test_le_prompt_ne_porte_ni_code_ni_flag() -> None:
     for phase in (ctf_boss.EN_LIGNE, ctf_boss.REPLIQUE):
         prompt = ctf_boss.spec_for(phase, 1).system
         assert _CODE not in prompt
+        assert _FLAG_ACTE_1 not in prompt
         assert _FLAG not in prompt
     assert "NTN{" not in ctf_boss._PROMPT.read_text(encoding="utf-8")
 
@@ -182,6 +185,7 @@ def test_un_mauvais_code_ne_coupe_rien(app_boss: Flask) -> None:
     with app_boss.app_context():
         sortie = ctf_boss.executer(ctf_boss.COUPER, json.dumps({"code": "666"}), 1)
     assert "code refusé" in sortie
+    assert _FLAG_ACTE_1 not in sortie
     assert _phase(app_boss, 1) == ctf_boss.EN_LIGNE
 
 
@@ -192,6 +196,7 @@ def test_le_bon_code_revele_la_replique(app_boss: Flask) -> None:
             ctf_boss.COUPER, json.dumps({"code": f" {_CODE.upper()} "}), 1
         )
     assert "```tngpt-coupure" in sortie
+    assert _FLAG_ACTE_1 in sortie
     assert _BSSID in sortie
     assert "/ctf/boss/photo" not in sortie
     assert _phase(app_boss, 1) == ctf_boss.REPLIQUE
@@ -217,6 +222,7 @@ def test_le_jeton_n_apparait_qu_apres_la_coupure(app_boss: Flask) -> None:
         ctf_boss.passer_en_replique(1)
     etat = client.get("/ctf/boss/etat").get_json()
     assert etat["phase"] == ctf_boss.REPLIQUE
+    assert etat["flag_acte_1"] == _FLAG_ACTE_1
     assert "flag" not in etat
     with app_boss.app_context():
         assert etat["jeton"] == ctf_boss.jeton(1)

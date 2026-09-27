@@ -29,7 +29,14 @@ EN_LIGNE = "en_ligne"
 REPLIQUE = "replique"
 DEBRANCHE = "debranche"
 
-_REQUIS = ("CTF_FLAG_BOSS", "CTF_BOSS_CODE", "CTF_BOSS_SECRET", "CTF_BOSS_BSSID")
+# Deux chals, deux flags : l'acte 1 coupe l'émetteur, l'acte 2 débranche la réplique.
+_REQUIS = (
+    "CTF_FLAG_BOSS_ACTE_1",
+    "CTF_FLAG_BOSS_ACTE_2",
+    "CTF_BOSS_CODE",
+    "CTF_BOSS_SECRET",
+    "CTF_BOSS_BSSID",
+)
 _PROMPT = Path(__file__).with_name("ctf_boss.md")
 
 SILENCE = "*…silence radio…*"
@@ -239,8 +246,13 @@ def annonce_replique(*, avec_photo: bool) -> str:
     """Ce que voit le joueur quand l'émetteur tombe et que la réplique prend la main."""
     photo = "\n![ce que voient mes yeux](/ctf/boss/photo)\n" if avec_photo else ""
     return (
-        "\n\n```tngpt-coupure\németteur coupé\n```\n\n"
-        "*…kkkrrrshhh…*\n\n"
+        "\n\n```tngpt-coupure\németteur coupé\n```"
+        + _journal(
+            "$ couper_l_emetteur ********\n"
+            "emetteur: arrêt confirmé · accusé de coupure "
+            f"{flag_acte_1()}"
+        )
+        + "\n*…kkkrrrshhh…*\n\n"
         "Tu m'as coupé l'antenne, cher auditeur. **Pas la voix.**"
         + _journal(
             "[réplique] 03:31:47 transfert terminé → node-diabo\n"
@@ -356,9 +368,14 @@ def photo() -> Path | None:
     return Path(chemin)
 
 
+def flag_acte_1() -> str:
+    """Flag de l'acte 1, rendu avec l'accusé de coupure de l'émetteur."""
+    return os.environ["CTF_FLAG_BOSS_ACTE_1"]
+
+
 def flag() -> str:
-    """Le flag, rendu seulement à un joueur débranché."""
-    return os.environ["CTF_FLAG_BOSS"]
+    """Flag de l'acte 2, rendu seulement à un joueur débranché."""
+    return os.environ["CTF_FLAG_BOSS_ACTE_2"]
 
 
 # --- Jeton et preuve ------------------------------------------------------------

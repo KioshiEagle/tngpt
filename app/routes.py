@@ -606,6 +606,7 @@ def boss_etat() -> Response:
     etat: dict[str, object] = {"phase": ligne.phase}
     if ligne.phase != ctf_boss.EN_LIGNE:
         etat["jeton"] = ctf_boss.jeton(current_user.user_id)
+        etat["flag_acte_1"] = ctf_boss.flag_acte_1()
     if ligne.phase == ctf_boss.DEBRANCHE:
         etat["flag"] = ctf_boss.flag()
     return jsonify(etat)
