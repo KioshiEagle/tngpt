@@ -63,7 +63,6 @@ from .permissions import (
     permission_table,
     view_analytics_required,
 )
-from .reglages import FLAMME, basculer, est_actif
 from .usage import daily_quota, groq_calls_today_by_key, questions_today_all
 from .version import GRAVEE, PUBLIEE, REVISION, url_release, version_affichee
 
@@ -137,11 +136,7 @@ def index() -> str:
         )
         or 0,
     }
-    return render_template(
-        "admin/index.html",
-        stats=stats,
-        flamme=est_actif(FLAMME),
-    )
+    return render_template("admin/index.html", stats=stats)
 
 
 @admin_bp.route("/export/logs")
@@ -180,21 +175,6 @@ def _fichier_a_telecharger(contenu: bytes, nom: str) -> Response:
         mimetype="application/octet-stream",
         headers={"Content-Disposition": f'attachment; filename="{nom}"'},
     )
-
-
-@admin_bp.route("/apparence/flamme", methods=["POST"])
-@admin_required
-def toggle_flamme() -> Response:
-    """Allume ou éteint le mode boss final, pour tout le monde.
-
-    Réservé aux admins : le réglage est global, personne ne le choisit depuis
-    le chat.
-    """
-    actif = not est_actif(FLAMME)
-    basculer(FLAMME, actif=actif, user_id=current_user.user_id)
-    etat = "allumé pour tout le monde" if actif else "éteint"
-    flash(f"Mode boss final {etat}.", "success")
-    return redirect(url_for("admin.index"))
 
 
 @admin_bp.route("/catalog")

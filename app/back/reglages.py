@@ -6,10 +6,6 @@ dans l'état par défaut, sans qu'aucune migration n'ait à semer de ligne.
 
 from .models import Setting, db
 
-# Mode boss final : palette de la Diaboliste et canard possédé. La clé garde son
-# ancien nom pour ne pas perdre l'état déjà posé en base.
-FLAMME = "flamme"
-
 _ACTIF = "on"
 _INACTIF = "off"
 

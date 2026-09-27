@@ -31,7 +31,6 @@ from .back.groqpool import Client, acquire
 from .back.models import Conversation, db
 from .back.personnes import lookup_personnes, lookup_soi
 from .back.reflexes import reflex
-from .back.reglages import FLAMME, est_actif
 from .back.seamap import generate_map, retrieve_for_map, wants_map
 from .back.types import SearchResult
 from .back.usage import log_retrieval, quota_status, seconds_until_reset
@@ -386,7 +385,6 @@ def index() -> str:
         quote=quote(),
         chat_endpoint="/chat",
         nouvelle_conv="/",
-        flamme=est_actif(FLAMME),
     )
 
 

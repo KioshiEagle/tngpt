@@ -1,6 +1,5 @@
 <!DOCTYPE html>
-<!-- Le mode boss final (réglage « flamme ») est posé en admin : il vient du serveur,
-     pas du navigateur, et personne ne le bascule depuis le chat. -->
+<!-- Le thème boss final vient du serveur (page /ctf/boss), jamais du navigateur. -->
 <html lang="fr"{% if flamme %} data-flamme="on"{% endif %}{% if jeu %} data-jeu="{{ jeu }}"{% endif %}{% if boss %} data-boss="on"{% endif %}>
 <head>
     <meta charset="UTF-8">

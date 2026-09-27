@@ -65,24 +65,6 @@
     {% endif %}
 
     <section class="admin-card">
-        <h2>Mode boss final</h2>
-        <p class="admin-note">
-            Repeint TN-GPT aux couleurs de la Diaboliste, canard compris.
-            Le réglage est global : une fois allumé, tout le monde le voit dès son
-            prochain chargement de page. Les utilisateurs n'ont pas la main dessus.
-        </p>
-        <p class="admin-note">
-            État actuel : <strong>{% if flamme %}allumé pour tout le monde{% else %}éteint{% endif %}</strong>
-        </p>
-        <form method="post" action="{{ url_for('admin.toggle_flamme') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="admin-btn">
-                {% if flamme %}Éteindre le mode boss final{% else %}Allumer le mode boss final{% endif %}
-            </button>
-        </form>
-    </section>
-
-    <section class="admin-card">
         <h2>Journaux</h2>
         <p class="admin-note">
             Les journaux sont ceux du conteneur en cours ; un redémarrage repart d'un fichier
