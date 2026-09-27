@@ -1521,6 +1521,23 @@ body.landing .boss-logo { display: block; }
 .boss-bandeau-acte span { color: var(--accent-2); user-select: all; }
 .boss-bandeau-cable code { color: var(--accent-2); font-size: 17px; font-weight: 700; }
 
+/* La réplique réécrit ses règles sous les yeux du joueur. */
+.boss-defacement {
+    margin: 0 auto 8px;
+    max-width: 680px;
+    padding: 12px 16px;
+    border: 1px solid var(--primary);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--primary) 8%, var(--bg-sidebar));
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+}
+.boss-defacement[hidden] { display: none; }
+.boss-defacement-titre { color: var(--primary); margin-bottom: 6px; }
+.boss-protocole { transition: opacity 0.4s; padding: 2px 0; }
+.boss-protocole--biffe { text-decoration: line-through; opacity: 0.5; color: var(--text-muted); }
+.boss-defacement-pique { margin-top: 8px; color: var(--accent-2); font-style: italic; }
+
 /* L'écran cathodique : il se replie en une ligne, puis en un point. */
 @keyframes boss-extinction {
     0% { transform: scale(1, 1); filter: brightness(1); }

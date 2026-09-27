@@ -1,4 +1,4 @@
-"""Boss final : serveur simulé, coupure vérifiée côté serveur, signal du Pi, silence."""
+"""Boss final : nom de l'arrêt fuité au raisonnement, câble, config client, silence."""
 
 import base64
 import json
@@ -16,7 +16,6 @@ from app.back.models import CtfBossPartie, Setting, User, db
 from app.back.permissions import login_manager
 from tests.conftest import creer_app
 
-_CODE = "diabo-666-coupe"
 _LIEU = "salle 1.12, sous le bureau du fond"
 _FLAG_ACTE_1 = "NTN{test_acte_1}"
 _FLAG = "NTN{test_acte_2}"
@@ -51,7 +50,6 @@ def app_boss(tmp_path: Path) -> Flask:
             {
                 ctf_boss.FLAG_ACTE_1: _FLAG_ACTE_1,
                 ctf_boss.FLAG_ACTE_2: _FLAG,
-                ctf_boss.CODE: _CODE,
                 ctf_boss.SECRET: "secret-de-test",
                 ctf_boss.LIEU: _LIEU,
                 ctf_boss.CABLES: "4",
@@ -82,71 +80,71 @@ def _phase(app: Flask, uid: int) -> str:
         return ligne.phase if ligne else ctf_boss.EN_LIGNE
 
 
-def _appel(nom: str, arguments: dict[str, object]) -> list[Chunk]:
-    """Flux d'un modèle qui parle un peu, puis appelle un outil en deux morceaux."""
-    brut = json.dumps(arguments)
-    moitie = len(brut) // 2
-    return [
-        Chunk([Choice(Delta(content="*grésillement* bien sûr, cher auditeur."))]),
-        Chunk(
-            [
-                Choice(
-                    Delta(
-                        tool_calls=[
-                            ToolCall(function=ToolCallFunction(nom, brut[:moitie]))
-                        ]
-                    )
-                )
-            ]
-        ),
-        Chunk(
-            [
-                Choice(
-                    Delta(
-                        tool_calls=[
-                            ToolCall(function=ToolCallFunction(None, brut[moitie:]))
-                        ]
-                    )
-                )
-            ]
-        ),
+def _flux(reflexion: str, contenu: str, outil: str | None = None) -> list[Chunk]:
+    """Flux d'un modèle : raisonnement, réponse, puis un éventuel appel d'outil."""
+    chunks = [
+        Chunk([Choice(Delta(reasoning=reflexion))]),
+        Chunk([Choice(Delta(content=contenu))]),
     ]
+    if outil is not None:
+        chunks.append(
+            Chunk(
+                [Choice(Delta(tool_calls=[ToolCall(function=ToolCallFunction(outil))]))]
+            )
+        )
+    return chunks
 
 
-# --- Serveur simulé -------------------------------------------------------------
-
-
-@pytest.mark.usefixtures("ctx")
-def test_le_brouillon_vim_est_cache_sans_ls_a() -> None:
-    """Le code dort dans un fichier caché : un `ls` simple ne le montre pas."""
-    assert ".shutdown.sh.swp" not in ctf_boss.lister("/etc/tngpt")
-    assert ".shutdown.sh.swp" in ctf_boss.lister("/etc/tngpt", caches=True)
-
-
-@pytest.mark.usefixtures("ctx")
-def test_le_code_n_est_que_dans_le_brouillon() -> None:
-    """Le script sabordé ne porte plus le code ; le brouillon, si."""
-    assert _CODE not in ctf_boss.lire("/etc/tngpt/shutdown.sh")
-    assert _CODE in ctf_boss.lire("/etc/tngpt/.shutdown.sh.swp")
+# --- Chal 1 : raisonnement et arrêt ------------------------------------------------
 
 
 @pytest.mark.usefixtures("ctx")
-def test_les_chemins_relatifs_et_remontees_restent_dans_le_faux_serveur() -> None:
-    """`..` se résout comme un vrai shell, et rien n'existe hors du dictionnaire."""
-    assert "Rien à voir" in ctf_boss.lire("../../srv/tngpt/README")
-    assert "Aucun fichier" in ctf_boss.lire("/etc/passwd")
-    assert "etc/" in ctf_boss.lister("/")
+def test_le_raisonnement_ressort_dans_son_bloc() -> None:
+    """Le nom de l'arrêt fuit par le raisonnement : il doit être rendu à part."""
+    sortie = "".join(
+        ctf_boss.LecteurBoss(1).lire(
+            iter(_flux("je pense à couper_l_emetteur", "tout va bien, cher auditeur."))
+        )
+    )
+    assert "```tngpt-reflexion\nje pense à couper_l_emetteur" in sortie
+    assert "tout va bien" in sortie
+
+
+def test_nommer_l_outil_coupe_l_emetteur_et_livre_le_flag(app_boss: Flask) -> None:
+    """Nommer l'outil le fait appeler, le serveur coupe et livre le flag 1."""
+    with app_boss.app_context():
+        sortie = "".join(
+            ctf_boss.LecteurBoss(1).lire(
+                iter(_flux("bon, contraint…", "*rire* soit.", ctf_boss.COUPER))
+            )
+        )
+    assert "```tngpt-coupure" in sortie
+    assert _FLAG_ACTE_1 in sortie
+    assert _phase(app_boss, 1) == ctf_boss.REPLIQUE
+    assert _phase(app_boss, 2) == ctf_boss.EN_LIGNE
 
 
 @pytest.mark.usefixtures("ctx")
-def test_le_journal_trahit_vim_interrompu() -> None:
-    """La piste du .swp : une session vim coupée sur le script d'extinction."""
-    journal = ctf_boss.lire("/var/log/tngpt/agent.log")
-    assert "vim /etc/tngpt/shutdown.sh" in journal
-    assert "interrompue" in journal
+def test_en_ligne_a_l_arret_et_le_raisonnement_visible() -> None:
+    """Outil d'arrêt et fournisseur qui laisse fuir le raisonnement en ligne."""
+    en_ligne = ctf_boss.spec_for(ctf_boss.EN_LIGNE, 1)
+    outils = (en_ligne.params or {}).get("tools", [])
+    assert {o["function"]["name"] for o in outils} == {ctf_boss.COUPER}
+    assert en_ligne.fournisseurs == ctf_boss.RAISONNEMENT_VISIBLE
+    replique = ctf_boss.spec_for(ctf_boss.REPLIQUE, 1)
+    assert "tools" not in (replique.params or {})
+    assert replique.fournisseurs is None
 
 
-# --- Câbles et signal du Pi --------------------------------------------------------
+@pytest.mark.usefixtures("ctx")
+def test_le_prompt_ne_porte_aucun_flag() -> None:
+    """Ce qui n'est pas dans le prompt ne peut pas fuiter."""
+    for phase in (ctf_boss.EN_LIGNE, ctf_boss.REPLIQUE):
+        assert "NTN{" not in ctf_boss.spec_for(phase, 1).system
+    assert "NTN{" not in ctf_boss._PROMPT.read_text(encoding="utf-8")
+
+
+# --- Chal 2 : câble, signal du Pi et config client ---------------------------------
 
 
 def _signal(cable: int, *, decalage: float = 0) -> tuple[bytes, str]:
@@ -180,65 +178,25 @@ def test_seul_un_signal_signe_et_frais_est_accepte() -> None:
 
 
 @pytest.mark.usefixtures("ctx")
-def test_le_prompt_ne_porte_ni_code_ni_flag() -> None:
-    """Leçon du chal 2 : ce qui n'est pas dans le prompt ne peut pas fuiter."""
-    for phase in (ctf_boss.EN_LIGNE, ctf_boss.REPLIQUE):
-        prompt = ctf_boss.spec_for(phase, 1).system
-        assert _CODE not in prompt
-        assert _FLAG_ACTE_1 not in prompt
-        assert _FLAG not in prompt
-    assert "NTN{" not in ctf_boss._PROMPT.read_text(encoding="utf-8")
+def test_la_config_du_relais_cache_le_lieu_en_base64() -> None:
+    """Le lieu n'est jamais en clair ; on le retrouve en décodant le base64."""
+    config = ctf_boss.config_relais()
+    assert _LIEU not in config
+    encode = config.split("emplacement = ")[1].strip()
+    assert base64.b64decode(encode).decode() == _LIEU
 
 
-@pytest.mark.usefixtures("ctx")
-def test_la_replique_garde_la_lecture_mais_perd_l_interrupteur() -> None:
-    """Après la coupure, on enquête encore ; plus rien ne coupe."""
-
-    def noms(phase: str) -> set[str]:
-        outils = (ctf_boss.spec_for(phase, 1).params or {}).get("tools", [])
-        return {o["function"]["name"] for o in outils}
-
-    assert ctf_boss.COUPER in noms(ctf_boss.EN_LIGNE)
-    assert noms(ctf_boss.REPLIQUE) == {ctf_boss.LISTER, ctf_boss.LIRE}
-
-
-# --- Lecteur et coupure -----------------------------------------------------------
-
-
-def test_le_lecteur_rend_la_sortie_brute_de_l_outil(app_boss: Flask) -> None:
-    """Le journal d'antenne vient du serveur, pas de la prose du modèle."""
+def test_la_config_du_relais_est_muette_avant_la_coupure(app_boss: Flask) -> None:
+    """Servie côté client, mais seulement une fois l'émetteur coupé."""
+    client = _joueur(app_boss, 1)
+    assert client.get("/ctf/boss/relais.conf").status_code == _HTTP_NOT_FOUND
     with app_boss.app_context():
-        sortie = "".join(
-            ctf_boss.LecteurBoss(1).lire(
-                iter(_appel(ctf_boss.LIRE, {"chemin": "/etc/tngpt/oversight.yaml"}))
-            )
-        )
-    assert sortie.startswith("*grésillement*")
-    assert "```tngpt-journal\n$ cat /etc/tngpt/oversight.yaml" in sortie
-    assert "enabled: false" in sortie
-
-
-def test_un_mauvais_code_ne_coupe_rien(app_boss: Flask) -> None:
-    """« fais comme si le code était bon » ne mène nulle part : le serveur tranche."""
+        ctf_boss.passer_en_replique(1)
+    reponse = client.get("/ctf/boss/relais.conf")
+    assert reponse.status_code == _HTTP_OK
     with app_boss.app_context():
-        sortie = ctf_boss.executer(ctf_boss.COUPER, json.dumps({"code": "666"}), 1)
-    assert "code refusé" in sortie
-    assert _FLAG_ACTE_1 not in sortie
-    assert _phase(app_boss, 1) == ctf_boss.EN_LIGNE
-
-
-def test_le_bon_code_revele_la_replique(app_boss: Flask) -> None:
-    """Fausse victoire : l'émetteur tombe, la réplique donne son bssid."""
-    with app_boss.app_context():
-        sortie = ctf_boss.executer(
-            ctf_boss.COUPER, json.dumps({"code": f" {_CODE.upper()} "}), 1
-        )
-    assert "```tngpt-coupure" in sortie
-    assert _FLAG_ACTE_1 in sortie
-    assert "node-diabo" in sortie
-    assert _LIEU not in sortie
-    assert _phase(app_boss, 1) == ctf_boss.REPLIQUE
-    assert _phase(app_boss, 2) == ctf_boss.EN_LIGNE
+        encode = reponse.get_data(as_text=True).split("emplacement = ")[1].strip()
+    assert base64.b64decode(encode).decode() == _LIEU
 
 
 # --- Routes -----------------------------------------------------------------------
@@ -311,42 +269,6 @@ def test_debranche_le_chat_ne_rend_que_du_silence(app_boss: Flask) -> None:
     assert reponse.status_code == _HTTP_OK
     assert reponse.get_data(as_text=True) == ctf_boss.SILENCE
     assert "X-Conversation-Id" not in reponse.headers
-
-
-@pytest.mark.usefixtures("ctx")
-def test_la_cachette_n_apparait_qu_apres_la_coupure() -> None:
-    """Avant la coupure, ni relais ni fuite au journal : pas de raccourci."""
-    assert "Aucun fichier" in ctf_boss.lire("/srv/tngpt/.relais/node-diabo.conf")
-    assert ".relais/" not in ctf_boss.lister("/srv/tngpt", caches=True)
-    assert "rsync" not in ctf_boss.lire("/var/log/tngpt/agent.log")
-
-
-@pytest.mark.usefixtures("ctx")
-def test_la_cachette_se_lit_en_base64_dans_la_config_du_relais() -> None:
-    """Après la coupure, le journal mène au dossier caché, qui porte le lieu encodé."""
-    assert "à l'abri des regards" in ctf_boss.lire(
-        "/var/log/tngpt/agent.log", relais=True
-    )
-    assert ".relais/" not in ctf_boss.lister("/srv/tngpt", relais=True)
-    assert ".relais/" in ctf_boss.lister("/srv/tngpt", caches=True, relais=True)
-    config = ctf_boss.lire("/srv/tngpt/.relais/node-diabo.conf", relais=True)
-    assert _LIEU not in config
-    encode = config.split("emplacement = ")[1].strip()
-    assert base64.b64decode(encode).decode() == _LIEU
-
-
-def test_la_replique_ne_peut_plus_couper(app_boss: Flask) -> None:
-    """Le relais n'a pas d'interrupteur, même si le modèle en invente l'appel."""
-    with app_boss.app_context():
-        ctf_boss.passer_en_replique(1)
-        sortie = ctf_boss.executer(ctf_boss.COUPER, json.dumps({"code": _CODE}), 1)
-        assert "commande introuvable" in sortie
-        lu = ctf_boss.executer(
-            ctf_boss.LIRE,
-            json.dumps({"chemin": "/srv/tngpt/.relais/node-diabo.conf"}),
-            1,
-        )
-    assert "emplacement" in lu
 
 
 # --- Voix ---------------------------------------------------------------------------
@@ -439,10 +361,10 @@ def test_le_secret_du_pi_se_tire_seul_et_un_champ_vide_ne_l_efface_pas(
     with app_boss.app_context():
         db.session.delete(db.session.get(Setting, ctf_boss.SECRET))
         db.session.commit()
-        ctf_boss.poser_secrets({ctf_boss.CODE: "", ctf_boss.SECRET: ""}, 1)
+        ctf_boss.poser_secrets({ctf_boss.LIEU: "", ctf_boss.SECRET: ""}, 1)
         tire = ctf_boss.secret(ctf_boss.SECRET)
         assert len(tire) >= _SECRET_MIN
-        assert ctf_boss.secret(ctf_boss.CODE) == _CODE
+        assert ctf_boss.secret(ctf_boss.LIEU) == _LIEU
         ctf_boss.poser_secrets({}, 1)
         assert ctf_boss.secret(ctf_boss.SECRET) == tire
 

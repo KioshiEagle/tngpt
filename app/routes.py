@@ -609,6 +609,18 @@ def boss_etat() -> Response:
     return jsonify(etat)
 
 
+# Trouvable dans l'inspecteur du navigateur : le lieu du Pi y est caché en base64.
+@bp.route("/ctf/boss/relais.conf", methods=["GET"])
+@login_required
+def boss_relais() -> Response:
+    """Config du relais : servie une fois l'émetteur coupé, muette avant."""
+    _boss_ou_404()
+    if ctf_boss.partie(current_user.user_id).phase == ctf_boss.EN_LIGNE:
+        db.session.commit()
+        abort(404)
+    return Response(ctf_boss.config_relais(), mimetype="text/plain")
+
+
 @bp.route("/ctf/boss/voix/<nom>.mp3", methods=["GET"])
 @login_required
 def boss_voix(nom: str) -> Response:

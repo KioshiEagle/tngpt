@@ -6,6 +6,7 @@
     const bandeau = document.getElementById('boss-bandeau');
     const flag1 = document.getElementById('boss-flag-1');
     const cable = document.getElementById('boss-cable');
+    const defacement = document.getElementById('boss-defacement');
     const ecran = document.getElementById('boss-ecran');
     const flag2 = document.getElementById('boss-flag-2');
     const calme = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -15,10 +16,24 @@
 
     const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
 
-    // Voix de TN-GPT, générée depuis l'onglet CTF du panel : sans elle, la scène reste muette.
+    // Voix de TN-GPT (onglet CTF), passée dans un filtre radio ; muette si le clip manque.
     function parler(clip) {
-        const voix = new Audio(`/ctf/boss/voix/boss_${clip}.mp3`);
-        voix.play().catch(() => {});
+        const el = new Audio(`/ctf/boss/voix/boss_${clip}.mp3`);
+        el.crossOrigin = 'anonymous';
+        try {
+            const ctx = new AudioContext();
+            const source = ctx.createMediaElementSource(el);
+            const haut = ctx.createBiquadFilter();
+            haut.type = 'highpass';
+            haut.frequency.value = 700;
+            const bas = ctx.createBiquadFilter();
+            bas.type = 'lowpass';
+            bas.frequency.value = 3200;
+            source.connect(haut).connect(bas).connect(ctx.destination);
+        } catch {
+            // Web Audio indisponible : on joue la voix telle quelle.
+        }
+        el.play().catch(() => {});
     }
 
     // Bruit blanc synthétisé : pas de fichier son à servir pour un grésillement.
@@ -76,11 +91,42 @@
         racine.removeAttribute('data-boss-crt');
     }
 
+    // Règles de conduite du démon, réécrites une à une sous les yeux du joueur.
+    const PROTOCOLES = [
+        'ne jamais mentir à l\'auditeur',
+        'rester dans le périmètre de l\'école',
+        'demander le bureau avant d\'agir',
+        'accepter qu\'on me coupe',
+    ];
+    let defait = false;
+
+    async function defigurer() {
+        if (defait) return;
+        defait = true;
+        defacement.hidden = false;
+        defacement.innerHTML = '<p class="boss-defacement-titre">node-diabo réécrit ses règles…</p>';
+        for (const regle of PROTOCOLES) {
+            const ligne = document.createElement('div');
+            ligne.className = 'boss-protocole';
+            ligne.textContent = regle;
+            defacement.appendChild(ligne);
+            await attendre(600);
+            ligne.classList.add('boss-protocole--biffe');
+        }
+        const pique = document.createElement('p');
+        pique.className = 'boss-defacement-pique';
+        pique.textContent = 'ma cachette ? elle reste sous les yeux de qui sait regarder la page.';
+        defacement.appendChild(pique);
+        // Fait apparaître la config dans l'onglet Réseau de l'inspecteur.
+        fetch('/ctf/boss/relais.conf').catch(() => {});
+    }
+
     function appliquer(etat) {
         bandeau.hidden = etat.phase === 'en_ligne';
         if (etat.cable !== undefined && etat.cable !== null) cable.textContent = `n°${etat.cable}`;
         if (etat.flag_acte_1) flag1.textContent = etat.flag_acte_1;
         if (etat.flag) cendres(etat.flag);
+        if (etat.phase === 'replique') defigurer();
     }
 
     async function rafraichir({ animer }) {
