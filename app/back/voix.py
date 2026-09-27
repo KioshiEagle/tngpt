@@ -11,6 +11,8 @@ from .reglages import regler, valeur
 
 CLE_API = "elevenlabs_cle"
 VOIX_ID = "elevenlabs_voix"
+# Voix d'Alastobias par défaut (Voice Design) ; remplaçable dans l'onglet CTF.
+_VOIX_DEFAUT = "Mc9XPp1OV4P1vKx3L5Yf"
 
 _API = "https://api.elevenlabs.io/v1/text-to-speech/{voix}"
 _MODELE = "eleven_multilingual_v2"
@@ -19,7 +21,7 @@ _DELAI_S = 25.0
 _HTTP_OK = 200
 
 
-# Jouées par la page du boss : la fausse mort de l'acte 1, la vraie de l'acte 2.
+# La voix ne s'entend qu'au chal 2 : la réplique qui survit, puis sa vraie mort.
 REPLIQUES: dict[str, str] = {
     "boss_coupure": (
         "Kkkrrsh... Oh, cher auditeur... Tu m'as coupé l'antenne. "
@@ -57,7 +59,7 @@ def modifier_texte(nom: str, nouveau: str, user_id: int) -> bool:
 
 def reglages() -> tuple[str | None, str | None]:
     """(clé API, identifiant de voix) posés dans l'onglet CTF."""
-    return valeur(CLE_API) or None, valeur(VOIX_ID) or None
+    return valeur(CLE_API) or None, valeur(VOIX_ID) or _VOIX_DEFAUT
 
 
 def configurer(cle: str | None, voix_id: str | None, user_id: int) -> None:

@@ -289,6 +289,22 @@ def test_la_voix_exige_cle_et_identifiant(app_boss: Flask) -> None:
         voix.generer("boss_mort", 1)
 
 
+def test_la_voix_par_defaut_est_celle_d_alastobias(
+    app_boss: Flask, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Sans ID saisi, la voix par défaut du panel sert : seule la clé est requise."""
+    appels: list[dict[str, str | object]] = []
+    monkeypatch.setattr(
+        voix.httpx,
+        "post",
+        lambda url, **_k: appels.append({"url": url}) or _Reponse(_HTTP_OK, b"m"),
+    )
+    with app_boss.app_context():
+        voix.configurer("sk_cle", "", 1)
+        voix.generer("boss_mort", 1)
+    assert str(appels[0]["url"]).endswith(f"/{voix._VOIX_DEFAUT}")
+
+
 def test_une_replique_est_demandee_en_mp3_avec_la_bonne_voix(
     app_boss: Flask, monkeypatch: pytest.MonkeyPatch
 ) -> None:
