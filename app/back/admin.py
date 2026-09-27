@@ -185,7 +185,7 @@ def _fichier_a_telecharger(contenu: bytes, nom: str) -> Response:
 @admin_bp.route("/apparence/flamme", methods=["POST"])
 @admin_required
 def toggle_flamme() -> Response:
-    """Allume ou éteint l'habillage flamme du mode brainrot, pour tout le monde.
+    """Allume ou éteint le mode boss final, pour tout le monde.
 
     Réservé aux admins : le réglage est global, personne ne le choisit depuis
     le chat.
@@ -193,7 +193,7 @@ def toggle_flamme() -> Response:
     actif = not est_actif(FLAMME)
     basculer(FLAMME, actif=actif, user_id=current_user.user_id)
     etat = "allumé pour tout le monde" if actif else "éteint"
-    flash(f"Habillage flamme {etat}.", "success")
+    flash(f"Mode boss final {etat}.", "success")
     return redirect(url_for("admin.index"))
 
 

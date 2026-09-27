@@ -65,9 +65,9 @@
     {% endif %}
 
     <section class="admin-card">
-        <h2>Habillage flamme</h2>
+        <h2>Mode boss final</h2>
         <p class="admin-note">
-            Repeint le mode brainrot en braise, canard compris, à la place du rose.
+            Repeint TN-GPT aux couleurs de la Diaboliste, canard compris.
             Le réglage est global : une fois allumé, tout le monde le voit dès son
             prochain chargement de page. Les utilisateurs n'ont pas la main dessus.
         </p>
@@ -77,7 +77,7 @@
         <form method="post" action="{{ url_for('admin.toggle_flamme') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="admin-btn">
-                {% if flamme %}Éteindre l'habillage flamme{% else %}Allumer l'habillage flamme{% endif %}
+                {% if flamme %}Éteindre le mode boss final{% else %}Allumer le mode boss final{% endif %}
             </button>
         </form>
     </section>

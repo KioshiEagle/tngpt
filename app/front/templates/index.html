@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- L'habillage flamme est un réglage global posé en admin : il vient du serveur,
+<!-- Le mode boss final (réglage « flamme ») est posé en admin : il vient du serveur,
      pas du navigateur, et personne ne le bascule depuis le chat. -->
 <html lang="fr"{% if flamme %} data-flamme="on"{% endif %}{% if jeu %} data-jeu="{{ jeu }}"{% endif %}>
 <head>
@@ -35,7 +35,7 @@
             <div class="logo-zone-mini">
                 <img src="/static/ducky_cassis.webp" class="logo-img-mini logo-img-mini--normal" id="sidebar-ducky" alt="NeuraTN" width="68" height="68">
                 <img src="{{ asset('ducky_brainrot.svg') }}" class="logo-img-mini logo-img-mini--brainrot" id="sidebar-ducky-brainrot" alt="NeuraTN, mode brainrot" width="68" height="68">
-                <img src="{{ asset('ducky_flamme.svg') }}" class="logo-img-mini logo-img-mini--flamme" alt="NeuraTN, mode brainrot flamme" width="68" height="68">
+                <img src="{{ asset('ducky_flamme.svg') }}" class="logo-img-mini logo-img-mini--flamme" alt="NeuraTN, mode boss final" width="68" height="68">
                 <div class="speech-bubble mini" id="sidebar-bubble">{{ quote }}</div>
             </div>
             <div class="brand">Discussions</div>
@@ -130,7 +130,7 @@
                 {% endif %}
                 <img src="/static/ducky_cassis.webp" class="landing-ducky landing-ducky--normal" alt="NeuraTN" width="96" height="96">
                 <img src="{{ asset('ducky_brainrot.svg') }}" class="landing-ducky landing-ducky--brainrot" alt="NeuraTN, mode brainrot" width="96" height="96">
-                <img src="{{ asset('ducky_flamme.svg') }}" class="landing-ducky landing-ducky--flamme" alt="NeuraTN, mode brainrot flamme" width="96" height="96">
+                <img src="{{ asset('ducky_flamme.svg') }}" class="landing-ducky landing-ducky--flamme" alt="NeuraTN, mode boss final" width="96" height="96">
                 <div class="hero-zone">
                     {% if jeu %}
                     <h1 class="hero-title">🎟️ Ticket <span>d'or</span></h1>

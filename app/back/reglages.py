@@ -6,8 +6,8 @@ dans l'état par défaut, sans qu'aucune migration n'ait à semer de ligne.
 
 from .models import Setting, db
 
-# Habillage « flamme » du mode brainrot : palette braise et canard en ombre
-# chinoise, à la place du rose. Caché tant qu'un admin ne l'allume pas.
+# Mode boss final : palette de la Diaboliste et canard possédé. La clé garde son
+# ancien nom pour ne pas perdre l'état déjà posé en base.
 FLAMME = "flamme"
 
 _ACTIF = "on"
