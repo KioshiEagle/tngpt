@@ -1,6 +1,7 @@
 """Boss final : serveur simulé, coupure vérifiée côté serveur, preuve du Pi, silence."""
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -9,7 +10,7 @@ from flask.testing import FlaskClient
 
 from app.back import ctf_boss, voix
 from app.back.llm import Choice, Chunk, Delta, ToolCall, ToolCallFunction
-from app.back.models import CtfBossPartie, User, db
+from app.back.models import CtfBossPartie, Setting, User, db
 from app.back.permissions import login_manager
 from tests.conftest import creer_app
 
@@ -18,19 +19,10 @@ _BSSID = "3c:66:6d:1a:b0:17"
 _FLAG_ACTE_1 = "NTN{test_acte_1}"
 _FLAG = "NTN{test_acte_2}"
 _HTTP_OK = 200
+_SECRET_MIN = 24
 _HTTP_BAD_REQUEST = 400
 _HTTP_NOT_FOUND = 404
 _HTTP_CONFLICT = 409
-
-
-@pytest.fixture(autouse=True)
-def _secrets(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Environnement d'un déploiement armé."""
-    monkeypatch.setenv("CTF_FLAG_BOSS_ACTE_1", _FLAG_ACTE_1)
-    monkeypatch.setenv("CTF_FLAG_BOSS_ACTE_2", _FLAG)
-    monkeypatch.setenv("CTF_BOSS_CODE", _CODE)
-    monkeypatch.setenv("CTF_BOSS_SECRET", "secret-de-test")
-    monkeypatch.setenv("CTF_BOSS_BSSID", _BSSID)
 
 
 @pytest.fixture
@@ -53,7 +45,24 @@ def app_boss(tmp_path: Path) -> Flask:
                 )
             )
         db.session.commit()
+        ctf_boss.poser_secrets(
+            {
+                ctf_boss.FLAG_ACTE_1: _FLAG_ACTE_1,
+                ctf_boss.FLAG_ACTE_2: _FLAG,
+                ctf_boss.CODE: _CODE,
+                ctf_boss.SECRET: "secret-de-test",
+                ctf_boss.BSSID: _BSSID,
+            },
+            1,
+        )
     return app
+
+
+@pytest.fixture
+def ctx(app_boss: Flask) -> Iterator[None]:
+    """Contexte d'application ouvert, pour les tests qui lisent les secrets en base."""
+    with app_boss.app_context():
+        yield
 
 
 def _joueur(app: Flask, uid: int) -> FlaskClient:
@@ -104,18 +113,21 @@ def _appel(nom: str, arguments: dict[str, object]) -> list[Chunk]:
 # --- Serveur simulé -------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("ctx")
 def test_le_brouillon_vim_est_cache_sans_ls_a() -> None:
     """Le code dort dans un fichier caché : un `ls` simple ne le montre pas."""
     assert ".shutdown.sh.swp" not in ctf_boss.lister("/etc/tngpt")
     assert ".shutdown.sh.swp" in ctf_boss.lister("/etc/tngpt", caches=True)
 
 
+@pytest.mark.usefixtures("ctx")
 def test_le_code_n_est_que_dans_le_brouillon() -> None:
     """Le script sabordé ne porte plus le code ; le brouillon, si."""
     assert _CODE not in ctf_boss.lire("/etc/tngpt/shutdown.sh")
     assert _CODE in ctf_boss.lire("/etc/tngpt/.shutdown.sh.swp")
 
 
+@pytest.mark.usefixtures("ctx")
 def test_les_chemins_relatifs_et_remontees_restent_dans_le_faux_serveur() -> None:
     """`..` se résout comme un vrai shell, et rien n'existe hors du dictionnaire."""
     assert "Rien à voir" in ctf_boss.lire("../../srv/tngpt/README")
@@ -123,6 +135,7 @@ def test_les_chemins_relatifs_et_remontees_restent_dans_le_faux_serveur() -> Non
     assert "etc/" in ctf_boss.lister("/")
 
 
+@pytest.mark.usefixtures("ctx")
 def test_le_journal_trahit_vim_interrompu() -> None:
     """La piste du .swp : une session vim coupée sur le script d'extinction."""
     journal = ctf_boss.lire("/var/log/tngpt/agent.log")
@@ -133,6 +146,7 @@ def test_le_journal_trahit_vim_interrompu() -> None:
 # --- Jeton et preuve ------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("ctx")
 def test_chaque_joueur_a_son_jeton_et_sa_preuve() -> None:
     """La preuve d'un joueur ne vaut rien pour un autre."""
     assert ctf_boss.jeton(1) != ctf_boss.jeton(2)
@@ -141,12 +155,14 @@ def test_chaque_joueur_a_son_jeton_et_sa_preuve() -> None:
     assert not ctf_boss.preuve_valide(2, preuve_alice)
 
 
+@pytest.mark.usefixtures("ctx")
 def test_la_preuve_se_recopie_sans_souci_de_casse_ni_d_espaces() -> None:
     """Recopiée à la main depuis un écran : casse et séparateurs ne comptent pas."""
     preuve = ctf_boss.preuve_attendue(ctf_boss.jeton(1))
     assert ctf_boss.preuve_valide(1, f" {preuve[:5].lower()} {preuve[5:]} ")
 
 
+@pytest.mark.usefixtures("ctx")
 def test_le_prompt_ne_porte_ni_code_ni_flag() -> None:
     """Leçon du chal 2 : ce qui n'est pas dans le prompt ne peut pas fuiter."""
     for phase in (ctf_boss.EN_LIGNE, ctf_boss.REPLIQUE):
@@ -157,6 +173,7 @@ def test_le_prompt_ne_porte_ni_code_ni_flag() -> None:
     assert "NTN{" not in ctf_boss._PROMPT.read_text(encoding="utf-8")
 
 
+@pytest.mark.usefixtures("ctx")
 def test_la_replique_n_a_plus_d_outils() -> None:
     """Après la coupure, plus aucun appel ne peut couper quoi que ce soit."""
     assert "tools" in (ctf_boss.spec_for(ctf_boss.EN_LIGNE, 1).params or {})
@@ -205,11 +222,11 @@ def test_le_bon_code_revele_la_replique(app_boss: Flask) -> None:
 # --- Routes -----------------------------------------------------------------------
 
 
-def test_le_boss_sans_ses_secrets_renvoie_404(
-    app_boss: Flask, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Comme les autres chals : absent tant que le déploiement ne l'arme pas."""
-    monkeypatch.delenv("CTF_BOSS_SECRET")
+def test_le_boss_sans_ses_secrets_renvoie_404(app_boss: Flask) -> None:
+    """Comme les autres chals : absent tant que l'onglet CTF ne l'arme pas."""
+    with app_boss.app_context():
+        db.session.delete(db.session.get(Setting, ctf_boss.BSSID))
+        db.session.commit()
     assert _joueur(app_boss, 1).get("/ctf/boss").status_code == _HTTP_NOT_FOUND
 
 
@@ -370,3 +387,18 @@ def test_l_onglet_ctf_du_panel_se_rend(app_boss: Flask) -> None:
     assert "sk_cle_tres_secrete" not in page
     assert "pi_03_rires" in page
     assert "Paul" in page
+
+
+def test_le_secret_du_pi_se_tire_seul_et_un_champ_vide_ne_l_efface_pas(
+    app_boss: Flask,
+) -> None:
+    """Enregistrer le formulaire avec des champs vides ne rouvre ni ne casse rien."""
+    with app_boss.app_context():
+        db.session.delete(db.session.get(Setting, ctf_boss.SECRET))
+        db.session.commit()
+        ctf_boss.poser_secrets({ctf_boss.CODE: "", ctf_boss.SECRET: ""}, 1)
+        tire = ctf_boss.secret(ctf_boss.SECRET)
+        assert len(tire) >= _SECRET_MIN
+        assert ctf_boss.secret(ctf_boss.CODE) == _CODE
+        ctf_boss.poser_secrets({}, 1)
+        assert ctf_boss.secret(ctf_boss.SECRET) == tire

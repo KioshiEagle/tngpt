@@ -833,6 +833,10 @@ def ctf_page() -> str:
     return render_template(
         "admin/ctf.html",
         boss_actif=ctf_boss.enabled(),
+        secrets_boss=[
+            (cle, libelle, ctf_boss.secret(cle))
+            for cle, libelle in ctf_boss.SECRETS.items()
+        ],
         cle=voix.masquer(cle),
         voix_id=voix_id,
         repliques=[(nom, r, voix.clip(nom)) for nom, r in voix.REPLIQUES.items()],
@@ -841,6 +845,22 @@ def ctf_page() -> str:
         phases=phases,
         parties=parties,
     )
+
+
+@admin_bp.route("/ctf/secrets", methods=["POST"])
+@admin_required
+def ctf_secrets() -> Response:
+    """Enregistre flags, code, secret et bssid : le boss s'ouvre une fois complet."""
+    ctf_boss.poser_secrets(request.form.to_dict(), current_user.user_id)
+    # Aucune valeur au journal : il est lu par plus de monde que le panel.
+    logger.info("Secrets du boss modifiés par %s", current_user.user_mail)
+    if ctf_boss.enabled():
+        flash("Secrets enregistrés : /ctf/boss est ouvert.", "success")
+    else:
+        flash(
+            "Enregistré, mais /ctf/boss reste fermé tant qu'un champ manque.", "warning"
+        )
+    return redirect(url_for("admin.ctf_page"))
 
 
 @admin_bp.route("/ctf/elevenlabs", methods=["POST"])

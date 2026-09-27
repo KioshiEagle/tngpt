@@ -11,11 +11,29 @@
         {% if boss_actif %}
             <p><span class="admin-status admin-status--active">servi</span> sur <a class="admin-link" href="/ctf/boss">/ctf/boss</a></p>
         {% else %}
-            <p><span class="admin-status admin-status--limited">absent</span> — la page renvoie 404 tant que les secrets <code>CTF_FLAG_BOSS_ACTE_1</code>, <code>CTF_FLAG_BOSS_ACTE_2</code>, <code>CTF_BOSS_CODE</code>, <code>CTF_BOSS_SECRET</code> et <code>CTF_BOSS_BSSID</code> manquent au déploiement.</p>
+            <p><span class="admin-status admin-status--limited">fermé</span> — <code>/ctf/boss</code> renvoie 404 tant qu'un des secrets ci-dessous manque.</p>
         {% endif %}
         <p class="admin-note">
             En ligne : {{ phases.en_ligne }} · émetteur coupé (acte 1 réussi) : {{ phases.replique + phases.debranche }} · débranchés (acte 2 réussi) : {{ phases.debranche }}
         </p>
+    </div>
+
+    <div class="admin-card admin-card--spaced">
+        <h2>Secrets du boss</h2>
+        <p class="admin-note">
+            Rangés en base : aucun redéploiement, aucun .env. Un champ laissé vide garde sa valeur.
+            Le secret du Pi est tiré au hasard au premier enregistrement ; recopie-le dans <code>installer.sh</code>.
+        </p>
+        <form method="post" action="{{ url_for('admin.ctf_secrets') }}" class="admin-key-form admin-ticket-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% for cle, libelle, valeur in secrets_boss %}
+                <label>
+                    <span>{{ libelle }}</span>
+                    <input type="text" name="{{ cle }}" maxlength="200" autocomplete="off" value="{{ valeur }}" class="admin-mono" style="min-width: 280px;">
+                </label>
+            {% endfor %}
+            <button type="submit" class="admin-btn admin-btn--primary">Enregistrer</button>
+        </form>
     </div>
 
     <div class="admin-card admin-card--spaced">

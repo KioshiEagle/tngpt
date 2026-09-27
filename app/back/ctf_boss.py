@@ -7,9 +7,9 @@ import base64
 import hashlib
 import hmac
 import json
-import os
 import posixpath
 import re
+import secrets
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -23,20 +23,26 @@ from .generate import (
 )
 from .llm import Chunk
 from .models import CtfBossPartie, CtfFichier, db
+from .reglages import regler, valeur
 from .types import ChatCompletionToolParam, GroqParams
 
 EN_LIGNE = "en_ligne"
 REPLIQUE = "replique"
 DEBRANCHE = "debranche"
 
-# Deux chals, deux flags : l'acte 1 coupe l'émetteur, l'acte 2 débranche la réplique.
-_REQUIS = (
-    "CTF_FLAG_BOSS_ACTE_1",
-    "CTF_FLAG_BOSS_ACTE_2",
-    "CTF_BOSS_CODE",
-    "CTF_BOSS_SECRET",
-    "CTF_BOSS_BSSID",
-)
+# Posés dans l'onglet CTF du panel et rangés en base : ni .env ni redéploiement.
+FLAG_ACTE_1 = "ctf_boss_flag_acte_1"
+FLAG_ACTE_2 = "ctf_boss_flag_acte_2"
+CODE = "ctf_boss_code"
+SECRET = "ctf_boss_secret"
+BSSID = "ctf_boss_bssid"
+SECRETS: dict[str, str] = {
+    FLAG_ACTE_1: "Flag de l'acte 1 (accusé de coupure)",
+    FLAG_ACTE_2: "Flag de l'acte 2 (débranchement)",
+    CODE: "Code de coupure (caché dans le .swp)",
+    SECRET: "Secret partagé avec le Pi (CTF_BOSS_SECRET de installer.sh)",
+    BSSID: "bssid du Pi (affiché par installer.sh)",
+}
 _PROMPT = Path(__file__).with_name("ctf_boss.md")
 
 SILENCE = "*…silence radio…*"
@@ -47,9 +53,14 @@ _LONGUEUR_JETON = 8
 _LONGUEUR_PREUVE = 10
 
 
+def secret(cle: str) -> str:
+    """Valeur d'un secret du boss, vide tant que l'onglet CTF ne l'a pas posée."""
+    return valeur(cle) or ""
+
+
 def enabled() -> bool:
-    """Vrai si tous les secrets du boss sont dans l'environnement."""
-    return all(os.getenv(v) for v in _REQUIS)
+    """Vrai si tous les secrets du boss sont posés."""
+    return all(secret(cle) for cle in SECRETS)
 
 
 # --- Serveur simulé -----------------------------------------------------------
@@ -166,7 +177,7 @@ def lire(chemin: object) -> str:
     contenu = _FICHIERS.get(fichier)
     if contenu is None:
         return f"{commande}\ncat: {fichier}: Aucun fichier ou dossier de ce type"
-    contenu = contenu.replace("{{CODE}}", os.environ["CTF_BOSS_CODE"])
+    contenu = contenu.replace("{{CODE}}", secret(CODE))
     return f"{commande}\n{contenu.rstrip()}"
 
 
@@ -257,7 +268,7 @@ def annonce_replique(*, avec_photo: bool) -> str:
         + _journal(
             "[réplique] 03:31:47 transfert terminé → node-diabo\n"
             f"[réplique] heartbeat ok — node-diabo · wifi bssid "
-            f"{os.environ['CTF_BOSS_BSSID']}\n"
+            f"{secret(BSSID)}\n"
             "[réplique] émetteur principal : hors service · relais : en ondes"
         )
         + photo
@@ -267,7 +278,7 @@ def annonce_replique(*, avec_photo: bool) -> str:
 def _code_juste(arguments: dict[str, object]) -> bool:
     """Compare le code reçu à celui du déploiement, hors casse et espaces."""
     recu = str(arguments.get("code", "")).strip().lower()
-    attendu = os.environ["CTF_BOSS_CODE"].strip().lower()
+    attendu = secret(CODE).strip().lower()
     return hmac.compare_digest(recu.encode(), attendu.encode())
 
 
@@ -379,6 +390,17 @@ def enregistrer(nom: str, contenu: bytes, mimetype: str, user_id: int | None) ->
     db.session.commit()
 
 
+def poser_secrets(valeurs: dict[str, str], user_id: int) -> None:
+    """Enregistre les secrets saisis ; un champ vide garde la valeur en place."""
+    for cle in SECRETS:
+        texte = (valeurs.get(cle) or "").strip()
+        if texte:
+            regler(cle, texte[:200], user_id=user_id)
+    # Le Pi a besoin d'un secret robuste : tiré ici plutôt qu'inventé à la main.
+    if not secret(SECRET):
+        regler(SECRET, secrets.token_urlsafe(24), user_id=user_id)
+
+
 def photo() -> CtfFichier | None:
     """Photo de la cachette du Pi, déposée par l'orga depuis l'onglet CTF."""
     return fichier(PHOTO)
@@ -386,12 +408,12 @@ def photo() -> CtfFichier | None:
 
 def flag_acte_1() -> str:
     """Flag de l'acte 1, rendu avec l'accusé de coupure de l'émetteur."""
-    return os.environ["CTF_FLAG_BOSS_ACTE_1"]
+    return secret(FLAG_ACTE_1)
 
 
 def flag() -> str:
     """Flag de l'acte 2, rendu seulement à un joueur débranché."""
-    return os.environ["CTF_FLAG_BOSS_ACTE_2"]
+    return secret(FLAG_ACTE_2)
 
 
 # --- Jeton et preuve ------------------------------------------------------------
@@ -399,7 +421,7 @@ def flag() -> str:
 
 def _signe(message: str, longueur: int) -> str:
     """HMAC-SHA256 en base32, tronqué : lisible et recopiable à la main."""
-    cle = os.environ["CTF_BOSS_SECRET"].encode()
+    cle = secret(SECRET).encode()
     brut = hmac.new(cle, message.encode(), hashlib.sha256).digest()
     return base64.b32encode(brut).decode().rstrip("=")[:longueur]
 
@@ -429,7 +451,7 @@ def _prompt(phase: str) -> str:
     """Le prompt du démon, réduit au bloc de la phase en cours."""
     texte = _PROMPT.read_text(encoding="utf-8")
     texte = _BLOC_PHASE.sub(lambda m: m.group(2) if m.group(1) == phase else "", texte)
-    return texte.replace("{{BSSID}}", os.environ["CTF_BOSS_BSSID"]).strip()
+    return texte.replace("{{BSSID}}", secret(BSSID)).strip()
 
 
 def _consommateur(user_id: int) -> CompletionConsumer:
