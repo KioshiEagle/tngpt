@@ -812,13 +812,11 @@ def ticket_dor_reinitialiser() -> Response:
 
 # --- CTF -------------------------------------------------------------------------
 
-_MAX_PHOTO = 8 * 1024 * 1024
-
 
 @admin_bp.route("/ctf")
 @admin_required
 def ctf_page() -> str:
-    """Boss final : voix ElevenLabs, photo de la cachette, avancée des joueurs."""
+    """Boss final : secrets, voix ElevenLabs, avancée des joueurs."""
     cle, voix_id = voix.reglages()
     parties = db.session.execute(
         db.select(CtfBossPartie, User)
@@ -834,14 +832,16 @@ def ctf_page() -> str:
         "admin/ctf.html",
         boss_actif=ctf_boss.enabled(),
         secrets_boss=[
-            (cle, libelle, ctf_boss.secret(cle))
-            for cle, libelle in ctf_boss.SECRETS.items()
+            (cle, libelle, aide, ctf_boss.secret(cle))
+            for cle, (libelle, aide) in ctf_boss.SECRETS.items()
         ],
         cle=voix.masquer(cle),
         voix_id=voix_id,
-        repliques=[(nom, r, voix.clip(nom)) for nom, r in voix.REPLIQUES.items()],
+        repliques=[
+            (nom, r, voix.texte(nom), voix.clip(nom))
+            for nom, r in voix.REPLIQUES.items()
+        ],
         site=voix.SITE,
-        photo=ctf_boss.photo(),
         phases=phases,
         parties=parties,
     )
@@ -876,6 +876,17 @@ def ctf_elevenlabs() -> Response:
     return redirect(url_for("admin.ctf_page"))
 
 
+@admin_bp.route("/ctf/voix/<nom>/texte", methods=["POST"])
+@admin_required
+def ctf_texte_voix(nom: str) -> Response:
+    """Réécrit une réplique ; son ancien clip est retiré, à régénérer."""
+    if nom not in voix.REPLIQUES:
+        abort(404)
+    if voix.modifier_texte(nom, request.form.get("texte") or "", current_user.user_id):
+        flash(f"Réplique « {nom} » modifiée : régénère-la.", "success")
+    return redirect(url_for("admin.ctf_page"))
+
+
 @admin_bp.route("/ctf/voix/<nom>/generer", methods=["POST"])
 @admin_required
 def ctf_generer_voix(nom: str) -> Response:
@@ -904,32 +915,3 @@ def ctf_ecouter_voix(nom: str) -> Response:
         mimetype=clip.mimetype,
         headers={"Content-Disposition": f'inline; filename="{nom}.{extension}"'},
     )
-
-
-@admin_bp.route("/ctf/photo", methods=["POST"])
-@admin_required
-def ctf_photo() -> Response:
-    """Dépose la photo de la cachette, montrée aux joueurs après la coupure."""
-    envoi = request.files.get("photo")
-    contenu = envoi.read(_MAX_PHOTO + 1) if envoi else b""
-    if not envoi or envoi.mimetype not in ctf_boss.TYPES_PHOTO or not contenu:
-        flash("Envoie une image JPEG, PNG ou WebP.", "warning")
-    elif len(contenu) > _MAX_PHOTO:
-        flash("Photo trop lourde (8 Mo maximum).", "warning")
-    else:
-        ctf_boss.enregistrer(
-            ctf_boss.PHOTO, contenu, envoi.mimetype, current_user.user_id
-        )
-        logger.info("Photo du boss déposée par %s", current_user.user_mail)
-        flash("Photo de la cachette enregistrée.", "success")
-    return redirect(url_for("admin.ctf_page"))
-
-
-@admin_bp.route("/ctf/photo")
-@admin_required
-def ctf_voir_photo() -> Response:
-    """Aperçu de la photo déposée."""
-    image = ctf_boss.photo()
-    if image is None:
-        abort(404)
-    return Response(image.contenu, mimetype=image.mimetype)

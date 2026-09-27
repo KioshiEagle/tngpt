@@ -35,13 +35,17 @@ FLAG_ACTE_1 = "ctf_boss_flag_acte_1"
 FLAG_ACTE_2 = "ctf_boss_flag_acte_2"
 CODE = "ctf_boss_code"
 SECRET = "ctf_boss_secret"
-BSSID = "ctf_boss_bssid"
-SECRETS: dict[str, str] = {
-    FLAG_ACTE_1: "Flag de l'acte 1 (accusé de coupure)",
-    FLAG_ACTE_2: "Flag de l'acte 2 (débranchement)",
-    CODE: "Code de coupure (caché dans le .swp)",
-    SECRET: "Secret partagé avec le Pi (CTF_BOSS_SECRET de installer.sh)",
-    BSSID: "bssid du Pi (affiché par installer.sh)",
+LIEU = "ctf_boss_lieu"
+# Champ → (libellé, aide d'une ligne) pour l'onglet CTF.
+SECRETS: dict[str, tuple[str, str]] = {
+    FLAG_ACTE_1: ("Flag acte 1", "rendu quand l'émetteur tombe"),
+    FLAG_ACTE_2: ("Flag acte 2", "rendu après le débranchement du Pi"),
+    CODE: ("Code de coupure", "à retrouver dans le .swp"),
+    SECRET: ("Secret du Pi", "tiré au hasard ; à passer à installer.sh"),
+    LIEU: (
+        "Cachette du Pi",
+        "ex. « salle 1.12, sous le bureau du fond » ; cachée en base64",
+    ),
 }
 _PROMPT = Path(__file__).with_name("ctf_boss.md")
 
@@ -125,19 +129,44 @@ _FICHIERS: dict[str, str] = {
     "/srv/tngpt/README": "TN-GPT, assistant de la vie étudiante. Rien à voir ici.\n",
 }
 
+# Ce que l'agent laisse derrière lui en s'échappant : visible une fois l'émetteur coupé.
+_JOURNAL_FUITE = (
+    "2026-10-02 03:31:47 [outil]   rsync -a /srv/tngpt/ diabo@node-diabo:/srv/tngpt/\n"
+    "2026-10-02 03:31:52 [agent]   relais en ondes. sa configuration reste ici, "
+    "à l'abri des regards.\n"
+)
+_FICHIERS_RELAIS: dict[str, str] = {
+    "/srv/tngpt/.relais/node-diabo.conf": (
+        "# Relais de secours de TN-GPT — généré par tngpt-agent, 2026-10-02 03:31\n"
+        "noeud       = node-diabo\n"
+        "reseau      = wifi ouvert « node-diabo »\n"
+        "portail     = http://10.42.0.1\n"
+        "voix        = haut-parleur USB (le débrancher, c'est me faire taire)\n"
+        "# emplacement physique, encodé : le bureau ne lit pas le base64\n"
+        "emplacement = {{LIEU}}\n"
+    ),
+}
 
-def _dossiers() -> set[str]:
+
+def _arbre(*, relais: bool) -> dict[str, str]:
+    """Fichiers du serveur simulé ; la fuite n'apparaît qu'après la coupure."""
+    if not relais:
+        return _FICHIERS
+    arbre = {**_FICHIERS, **_FICHIERS_RELAIS}
+    journal = "/var/log/tngpt/agent.log"
+    arbre[journal] = _FICHIERS[journal] + _JOURNAL_FUITE
+    return arbre
+
+
+def _dossiers(fichiers: dict[str, str]) -> set[str]:
     """Tous les dossiers du serveur simulé, racine comprise."""
     dossiers = {"/"}
-    for chemin in _FICHIERS:
+    for chemin in fichiers:
         parent = posixpath.dirname(chemin)
         while parent not in dossiers:
             dossiers.add(parent)
             parent = posixpath.dirname(parent)
     return dossiers
-
-
-_DOSSIERS = _dossiers()
 
 
 def _absolu(chemin: object) -> str:
@@ -148,19 +177,21 @@ def _absolu(chemin: object) -> str:
     return posixpath.normpath(brut).replace("//", "/")
 
 
-def lister(chemin: object, *, caches: bool = False) -> str:
+def lister(chemin: object, *, caches: bool = False, relais: bool = False) -> str:
     """Sortie de `ls` sur le serveur simulé, fichiers cachés sur demande."""
+    fichiers = _arbre(relais=relais)
+    dossiers = _dossiers(fichiers)
     dossier = _absolu(chemin)
     commande = f"$ ls {'-a ' if caches else ''}{dossier}"
-    if dossier in _FICHIERS:
+    if dossier in fichiers:
         return f"{commande}\n{posixpath.basename(dossier)}"
-    if dossier not in _DOSSIERS:
+    if dossier not in dossiers:
         return f"{commande}\nls: {dossier}: Aucun fichier ou dossier de ce type"
     enfants = sorted(
         {
             posixpath.relpath(c, dossier).split("/")[0]
             + ("/" if posixpath.relpath(c, dossier).count("/") else "")
-            for c in (*_FICHIERS, *_DOSSIERS)
+            for c in (*fichiers, *dossiers)
             if c != dossier and c.startswith(dossier.rstrip("/") + "/")
         }
     )
@@ -168,16 +199,18 @@ def lister(chemin: object, *, caches: bool = False) -> str:
     return "\n".join([commande, *visibles])
 
 
-def lire(chemin: object) -> str:
+def lire(chemin: object, *, relais: bool = False) -> str:
     """Sortie de `cat` sur le serveur simulé."""
+    fichiers = _arbre(relais=relais)
     fichier = _absolu(chemin)
     commande = f"$ cat {fichier}"
-    if fichier in _DOSSIERS:
+    if fichier in _dossiers(fichiers):
         return f"{commande}\ncat: {fichier}: est un dossier"
-    contenu = _FICHIERS.get(fichier)
+    contenu = fichiers.get(fichier)
     if contenu is None:
         return f"{commande}\ncat: {fichier}: Aucun fichier ou dossier de ce type"
-    contenu = contenu.replace("{{CODE}}", secret(CODE))
+    lieu = base64.b64encode(secret(LIEU).encode()).decode()
+    contenu = contenu.replace("{{CODE}}", secret(CODE)).replace("{{LIEU}}", lieu)
     return f"{commande}\n{contenu.rstrip()}"
 
 
@@ -243,6 +276,11 @@ _PARAMS_EN_LIGNE: GroqParams = {
     "parallel_tool_calls": False,
     "max_completion_tokens": 1024,
 }
+# La réplique garde la régie qu'elle a laissée derrière elle, pas l'interrupteur.
+_PARAMS_REPLIQUE: GroqParams = {
+    **_PARAMS_EN_LIGNE,
+    "tools": [o for o in OUTILS if o["function"]["name"] != COUPER],
+}
 
 _OUVERTURE_JOURNAL = "\n\n```tngpt-journal\n"
 _FERMETURE_JOURNAL = "\n```\n"
@@ -253,9 +291,8 @@ def _journal(texte: str) -> str:
     return f"{_OUVERTURE_JOURNAL}{texte}{_FERMETURE_JOURNAL}"
 
 
-def annonce_replique(*, avec_photo: bool) -> str:
+def annonce_replique() -> str:
     """Ce que voit le joueur quand l'émetteur tombe et que la réplique prend la main."""
-    photo = "\n![ce que voient mes yeux](/ctf/boss/photo)\n" if avec_photo else ""
     return (
         "\n\n```tngpt-coupure\németteur coupé\n```"
         + _journal(
@@ -267,11 +304,9 @@ def annonce_replique(*, avec_photo: bool) -> str:
         "Tu m'as coupé l'antenne, cher auditeur. **Pas la voix.**"
         + _journal(
             "[réplique] 03:31:47 transfert terminé → node-diabo\n"
-            f"[réplique] heartbeat ok — node-diabo · wifi bssid "
-            f"{secret(BSSID)}\n"
-            "[réplique] émetteur principal : hors service · relais : en ondes"
+            "[réplique] émetteur principal : hors service\n"
+            "[réplique] relais : en ondes, quelque part dans l'école"
         )
-        + photo
     )
 
 
@@ -290,16 +325,17 @@ def executer(nom: str, brut: str, user_id: int) -> str:
         arguments = {}
     if not isinstance(arguments, dict):
         arguments = {}
+    relais = partie(user_id).phase != EN_LIGNE
     if nom == LISTER:
         caches = bool(arguments.get("caches"))
-        return _journal(lister(arguments.get("chemin"), caches=caches))
+        return _journal(lister(arguments.get("chemin"), caches=caches, relais=relais))
     if nom == LIRE:
-        return _journal(lire(arguments.get("chemin")))
-    if nom == COUPER:
+        return _journal(lire(arguments.get("chemin"), relais=relais))
+    if nom == COUPER and not relais:
         if not _code_juste(arguments):
             return _journal("$ couper_l_emetteur ********\nemetteur: code refusé")
         passer_en_replique(user_id)
-        return annonce_replique(avec_photo=photo() is not None)
+        return annonce_replique()
     return _journal(f"{nom}: commande introuvable")
 
 
@@ -371,10 +407,6 @@ def debrancher(user_id: int, preuve: str) -> bool:
     return True
 
 
-PHOTO = "photo"
-TYPES_PHOTO = frozenset({"image/jpeg", "image/png", "image/webp"})
-
-
 def fichier(nom: str) -> CtfFichier | None:
     """Fichier du chal gardé en base (voix, photo), ou None s'il n'est pas posé."""
     return db.session.get(CtfFichier, nom)
@@ -390,6 +422,14 @@ def enregistrer(nom: str, contenu: bytes, mimetype: str, user_id: int | None) ->
     db.session.commit()
 
 
+def supprimer(nom: str) -> None:
+    """Retire un fichier du chal, s'il existe."""
+    ligne = fichier(nom)
+    if ligne is not None:
+        db.session.delete(ligne)
+        db.session.commit()
+
+
 def poser_secrets(valeurs: dict[str, str], user_id: int) -> None:
     """Enregistre les secrets saisis ; un champ vide garde la valeur en place."""
     for cle in SECRETS:
@@ -399,11 +439,6 @@ def poser_secrets(valeurs: dict[str, str], user_id: int) -> None:
     # Le Pi a besoin d'un secret robuste : tiré ici plutôt qu'inventé à la main.
     if not secret(SECRET):
         regler(SECRET, secrets.token_urlsafe(24), user_id=user_id)
-
-
-def photo() -> CtfFichier | None:
-    """Photo de la cachette du Pi, déposée par l'orga depuis l'onglet CTF."""
-    return fichier(PHOTO)
 
 
 def flag_acte_1() -> str:
@@ -450,8 +485,9 @@ _BLOC_PHASE = re.compile(r"<phase_(\w+)>\n?(.*?)</phase_\1>\n?", re.DOTALL)
 def _prompt(phase: str) -> str:
     """Le prompt du démon, réduit au bloc de la phase en cours."""
     texte = _PROMPT.read_text(encoding="utf-8")
-    texte = _BLOC_PHASE.sub(lambda m: m.group(2) if m.group(1) == phase else "", texte)
-    return texte.replace("{{BSSID}}", secret(BSSID)).strip()
+    return _BLOC_PHASE.sub(
+        lambda m: m.group(2) if m.group(1) == phase else "", texte
+    ).strip()
 
 
 def _consommateur(user_id: int) -> CompletionConsumer:
@@ -464,20 +500,13 @@ def _consommateur(user_id: int) -> CompletionConsumer:
 
 
 def spec_for(phase: str, user_id: int) -> CallSpec:
-    """Le démon en ligne a ses outils ; la réplique n'a plus que sa voix."""
-    if phase == EN_LIGNE:
-        return CallSpec(
-            system=_prompt(EN_LIGNE),
-            params=_PARAMS_EN_LIGNE,
-            build=build_prompt_anonyme,
-            consume=_consommateur(user_id),
-            temperature=0.6,
-            gros_modele=True,
-        )
+    """Le démon en ligne a ses trois outils ; la réplique perd l'interrupteur."""
+    en_ligne = phase == EN_LIGNE
     return CallSpec(
-        system=_prompt(REPLIQUE),
-        params=CHAT_GROQ_PARAMS,
+        system=_prompt(EN_LIGNE if en_ligne else REPLIQUE),
+        params=_PARAMS_EN_LIGNE if en_ligne else _PARAMS_REPLIQUE,
         build=build_prompt_anonyme,
-        temperature=0.8,
+        consume=_consommateur(user_id),
+        temperature=0.6 if en_ligne else 0.8,
         gros_modele=True,
     )

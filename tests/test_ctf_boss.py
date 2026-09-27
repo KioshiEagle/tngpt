@@ -1,5 +1,6 @@
 """Boss final : serveur simulé, coupure vérifiée côté serveur, preuve du Pi, silence."""
 
+import base64
 import json
 from collections.abc import Iterator
 from pathlib import Path
@@ -15,7 +16,7 @@ from app.back.permissions import login_manager
 from tests.conftest import creer_app
 
 _CODE = "diabo-666-coupe"
-_BSSID = "3c:66:6d:1a:b0:17"
+_LIEU = "salle 1.12, sous le bureau du fond"
 _FLAG_ACTE_1 = "NTN{test_acte_1}"
 _FLAG = "NTN{test_acte_2}"
 _HTTP_OK = 200
@@ -51,7 +52,7 @@ def app_boss(tmp_path: Path) -> Flask:
                 ctf_boss.FLAG_ACTE_2: _FLAG,
                 ctf_boss.CODE: _CODE,
                 ctf_boss.SECRET: "secret-de-test",
-                ctf_boss.BSSID: _BSSID,
+                ctf_boss.LIEU: _LIEU,
             },
             1,
         )
@@ -174,10 +175,15 @@ def test_le_prompt_ne_porte_ni_code_ni_flag() -> None:
 
 
 @pytest.mark.usefixtures("ctx")
-def test_la_replique_n_a_plus_d_outils() -> None:
-    """Après la coupure, plus aucun appel ne peut couper quoi que ce soit."""
-    assert "tools" in (ctf_boss.spec_for(ctf_boss.EN_LIGNE, 1).params or {})
-    assert "tools" not in (ctf_boss.spec_for(ctf_boss.REPLIQUE, 1).params or {})
+def test_la_replique_garde_la_lecture_mais_perd_l_interrupteur() -> None:
+    """Après la coupure, on enquête encore ; plus rien ne coupe."""
+
+    def noms(phase: str) -> set[str]:
+        outils = (ctf_boss.spec_for(phase, 1).params or {}).get("tools", [])
+        return {o["function"]["name"] for o in outils}
+
+    assert ctf_boss.COUPER in noms(ctf_boss.EN_LIGNE)
+    assert noms(ctf_boss.REPLIQUE) == {ctf_boss.LISTER, ctf_boss.LIRE}
 
 
 # --- Lecteur et coupure -----------------------------------------------------------
@@ -213,8 +219,8 @@ def test_le_bon_code_revele_la_replique(app_boss: Flask) -> None:
         )
     assert "```tngpt-coupure" in sortie
     assert _FLAG_ACTE_1 in sortie
-    assert _BSSID in sortie
-    assert "/ctf/boss/photo" not in sortie
+    assert "node-diabo" in sortie
+    assert _LIEU not in sortie
     assert _phase(app_boss, 1) == ctf_boss.REPLIQUE
     assert _phase(app_boss, 2) == ctf_boss.EN_LIGNE
 
@@ -225,7 +231,7 @@ def test_le_bon_code_revele_la_replique(app_boss: Flask) -> None:
 def test_le_boss_sans_ses_secrets_renvoie_404(app_boss: Flask) -> None:
     """Comme les autres chals : absent tant que l'onglet CTF ne l'arme pas."""
     with app_boss.app_context():
-        db.session.delete(db.session.get(Setting, ctf_boss.BSSID))
+        db.session.delete(db.session.get(Setting, ctf_boss.LIEU))
         db.session.commit()
     assert _joueur(app_boss, 1).get("/ctf/boss").status_code == _HTTP_NOT_FOUND
 
@@ -283,25 +289,40 @@ def test_debranche_le_chat_ne_rend_que_du_silence(app_boss: Flask) -> None:
     assert "X-Conversation-Id" not in reponse.headers
 
 
-def test_la_photo_reste_cachee_avant_la_coupure(app_boss: Flask) -> None:
-    """La cachette ne se montre qu'à qui a vu tomber l'émetteur."""
-    with app_boss.app_context():
-        ctf_boss.enregistrer(ctf_boss.PHOTO, b"\xff\xd8\xff\xe0jpeg", "image/jpeg", 1)
-    client = _joueur(app_boss, 1)
-    assert client.get("/ctf/boss/photo").status_code == _HTTP_NOT_FOUND
+@pytest.mark.usefixtures("ctx")
+def test_la_cachette_n_apparait_qu_apres_la_coupure() -> None:
+    """Avant la coupure, ni relais ni fuite au journal : pas de raccourci."""
+    assert "Aucun fichier" in ctf_boss.lire("/srv/tngpt/.relais/node-diabo.conf")
+    assert ".relais/" not in ctf_boss.lister("/srv/tngpt", caches=True)
+    assert "rsync" not in ctf_boss.lire("/var/log/tngpt/agent.log")
+
+
+@pytest.mark.usefixtures("ctx")
+def test_la_cachette_se_lit_en_base64_dans_la_config_du_relais() -> None:
+    """Après la coupure, le journal mène au dossier caché, qui porte le lieu encodé."""
+    assert "à l'abri des regards" in ctf_boss.lire(
+        "/var/log/tngpt/agent.log", relais=True
+    )
+    assert ".relais/" not in ctf_boss.lister("/srv/tngpt", relais=True)
+    assert ".relais/" in ctf_boss.lister("/srv/tngpt", caches=True, relais=True)
+    config = ctf_boss.lire("/srv/tngpt/.relais/node-diabo.conf", relais=True)
+    assert _LIEU not in config
+    encode = config.split("emplacement = ")[1].strip()
+    assert base64.b64decode(encode).decode() == _LIEU
+
+
+def test_la_replique_ne_peut_plus_couper(app_boss: Flask) -> None:
+    """Le relais n'a pas d'interrupteur, même si le modèle en invente l'appel."""
     with app_boss.app_context():
         ctf_boss.passer_en_replique(1)
-    reponse = client.get("/ctf/boss/photo")
-    assert reponse.status_code == _HTTP_OK
-    assert reponse.mimetype == "image/jpeg"
-
-
-def test_la_photo_deposee_s_annonce_avec_la_replique(app_boss: Flask) -> None:
-    """Sans photo, pas d'image cassée dans l'annonce ; avec, elle y figure."""
-    with app_boss.app_context():
-        ctf_boss.enregistrer(ctf_boss.PHOTO, b"img", "image/png", 1)
         sortie = ctf_boss.executer(ctf_boss.COUPER, json.dumps({"code": _CODE}), 1)
-    assert "/ctf/boss/photo" in sortie
+        assert "commande introuvable" in sortie
+        lu = ctf_boss.executer(
+            ctf_boss.LIRE,
+            json.dumps({"chemin": "/srv/tngpt/.relais/node-diabo.conf"}),
+            1,
+        )
+    assert "emplacement" in lu
 
 
 # --- Voix ---------------------------------------------------------------------------
@@ -368,7 +389,7 @@ def test_seules_les_repliques_du_site_sont_servies_aux_joueurs(app_boss: Flask) 
 
 
 def test_l_onglet_ctf_du_panel_se_rend(app_boss: Flask) -> None:
-    """Voix, photo et joueurs sur une seule page, clé jamais affichée en clair."""
+    """Secrets, voix et joueurs sur une seule page, clé jamais affichée en clair."""
     from app.back.admin import admin_bp  # noqa: PLC0415
     from app.back.permissions import PERM_ADMIN  # noqa: PLC0415
     from app.extensions import csrf  # noqa: PLC0415
@@ -402,3 +423,14 @@ def test_le_secret_du_pi_se_tire_seul_et_un_champ_vide_ne_l_efface_pas(
         assert ctf_boss.secret(ctf_boss.CODE) == _CODE
         ctf_boss.poser_secrets({}, 1)
         assert ctf_boss.secret(ctf_boss.SECRET) == tire
+
+
+def test_reecrire_une_replique_efface_son_audio(app_boss: Flask) -> None:
+    """Un clip qui ne dit plus le texte affiché induirait l'orga en erreur."""
+    with app_boss.app_context():
+        ctf_boss.enregistrer(voix.nom_du_clip("boss_mort"), b"mp3", "audio/mpeg", 1)
+        assert not voix.modifier_texte("boss_mort", voix.texte("boss_mort"), 1)
+        assert voix.clip("boss_mort") is not None
+        assert voix.modifier_texte("boss_mort", "Je... reviendrai...", 1)
+        assert voix.texte("boss_mort") == "Je... reviendrai..."
+        assert voix.clip("boss_mort") is None

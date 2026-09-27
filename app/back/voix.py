@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 import httpx
 
-from .ctf_boss import enregistrer, fichier
+from .ctf_boss import enregistrer, fichier, supprimer
 from .models import CtfFichier
 from .reglages import regler, valeur
 
@@ -64,6 +64,28 @@ class VoixError(Exception):
     """ElevenLabs n'a pas rendu la réplique demandée."""
 
 
+_MAX_TEXTE = 500
+
+
+def _cle_texte(nom: str) -> str:
+    return f"voix_texte_{nom}"
+
+
+def texte(nom: str) -> str:
+    """Texte de la réplique : celui du panel s'il a été réécrit, sinon l'original."""
+    return valeur(_cle_texte(nom)) or REPLIQUES[nom].texte
+
+
+def modifier_texte(nom: str, nouveau: str, user_id: int) -> bool:
+    """Réécrit une réplique et retire son clip devenu faux ; faux si rien ne change."""
+    nouveau = nouveau.strip()[:_MAX_TEXTE] or REPLIQUES[nom].texte
+    if nouveau == texte(nom):
+        return False
+    regler(_cle_texte(nom), nouveau, user_id=user_id)
+    supprimer(nom_du_clip(nom))
+    return True
+
+
 def reglages() -> tuple[str | None, str | None]:
     """(clé API, identifiant de voix) posés dans l'onglet CTF."""
     return valeur(CLE_API) or None, valeur(VOIX_ID) or None
@@ -116,7 +138,7 @@ def generer(nom: str, user_id: int) -> None:
             _API.format(voix=voix_id),
             params={"output_format": "mp3_44100_128" if pour_le_site else "pcm_22050"},
             headers={"xi-api-key": cle},
-            json={"text": replique.texte, "model_id": _MODELE},
+            json={"text": texte(nom), "model_id": _MODELE},
             timeout=_DELAI_S,
         )
     except httpx.HTTPError as e:

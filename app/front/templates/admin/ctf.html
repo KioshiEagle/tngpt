@@ -2,33 +2,30 @@
 
 {% block title %}CTF{% endblock %}
 {% block heading %}CTF{% endblock %}
-{% block subtitle %}Boss final : la voix de TN-GPT, la photo de la cachette du Pi, et où en sont les joueurs.{% endblock %}
+{% block subtitle %}Boss final : secrets, voix de TN-GPT, avancée des joueurs.{% endblock %}
 
 {% block content %}
 
     <div class="admin-card">
         <h2>Boss final</h2>
         {% if boss_actif %}
-            <p><span class="admin-status admin-status--active">servi</span> sur <a class="admin-link" href="/ctf/boss">/ctf/boss</a></p>
+            <p><span class="admin-status admin-status--active">ouvert</span> sur <a class="admin-link" href="/ctf/boss">/ctf/boss</a></p>
         {% else %}
-            <p><span class="admin-status admin-status--limited">fermé</span> — <code>/ctf/boss</code> renvoie 404 tant qu'un des secrets ci-dessous manque.</p>
+            <p><span class="admin-status admin-status--limited">fermé</span> — 404 tant qu'un secret manque.</p>
         {% endif %}
         <p class="admin-note">
-            En ligne : {{ phases.en_ligne }} · émetteur coupé (acte 1 réussi) : {{ phases.replique + phases.debranche }} · débranchés (acte 2 réussi) : {{ phases.debranche }}
+            Acte 1 réussi : {{ phases.replique + phases.debranche }} · acte 2 réussi : {{ phases.debranche }} · en cours : {{ phases.en_ligne }}
         </p>
     </div>
 
     <div class="admin-card admin-card--spaced">
-        <h2>Secrets du boss</h2>
-        <p class="admin-note">
-            Rangés en base : aucun redéploiement, aucun .env. Un champ laissé vide garde sa valeur.
-            Le secret du Pi est tiré au hasard au premier enregistrement ; recopie-le dans <code>installer.sh</code>.
-        </p>
+        <h2>Secrets</h2>
+        <p class="admin-note">Champ vide = valeur gardée.</p>
         <form method="post" action="{{ url_for('admin.ctf_secrets') }}" class="admin-key-form admin-ticket-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            {% for cle, libelle, valeur in secrets_boss %}
+            {% for cle, libelle, aide, valeur in secrets_boss %}
                 <label>
-                    <span>{{ libelle }}</span>
+                    <span>{{ libelle }} <span class="admin-cell-muted">— {{ aide }}</span></span>
                     <input type="text" name="{{ cle }}" maxlength="200" autocomplete="off" value="{{ valeur }}" class="admin-mono" style="min-width: 280px;">
                 </label>
             {% endfor %}
@@ -38,18 +35,15 @@
 
     <div class="admin-card admin-card--spaced">
         <h2>Voix de TN-GPT (ElevenLabs)</h2>
-        <p class="admin-note">
-            La clé sert à générer les répliques depuis cette page, une fois pour toutes : les joueurs ne déclenchent jamais l'API.
-            Il lui suffit de la permission <em>Text to Speech</em>. Un champ laissé vide garde la valeur enregistrée.
-        </p>
+        <p class="admin-note">Utilisée ici seulement, pour générer les répliques. Champ vide = valeur gardée.</p>
         <form method="post" action="{{ url_for('admin.ctf_elevenlabs') }}" class="admin-key-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <label>
-                <span>Clé API {% if cle %}(enregistrée : {{ cle }}){% endif %}</span>
+                <span>Clé API <span class="admin-cell-muted">— permission Text to Speech{% if cle %} · enregistrée {{ cle }}{% endif %}</span></span>
                 <input type="password" name="cle" autocomplete="off" placeholder="sk_…" style="min-width: 280px;">
             </label>
             <label>
-                <span>Identifiant de la voix</span>
+                <span>ID de voix <span class="admin-cell-muted">— Voices → la voix de TN-GPT → Copy voice ID</span></span>
                 <input type="text" name="voix_id" autocomplete="off" value="{{ voix_id or '' }}" class="admin-mono" style="min-width: 240px;">
             </label>
             <button type="submit" class="admin-btn admin-btn--primary">Enregistrer</button>
@@ -58,25 +52,27 @@
 
     <div class="admin-card admin-card--spaced">
         <h2>Répliques</h2>
-        <p class="admin-note">
-            Les répliques « site » sont jouées par la page du boss pendant les deux morts de TN-GPT.
-            Les répliques « Pi » se téléchargent en .wav et se copient dans <code>deploy/pi/voix/</code> avant <code>installer.sh</code>.
-        </p>
+        <p class="admin-note">« site » : jouée pendant les morts de TN-GPT · « pi » : .wav à copier dans <code>deploy/pi/voix/</code>. Modifier un texte efface son audio.</p>
         <div class="admin-table-scroll">
             <table class="admin-table">
                 <thead>
                     <tr>
                         <th>Réplique</th>
                         <th>Texte</th>
-                        <th>Écoute</th>
-                        <th class="admin-td-action"></th>
+                        <th>Audio</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for nom, replique, clip in repliques %}
+                    {% for nom, replique, texte, clip in repliques %}
                         <tr>
                             <td class="admin-mono">{{ nom }}<br><span class="admin-cell-muted">{{ replique.destination }}</span></td>
-                            <td>{{ replique.texte }}</td>
+                            <td>
+                                <form method="post" action="{{ url_for('admin.ctf_texte_voix', nom=nom) }}">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <textarea name="texte" rows="3" maxlength="500" style="width: 100%; min-width: 260px;">{{ texte }}</textarea>
+                                    <button type="submit" class="admin-btn">Enregistrer le texte</button>
+                                </form>
+                            </td>
                             <td>
                                 {% if clip %}
                                     <audio controls preload="none" src="{{ url_for('admin.ctf_ecouter_voix', nom=nom) }}"></audio>
@@ -86,11 +82,9 @@
                                 {% else %}
                                     <span class="admin-cell-muted">pas encore générée</span>
                                 {% endif %}
-                            </td>
-                            <td class="admin-td-action">
                                 <form method="post" action="{{ url_for('admin.ctf_generer_voix', nom=nom) }}">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <button type="submit" class="admin-btn" {% if not cle or not voix_id %}disabled title="Renseigne d'abord la clé et la voix"{% endif %}>
+                                    <button type="submit" class="admin-btn" {% if not cle or not voix_id %}disabled title="Renseigne d'abord la clé et l'ID de voix"{% endif %}>
                                         {{ "Régénérer" if clip else "Générer" }}
                                     </button>
                                 </form>
@@ -100,25 +94,6 @@
                 </tbody>
             </table>
         </div>
-    </div>
-
-    <div class="admin-card admin-card--spaced">
-        <h2>Photo de la cachette</h2>
-        <p class="admin-note">
-            Montrée aux joueurs quand l'émetteur tombe (fin de l'acte 1). À prendre le jour J, une fois le Pi caché :
-            assez reconnaissable pour situer la zone, pas assez pour donner la salle.
-        </p>
-        {% if photo %}
-            <p><img src="{{ url_for('admin.ctf_voir_photo') }}" alt="Photo de la cachette" style="max-width: 320px; border-radius: 8px;"></p>
-        {% endif %}
-        <form method="post" action="{{ url_for('admin.ctf_photo') }}" enctype="multipart/form-data" class="admin-key-form">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <label>
-                <span>{{ "Remplacer la photo" if photo else "Photo (JPEG, PNG ou WebP)" }}</span>
-                <input type="file" name="photo" accept="image/jpeg,image/png,image/webp" required>
-            </label>
-            <button type="submit" class="admin-btn admin-btn--primary">Envoyer</button>
-        </form>
     </div>
 
     <div class="admin-card admin-card--spaced">

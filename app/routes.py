@@ -609,20 +609,6 @@ def boss_etat() -> Response:
     return jsonify(etat)
 
 
-@bp.route("/ctf/boss/photo", methods=["GET"])
-@login_required
-def boss_photo() -> Response:
-    """Photo de la cachette, montrée seulement une fois l'émetteur coupé."""
-    _boss_ou_404()
-    image = ctf_boss.photo()
-    ligne = ctf_boss.partie(current_user.user_id)
-    if image is None or ligne.phase == ctf_boss.EN_LIGNE:
-        abort(404)
-    return Response(
-        image.contenu, mimetype=image.mimetype, headers={"Cache-Control": "no-store"}
-    )
-
-
 @bp.route("/ctf/boss/voix/<nom>.mp3", methods=["GET"])
 @login_required
 def boss_voix(nom: str) -> Response:

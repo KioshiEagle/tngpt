@@ -1500,12 +1500,6 @@ body.landing .boss-logo { display: block; }
 }
 /* Signal pour boss.js, pas du contenu. */
 .msg.assistant .msg-text pre:has(> code.language-tngpt-coupure) { display: none; }
-.msg.assistant .msg-text img {
-    max-width: min(100%, 420px);
-    border: 3px solid var(--accent-2);
-    border-radius: 4px;
-    filter: saturate(0.6) contrast(1.1);
-}
 
 .boss-bandeau {
     position: sticky;
