@@ -221,6 +221,21 @@ class TicketDorProposition(db.Model):
         return f"TicketDorProposition {self.user_id} juste={self.juste}"
 
 
+class CtfBossPartie(db.Model):
+    """Où en est un joueur contre le boss final : en ligne, réplique ou débranché."""
+
+    __tablename__ = "ctf_boss_parties"
+
+    user_id = db.Column(db.Integer, db.ForeignKey("users.user_id"), primary_key=True)
+    phase = db.Column(db.String(20), nullable=False, default="en_ligne")
+    coupe_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    debranche_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    def __repr__(self) -> str:
+        """Représentation lisible de la partie."""
+        return f"CtfBossPartie {self.user_id} phase={self.phase}"
+
+
 class Document(db.Model):
     """Un document source présent dans la base vectorielle Qdrant.
 

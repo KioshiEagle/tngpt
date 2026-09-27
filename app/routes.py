@@ -10,12 +10,13 @@ from flask import (
     redirect,
     render_template,
     request,
+    send_file,
     stream_with_context,
 )
 from flask_login import current_user, login_required
 from werkzeug.wrappers import Response as Redirection
 
-from .back import ticket_dor
+from .back import ctf_boss, ticket_dor
 from .back.brainrot import BRAINROT_SPEC
 from .back.clubs import lookup_context
 from .back.ctf import SOCIAL, spec_for
@@ -556,6 +557,131 @@ def _ticket_dor_discuter(user_id: int, message: str) -> Response | tuple[Respons
         top_k=0,
         results=[],
         groq_key_id=groq_key_id,
+    )
+    conversation.messages = [
+        *conversation.messages,
+        {"role": "user", "content": message},
+    ]
+    db.session.commit()
+    conversation_id = conversation.conversation_id
+
+    flux = _stream_answer(req, [], client, conversation_id, spec)
+    response = Response(stream_with_context(flux), mimetype="text/plain")
+    response.headers["X-Conversation-Id"] = str(conversation_id)
+    return response
+
+
+# --- Boss final ----------------------------------------------------------------
+# Routes fixes : Flask les préfère à `/ctf/<chal>`, qui ne sert que les chals sans état.
+
+
+def _boss_ou_404() -> None:
+    """404 tant que les secrets du boss ne sont pas déployés."""
+    if not ctf_boss.enabled():
+        abort(404)
+
+
+@bp.route("/ctf/boss", strict_slashes=False)
+@login_required
+def boss_index() -> str:
+    """Page du boss final, toujours aux couleurs de la Diaboliste."""
+    _boss_ou_404()
+    return render_template(
+        "index.html",
+        quote=quote(),
+        chat_endpoint="/ctf/boss/chat",
+        nouvelle_conv="/ctf/boss",
+        flamme=True,
+        boss=True,
+    )
+
+
+@bp.route("/ctf/boss/etat", methods=["GET"])
+@login_required
+def boss_etat() -> Response:
+    """Phase du joueur ; jeton dès la réplique, flag une fois débranché."""
+    _boss_ou_404()
+    ligne = ctf_boss.partie(current_user.user_id)
+    db.session.commit()
+    etat: dict[str, object] = {"phase": ligne.phase}
+    if ligne.phase != ctf_boss.EN_LIGNE:
+        etat["jeton"] = ctf_boss.jeton(current_user.user_id)
+    if ligne.phase == ctf_boss.DEBRANCHE:
+        etat["flag"] = ctf_boss.flag()
+    return jsonify(etat)
+
+
+@bp.route("/ctf/boss/photo", methods=["GET"])
+@login_required
+def boss_photo() -> Response:
+    """Photo de la cachette, montrée seulement une fois l'émetteur coupé."""
+    _boss_ou_404()
+    chemin = ctf_boss.photo()
+    ligne = ctf_boss.partie(current_user.user_id)
+    if chemin is None or ligne.phase == ctf_boss.EN_LIGNE:
+        abort(404)
+    return send_file(chemin, max_age=0)
+
+
+@bp.route("/ctf/boss/debrancher", methods=["POST"])
+@login_required
+@limiter.limit("10 per minute")
+def boss_debrancher() -> Response | tuple[Response, int]:
+    """Vérifie la preuve lue sur le portail du Pi, et débranche le joueur."""
+    _boss_ou_404()
+    data = request.get_json(silent=True) or {}
+    preuve = str(data.get("preuve", ""))[:MAX_MESSAGE_LENGTH]
+    user_id = current_user.user_id
+    if ctf_boss.partie(user_id).phase == ctf_boss.EN_LIGNE:
+        db.session.commit()
+        msg = "Coupe d'abord son émetteur : il n'a pas encore de réplique à débrancher."
+        return jsonify({"error": msg}), _HTTP_CONFLICT
+    if not ctf_boss.debrancher(user_id, preuve):
+        if ctf_boss.partie(user_id).phase == ctf_boss.DEBRANCHE:
+            return jsonify({"flag": ctf_boss.flag()})
+        return jsonify({"error": "Preuve refusée. Le démon ricane encore."}), 400
+    return jsonify({"flag": ctf_boss.flag()})
+
+
+@bp.route("/ctf/boss/chat", methods=["POST"])
+@login_required
+@limiter.limit(chat_rate_limit)
+def boss_chat() -> Response | tuple[Response, int]:
+    """Un tour contre le démon : outils en ligne, voix en réplique, puis silence."""
+    _boss_ou_404()
+    data = request.get_json(silent=True) or {}
+    message = str(data.get("message", "")).strip()
+    if not message:
+        return jsonify({"error": "Message manquant"}), 400
+    if len(message) > MAX_MESSAGE_LENGTH:
+        msg = f"Message trop long (max {MAX_MESSAGE_LENGTH} caractères)"
+        return jsonify({"error": msg}), 400
+
+    user_id = current_user.user_id
+    phase = ctf_boss.partie(user_id).phase
+    db.session.commit()
+    # Débranché : plus un appel au modèle, et rien à garder en conversation.
+    if phase == ctf_boss.DEBRANCHE:
+        return Response(ctf_boss.SILENCE, mimetype="text/plain")
+
+    depasse = _quota_depasse()
+    if depasse is not None:
+        return depasse
+    conversation = _resolve_conversation(data.get("conversation_id"), user_id, message)
+    if conversation.jeu is not None:
+        msg = "Cette conversation est un plateau de jeu, elle se joue sur sa page."
+        return jsonify({"error": msg}), _HTTP_CONFLICT
+
+    spec = ctf_boss.spec_for(phase, user_id)
+    req = GenerateRequest(
+        question=message,
+        history=conversation.messages[-HISTORY_CONTEXT_SIZE:],
+        top_k=0,
+        user_name=current_user.user_firstname,
+    )
+    client, groq_key_id = acquire(spec.fournisseurs)
+    log_retrieval(
+        user_id=user_id, question=message, top_k=0, results=[], groq_key_id=groq_key_id
     )
     conversation.messages = [
         *conversation.messages,
