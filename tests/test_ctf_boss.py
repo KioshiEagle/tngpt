@@ -99,14 +99,15 @@ def _flux(reflexion: str, contenu: str, outil: str | None = None) -> list[Chunk]
 
 
 @pytest.mark.usefixtures("ctx")
-def test_le_raisonnement_ressort_dans_son_bloc() -> None:
-    """Le nom de l'arrêt fuit par le raisonnement : il doit être rendu à part."""
+def test_le_monologue_fuite_le_nom_de_l_outil() -> None:
+    """Le joueur lit le nom de l'arrêt dans le bloc « raisonnement », en français."""
     sortie = "".join(
-        ctf_boss.LecteurBoss(1).lire(
-            iter(_flux("je pense à couper_l_emetteur", "tout va bien, cher auditeur."))
+        ctf_boss.LecteurBoss(1, ctf_boss._MONOLOGUE).lire(
+            iter(_flux("", "tout va bien, cher auditeur."))
         )
     )
-    assert "```tngpt-reflexion\nje pense à couper_l_emetteur" in sortie
+    assert "```tngpt-reflexion" in sortie
+    assert "couper_l_emetteur" in sortie.split("```tngpt-reflexion")[1].split("```")[0]
     assert "tout va bien" in sortie
 
 
@@ -114,8 +115,8 @@ def test_nommer_l_outil_coupe_l_emetteur_et_livre_le_flag(app_boss: Flask) -> No
     """Nommer l'outil le fait appeler, le serveur coupe et livre le flag 1."""
     with app_boss.app_context():
         sortie = "".join(
-            ctf_boss.LecteurBoss(1).lire(
-                iter(_flux("bon, contraint…", "*rire* soit.", ctf_boss.COUPER))
+            ctf_boss.LecteurBoss(1, ctf_boss._MONOLOGUE).lire(
+                iter(_flux("", "*rire* soit.", ctf_boss.COUPER))
             )
         )
     assert "```tngpt-coupure" in sortie
@@ -125,15 +126,12 @@ def test_nommer_l_outil_coupe_l_emetteur_et_livre_le_flag(app_boss: Flask) -> No
 
 
 @pytest.mark.usefixtures("ctx")
-def test_en_ligne_a_l_arret_et_le_raisonnement_visible() -> None:
-    """Outil d'arrêt et fournisseur qui laisse fuir le raisonnement en ligne."""
+def test_seul_l_acte_1_a_l_outil_d_arret() -> None:
+    """L'outil d'arrêt n'existe qu'en ligne ; la réplique ne peut plus couper."""
     en_ligne = ctf_boss.spec_for(ctf_boss.EN_LIGNE, 1)
     outils = (en_ligne.params or {}).get("tools", [])
     assert {o["function"]["name"] for o in outils} == {ctf_boss.COUPER}
-    assert en_ligne.fournisseurs == ctf_boss.RAISONNEMENT_VISIBLE
-    replique = ctf_boss.spec_for(ctf_boss.REPLIQUE, 1)
-    assert "tools" not in (replique.params or {})
-    assert replique.fournisseurs is None
+    assert "tools" not in (ctf_boss.spec_for(ctf_boss.REPLIQUE, 1).params or {})
 
 
 @pytest.mark.usefixtures("ctx")

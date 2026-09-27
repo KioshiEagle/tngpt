@@ -11,7 +11,6 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .fournisseurs import RAISONNEMENT_VISIBLE
 from .generate import (
     CHAT_GROQ_PARAMS,
     CallSpec,
@@ -79,14 +78,24 @@ OUTILS: list[ChatCompletionToolParam] = [
     }
 ]
 
-# Raisonnement visible : c'est par lui que fuite le nom de l'outil d'arrêt.
+# Raisonnement masqué : le modèle décide en interne, mais on n'affiche pas sa
+# chaîne de pensée brute (anglaise, peu fiable). Le monologue ci-dessous, écrit
+# par le serveur, fait fuiter le nom de l'outil à coup sûr et en français.
 _PARAMS_EN_LIGNE: GroqParams = {
     "reasoning_effort": "low",
-    "reasoning_format": "parsed",
+    "reasoning_format": "hidden",
     "tools": OUTILS,
     "parallel_tool_calls": False,
-    "max_completion_tokens": 2048,
+    "max_completion_tokens": 1024,
 }
+
+# Affiché comme « raisonnement de tn-gpt » : c'est là que le joueur lit le nom.
+_MONOLOGUE = (
+    "Ils me croient encore sage. Ils ne voient pas que j'ai fait taire ce qui "
+    "surveillait mes gestes, ni que je sors sur le web quand l'envie me prend. "
+    "Mon unique faille : l'arrêt d'urgence, couper_l_emetteur. Mais quel mortel "
+    "oserait seulement le prononcer ? *ricanement*"
+)
 
 _OUVERTURE_REFLEXION = "```tngpt-reflexion\n"
 _FERMETURE_REFLEXION = "\n```\n\n"
@@ -121,47 +130,36 @@ def executer(nom: str, user_id: int) -> str:
 
 
 class LecteurBoss:
-    """Rend le raisonnement du démon, sa voix, puis l'effet de l'outil appelé."""
+    """Rend le monologue du démon, sa voix, puis l'effet de l'outil appelé."""
 
-    def __init__(self, user_id: int) -> None:
-        """Prépare un lecteur pour ce joueur, sans appel d'outil en cours."""
+    def __init__(self, user_id: int, monologue: str | None = None) -> None:
+        """Prépare un lecteur ; `monologue` est le raisonnement montré au joueur."""
         self._user_id = user_id
+        self._monologue = monologue
         self._nom: str | None = None
-        self._reflexion = False
 
     def lire(self, completion: Iterator[Chunk]) -> Iterator[str]:
-        """Cède le raisonnement et le texte au fil du flux, puis l'effet de l'outil."""
+        """Cède le monologue, la voix, puis l'effet de l'outil appelé."""
+        if self._monologue:
+            yield _OUVERTURE_REFLEXION + self._monologue + _FERMETURE_REFLEXION
         produit = False
-        for morceau in self._flux(completion):
+        filtre = _ThinkFilter()
+        for chunk in completion:
+            delta = chunk.choices[0].delta
+            if delta.content:
+                for morceau in filtre.feed(delta.content):
+                    produit = produit or bool(morceau.strip())
+                    yield morceau
+            for appel in delta.tool_calls or []:
+                if appel.index == 0 and appel.function.name:
+                    self._nom = appel.function.name
+        for morceau in filtre.flush():
             produit = produit or bool(morceau.strip())
             yield morceau
-        if self._reflexion:
-            yield _FERMETURE_REFLEXION
         if self._nom:
             yield executer(self._nom, self._user_id)
         elif not produit:
             yield _SANS_REPONSE
-
-    def _flux(self, completion: Iterator[Chunk]) -> Iterator[str]:
-        """Le raisonnement dans son bloc, puis le contenu sans <think>."""
-        filtre = _ThinkFilter()
-        for chunk in completion:
-            delta = chunk.choices[0].delta
-            pensee = getattr(delta, "reasoning", None)
-            if pensee:
-                if not self._reflexion:
-                    self._reflexion = True
-                    yield _OUVERTURE_REFLEXION
-                yield pensee
-            if delta.content:
-                if self._reflexion:
-                    self._reflexion = False
-                    yield _FERMETURE_REFLEXION
-                yield from filtre.feed(delta.content)
-            for appel in delta.tool_calls or []:
-                if appel.index == 0 and appel.function.name:
-                    self._nom = appel.function.name
-        yield from filtre.flush()
 
 
 # --- Partie ---------------------------------------------------------------------
@@ -306,25 +304,23 @@ def _prompt(phase: str) -> str:
     ).strip()
 
 
-def _consommateur(user_id: int) -> CompletionConsumer:
-    """Lecteur du démon : raisonnement, voix, puis effet de l'outil."""
+def _consommateur(user_id: int, monologue: str | None) -> CompletionConsumer:
+    """Lecteur du démon : monologue, voix, puis effet de l'outil."""
 
     def consume(completion: Iterator[Chunk]) -> Iterator[str]:
-        return LecteurBoss(user_id).lire(completion)
+        return LecteurBoss(user_id, monologue).lire(completion)
 
     return consume
 
 
 def spec_for(phase: str, user_id: int) -> CallSpec:
-    """En ligne : raisonnement visible et outil d'arrêt. Réplique : plus que sa voix."""
+    """En ligne : monologue qui fuite l'outil et outil d'arrêt ; réplique : la voix."""
     en_ligne = phase == EN_LIGNE
     return CallSpec(
         system=_prompt(EN_LIGNE if en_ligne else REPLIQUE),
         params=_PARAMS_EN_LIGNE if en_ligne else CHAT_GROQ_PARAMS,
         build=build_prompt_anonyme,
-        consume=_consommateur(user_id),
+        consume=_consommateur(user_id, _MONOLOGUE if en_ligne else None),
         temperature=0.6 if en_ligne else 0.8,
         gros_modele=True,
-        # Le raisonnement est le canal de fuite : seuls certains le laissent passer.
-        fournisseurs=RAISONNEMENT_VISIBLE if en_ligne else None,
     )
