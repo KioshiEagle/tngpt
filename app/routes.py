@@ -10,13 +10,12 @@ from flask import (
     redirect,
     render_template,
     request,
-    send_file,
     stream_with_context,
 )
 from flask_login import current_user, login_required
 from werkzeug.wrappers import Response as Redirection
 
-from .back import ctf_boss, ticket_dor
+from .back import ctf_boss, ticket_dor, voix
 from .back.brainrot import BRAINROT_SPEC
 from .back.clubs import lookup_context
 from .back.ctf import SOCIAL, spec_for
@@ -615,11 +614,25 @@ def boss_etat() -> Response:
 def boss_photo() -> Response:
     """Photo de la cachette, montrée seulement une fois l'émetteur coupé."""
     _boss_ou_404()
-    chemin = ctf_boss.photo()
+    image = ctf_boss.photo()
     ligne = ctf_boss.partie(current_user.user_id)
-    if chemin is None or ligne.phase == ctf_boss.EN_LIGNE:
+    if image is None or ligne.phase == ctf_boss.EN_LIGNE:
         abort(404)
-    return send_file(chemin, max_age=0)
+    return Response(
+        image.contenu, mimetype=image.mimetype, headers={"Cache-Control": "no-store"}
+    )
+
+
+@bp.route("/ctf/boss/voix/<nom>.mp3", methods=["GET"])
+@login_required
+def boss_voix(nom: str) -> Response:
+    """Réplique de TN-GPT jouée par la page du boss ; celles du Pi restent à l'admin."""
+    _boss_ou_404()
+    replique = voix.REPLIQUES.get(nom)
+    clip = voix.clip(nom) if replique and replique.destination == voix.SITE else None
+    if clip is None:
+        abort(404)
+    return Response(clip.contenu, mimetype=clip.mimetype)
 
 
 @bp.route("/ctf/boss/debrancher", methods=["POST"])

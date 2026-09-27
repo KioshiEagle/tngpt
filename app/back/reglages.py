@@ -10,33 +10,31 @@ _ACTIF = "on"
 _INACTIF = "off"
 
 
-def est_actif(cle: str) -> bool:
-    """Indique si le réglage `cle` est allumé.
-
-    Args:
-        cle: Nom du réglage, parmi les constantes de ce module.
-
-    Returns:
-        True si le réglage existe et vaut « on », False sinon.
-
-    """
+def valeur(cle: str) -> str | None:
+    """Valeur texte du réglage `cle`, ou None s'il n'a jamais été posé."""
     reglage = db.session.get(Setting, cle)
-    return reglage is not None and reglage.value == _ACTIF
+    return reglage.value if reglage is not None else None
 
 
-def basculer(cle: str, *, actif: bool, user_id: int | None = None) -> None:
-    """Allume ou éteint le réglage `cle`, en créant la ligne au besoin.
+def regler(cle: str, texte: str, *, user_id: int | None = None) -> None:
+    """Pose la valeur texte du réglage `cle`, en créant la ligne au besoin.
 
-    Args:
-        cle: Nom du réglage, parmi les constantes de ce module.
-        actif: Nouvel état voulu.
-        user_id: Auteur du changement, pour tracer qui a touché à quoi.
-
+    `user_id` trace l'auteur du changement.
     """
     reglage = db.session.get(Setting, cle)
     if reglage is None:
         reglage = Setting(key=cle)
         db.session.add(reglage)
-    reglage.value = _ACTIF if actif else _INACTIF
+    reglage.value = texte
     reglage.updated_by = user_id
     db.session.commit()
+
+
+def est_actif(cle: str) -> bool:
+    """Vrai si le réglage `cle` existe et vaut « on »."""
+    return valeur(cle) == _ACTIF
+
+
+def basculer(cle: str, *, actif: bool, user_id: int | None = None) -> None:
+    """Allume ou éteint le réglage `cle`, en créant la ligne au besoin."""
+    regler(cle, _ACTIF if actif else _INACTIF, user_id=user_id)

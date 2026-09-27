@@ -55,6 +55,10 @@
                class="admin-nav-item {% if request.endpoint == 'admin.ticket_dor_page' %}is-active{% endif %}">
                 Ticket d'or
             </a>
+            <a href="{{ url_for('admin.ctf_page') }}"
+               class="admin-nav-item {% if request.endpoint == 'admin.ctf_page' %}is-active{% endif %}">
+                CTF
+            </a>
         </nav>
 
         <div class="admin-sidebar-footer">

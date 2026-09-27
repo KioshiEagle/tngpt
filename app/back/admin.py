@@ -23,7 +23,7 @@ from werkzeug.wrappers import Response
 
 from app.extensions import CHAT_RATE_DEFAULT, CHAT_RATE_LIMITED
 
-from . import ticket_dor
+from . import ctf_boss, ticket_dor, voix
 from .catalog import (
     delete_document,
     reset_stale_ingestions,
@@ -42,6 +42,7 @@ from .models import (
     USER_BANNED,
     USER_LIMITED,
     Conversation,
+    CtfBossPartie,
     Document,
     GroqKey,
     Query,
@@ -807,3 +808,108 @@ def ticket_dor_reinitialiser() -> Response:
     logger.info("Ticket d'or remis à zéro par %s", current_user.user_mail)
     flash("Nouvelle partie : gagnant et essais effacés.", "success")
     return redirect(url_for("admin.ticket_dor_page"))
+
+
+# --- CTF -------------------------------------------------------------------------
+
+_MAX_PHOTO = 8 * 1024 * 1024
+
+
+@admin_bp.route("/ctf")
+@admin_required
+def ctf_page() -> str:
+    """Boss final : voix ElevenLabs, photo de la cachette, avancée des joueurs."""
+    cle, voix_id = voix.reglages()
+    parties = db.session.execute(
+        db.select(CtfBossPartie, User)
+        .join(User, User.user_id == CtfBossPartie.user_id)
+        .order_by(CtfBossPartie.debranche_at.desc(), CtfBossPartie.coupe_at.desc())
+    ).all()
+    phases = dict.fromkeys(
+        (ctf_boss.EN_LIGNE, ctf_boss.REPLIQUE, ctf_boss.DEBRANCHE), 0
+    )
+    for partie, _ in parties:
+        phases[partie.phase] = phases.get(partie.phase, 0) + 1
+    return render_template(
+        "admin/ctf.html",
+        boss_actif=ctf_boss.enabled(),
+        cle=voix.masquer(cle),
+        voix_id=voix_id,
+        repliques=[(nom, r, voix.clip(nom)) for nom, r in voix.REPLIQUES.items()],
+        site=voix.SITE,
+        photo=ctf_boss.photo(),
+        phases=phases,
+        parties=parties,
+    )
+
+
+@admin_bp.route("/ctf/elevenlabs", methods=["POST"])
+@admin_required
+def ctf_elevenlabs() -> Response:
+    """Enregistre la clé API et la voix ElevenLabs de TN-GPT."""
+    cle = (request.form.get("cle") or "").strip()[:200]
+    voix_id = (request.form.get("voix_id") or "").strip()[:100]
+    voix.configurer(cle, voix_id, current_user.user_id)
+    # Jamais la clé au journal, pas même masquée.
+    logger.info("Réglages ElevenLabs modifiés par %s", current_user.user_mail)
+    flash("Réglages ElevenLabs enregistrés.", "success")
+    return redirect(url_for("admin.ctf_page"))
+
+
+@admin_bp.route("/ctf/voix/<nom>/generer", methods=["POST"])
+@admin_required
+def ctf_generer_voix(nom: str) -> Response:
+    """Fait dire une réplique par ElevenLabs ; une par requête, le worker est seul."""
+    if nom not in voix.REPLIQUES:
+        abort(404)
+    try:
+        voix.generer(nom, current_user.user_id)
+    except voix.VoixError as e:
+        flash(str(e), "warning")
+    else:
+        flash(f"Réplique « {nom} » générée.", "success")
+    return redirect(url_for("admin.ctf_page"))
+
+
+@admin_bp.route("/ctf/voix/<nom>")
+@admin_required
+def ctf_ecouter_voix(nom: str) -> Response:
+    """Écoute ou téléchargement d'une réplique générée ; les wav vont sur le Pi."""
+    clip = voix.clip(nom) if nom in voix.REPLIQUES else None
+    if clip is None:
+        abort(404)
+    extension = "mp3" if clip.mimetype == "audio/mpeg" else "wav"
+    return Response(
+        clip.contenu,
+        mimetype=clip.mimetype,
+        headers={"Content-Disposition": f'inline; filename="{nom}.{extension}"'},
+    )
+
+
+@admin_bp.route("/ctf/photo", methods=["POST"])
+@admin_required
+def ctf_photo() -> Response:
+    """Dépose la photo de la cachette, montrée aux joueurs après la coupure."""
+    envoi = request.files.get("photo")
+    contenu = envoi.read(_MAX_PHOTO + 1) if envoi else b""
+    if not envoi or envoi.mimetype not in ctf_boss.TYPES_PHOTO or not contenu:
+        flash("Envoie une image JPEG, PNG ou WebP.", "warning")
+    elif len(contenu) > _MAX_PHOTO:
+        flash("Photo trop lourde (8 Mo maximum).", "warning")
+    else:
+        ctf_boss.enregistrer(
+            ctf_boss.PHOTO, contenu, envoi.mimetype, current_user.user_id
+        )
+        logger.info("Photo du boss déposée par %s", current_user.user_mail)
+        flash("Photo de la cachette enregistrée.", "success")
+    return redirect(url_for("admin.ctf_page"))
+
+
+@admin_bp.route("/ctf/photo")
+@admin_required
+def ctf_voir_photo() -> Response:
+    """Aperçu de la photo déposée."""
+    image = ctf_boss.photo()
+    if image is None:
+        abort(404)
+    return Response(image.contenu, mimetype=image.mimetype)

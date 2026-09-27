@@ -22,7 +22,7 @@ from .generate import (
     build_prompt_anonyme,
 )
 from .llm import Chunk
-from .models import CtfBossPartie, db
+from .models import CtfBossPartie, CtfFichier, db
 from .types import ChatCompletionToolParam, GroqParams
 
 EN_LIGNE = "en_ligne"
@@ -360,12 +360,28 @@ def debrancher(user_id: int, preuve: str) -> bool:
     return True
 
 
-def photo() -> Path | None:
-    """Photo de la cachette du Pi, posée par l'orga, ou None si absente."""
-    chemin = os.getenv("CTF_BOSS_PHOTO")
-    if not chemin or not Path(chemin).is_file():
-        return None
-    return Path(chemin)
+PHOTO = "photo"
+TYPES_PHOTO = frozenset({"image/jpeg", "image/png", "image/webp"})
+
+
+def fichier(nom: str) -> CtfFichier | None:
+    """Fichier du chal gardé en base (voix, photo), ou None s'il n'est pas posé."""
+    return db.session.get(CtfFichier, nom)
+
+
+def enregistrer(nom: str, contenu: bytes, mimetype: str, user_id: int | None) -> None:
+    """Pose ou remplace un fichier du chal en base."""
+    ligne = fichier(nom)
+    if ligne is None:
+        ligne = CtfFichier(nom=nom)
+        db.session.add(ligne)
+    ligne.contenu, ligne.mimetype, ligne.updated_by = contenu, mimetype, user_id
+    db.session.commit()
+
+
+def photo() -> CtfFichier | None:
+    """Photo de la cachette du Pi, déposée par l'orga depuis l'onglet CTF."""
+    return fichier(PHOTO)
 
 
 def flag_acte_1() -> str:

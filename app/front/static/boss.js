@@ -15,9 +15,9 @@
 
     const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
 
-    // Voix de TN-GPT, pré-générée (ElevenLabs) : sans le fichier, la scène reste muette.
+    // Voix de TN-GPT, générée depuis l'onglet CTF du panel : sans elle, la scène reste muette.
     function parler(clip) {
-        const voix = new Audio(`/static/sounds/boss_${clip}.mp3`);
+        const voix = new Audio(`/ctf/boss/voix/boss_${clip}.mp3`);
         voix.play().catch(() => {});
     }
 

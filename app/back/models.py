@@ -236,6 +236,27 @@ class CtfBossPartie(db.Model):
         return f"CtfBossPartie {self.user_id} phase={self.phase}"
 
 
+class CtfFichier(db.Model):
+    """Fichier d'un chal (voix, photo), en base : le conteneur est éphémère."""
+
+    __tablename__ = "ctf_fichiers"
+
+    nom = db.Column(db.String(50), primary_key=True)
+    contenu = db.Column(db.LargeBinary, nullable=False)
+    mimetype = db.Column(db.String(50), nullable=False)
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
+    updated_by = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=True)
+
+    def __repr__(self) -> str:
+        """Représentation lisible, sans le contenu."""
+        return f"CtfFichier {self.nom} ({self.mimetype})"
+
+
 class Document(db.Model):
     """Un document source présent dans la base vectorielle Qdrant.
 

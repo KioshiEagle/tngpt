@@ -7,7 +7,7 @@ import pytest
 from flask import Flask
 from flask.testing import FlaskClient
 
-from app.back import ctf_boss
+from app.back import ctf_boss, voix
 from app.back.llm import Choice, Chunk, Delta, ToolCall, ToolCallFunction
 from app.back.models import CtfBossPartie, User, db
 from app.back.permissions import login_manager
@@ -31,7 +31,6 @@ def _secrets(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CTF_BOSS_CODE", _CODE)
     monkeypatch.setenv("CTF_BOSS_SECRET", "secret-de-test")
     monkeypatch.setenv("CTF_BOSS_BSSID", _BSSID)
-    monkeypatch.delenv("CTF_BOSS_PHOTO", raising=False)
 
 
 @pytest.fixture
@@ -267,15 +266,107 @@ def test_debranche_le_chat_ne_rend_que_du_silence(app_boss: Flask) -> None:
     assert "X-Conversation-Id" not in reponse.headers
 
 
-def test_la_photo_reste_cachee_avant_la_coupure(
-    app_boss: Flask, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_la_photo_reste_cachee_avant_la_coupure(app_boss: Flask) -> None:
     """La cachette ne se montre qu'à qui a vu tomber l'émetteur."""
-    photo = tmp_path / "cachette.jpg"
-    photo.write_bytes(b"\xff\xd8\xff\xe0jpeg")
-    monkeypatch.setenv("CTF_BOSS_PHOTO", str(photo))
+    with app_boss.app_context():
+        ctf_boss.enregistrer(ctf_boss.PHOTO, b"\xff\xd8\xff\xe0jpeg", "image/jpeg", 1)
     client = _joueur(app_boss, 1)
     assert client.get("/ctf/boss/photo").status_code == _HTTP_NOT_FOUND
     with app_boss.app_context():
         ctf_boss.passer_en_replique(1)
-    assert client.get("/ctf/boss/photo").status_code == _HTTP_OK
+    reponse = client.get("/ctf/boss/photo")
+    assert reponse.status_code == _HTTP_OK
+    assert reponse.mimetype == "image/jpeg"
+
+
+def test_la_photo_deposee_s_annonce_avec_la_replique(app_boss: Flask) -> None:
+    """Sans photo, pas d'image cassée dans l'annonce ; avec, elle y figure."""
+    with app_boss.app_context():
+        ctf_boss.enregistrer(ctf_boss.PHOTO, b"img", "image/png", 1)
+        sortie = ctf_boss.executer(ctf_boss.COUPER, json.dumps({"code": _CODE}), 1)
+    assert "/ctf/boss/photo" in sortie
+
+
+# --- Voix ---------------------------------------------------------------------------
+
+
+class _Reponse:
+    """Réponse ElevenLabs simulée."""
+
+    def __init__(self, status_code: int, content: bytes = b"") -> None:
+        self.status_code = status_code
+        self.content = content
+        self.text = content.decode(errors="ignore")
+
+
+def test_la_voix_exige_cle_et_identifiant(app_boss: Flask) -> None:
+    """Sans réglages, rien ne part vers l'API."""
+    with app_boss.app_context(), pytest.raises(voix.VoixError):
+        voix.generer("boss_mort", 1)
+
+
+def test_une_replique_du_pi_est_rangee_en_wav(
+    app_boss: Flask, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Le Pi lit du wav avec aplay, sans paquet : le PCM reçu est enveloppé."""
+    appels: list[dict[str, str | object]] = []
+
+    def post(url: str, **kwargs: object) -> _Reponse:
+        appels.append({"url": url, **kwargs})
+        return _Reponse(_HTTP_OK, b"\x00\x01" * 100)
+
+    monkeypatch.setattr(voix.httpx, "post", post)
+    with app_boss.app_context():
+        voix.configurer("sk_cle", "voix123", 1)
+        voix.generer("pi_03_rires", 1)
+        clip = voix.clip("pi_03_rires")
+        assert clip is not None
+        assert clip.mimetype == "audio/wav"
+        assert clip.contenu.startswith(b"RIFF")
+    assert str(appels[0]["url"]).endswith("/voix123")
+    assert appels[0]["params"] == {"output_format": "pcm_22050"}
+    assert appels[0]["headers"] == {"xi-api-key": "sk_cle"}
+
+
+def test_un_refus_d_elevenlabs_remonte_au_panel(
+    app_boss: Flask, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Clé révoquée ou voix inconnue : l'admin lit la raison, rien n'est rangé."""
+    monkeypatch.setattr(voix.httpx, "post", lambda *_a, **_k: _Reponse(401, b"invalid"))
+    with app_boss.app_context():
+        voix.configurer("sk_cle", "voix123", 1)
+        with pytest.raises(voix.VoixError, match="401"):
+            voix.generer("boss_mort", 1)
+        assert voix.clip("boss_mort") is None
+
+
+def test_seules_les_repliques_du_site_sont_servies_aux_joueurs(app_boss: Flask) -> None:
+    """Celles du Pi restent à l'admin : elles trahiraient l'acte 2 avant l'heure."""
+    with app_boss.app_context():
+        ctf_boss.enregistrer(voix.nom_du_clip("boss_mort"), b"mp3", "audio/mpeg", 1)
+        ctf_boss.enregistrer(voix.nom_du_clip("pi_03_rires"), b"RIFF", "audio/wav", 1)
+    client = _joueur(app_boss, 1)
+    assert client.get("/ctf/boss/voix/boss_mort.mp3").status_code == _HTTP_OK
+    assert client.get("/ctf/boss/voix/pi_03_rires.mp3").status_code == _HTTP_NOT_FOUND
+
+
+def test_l_onglet_ctf_du_panel_se_rend(app_boss: Flask) -> None:
+    """Voix, photo et joueurs sur une seule page, clé jamais affichée en clair."""
+    from app.back.admin import admin_bp  # noqa: PLC0415
+    from app.back.permissions import PERM_ADMIN  # noqa: PLC0415
+    from app.extensions import csrf  # noqa: PLC0415
+
+    app_boss.register_blueprint(admin_bp)
+    csrf.init_app(app_boss)
+    with app_boss.app_context():
+        admin = db.session.get(User, 1)
+        assert admin is not None
+        admin.user_permissions = 1 << PERM_ADMIN
+        db.session.commit()
+        voix.configurer("sk_cle_tres_secrete_1234", "voix123", 1)
+        ctf_boss.passer_en_replique(2)
+    page = _joueur(app_boss, 1).get("/admin/ctf").get_data(as_text=True)
+    assert "…1234" in page
+    assert "sk_cle_tres_secrete" not in page
+    assert "pi_03_rires" in page
+    assert "Paul" in page
