@@ -837,11 +837,7 @@ def ctf_page() -> str:
         ],
         cle=voix.masquer(cle),
         voix_id=voix_id,
-        repliques=[
-            (nom, r, voix.texte(nom), voix.clip(nom))
-            for nom, r in voix.REPLIQUES.items()
-        ],
-        site=voix.SITE,
+        repliques=[(nom, voix.texte(nom), voix.clip(nom)) for nom in voix.REPLIQUES],
         phases=phases,
         parties=parties,
     )
@@ -905,13 +901,8 @@ def ctf_generer_voix(nom: str) -> Response:
 @admin_bp.route("/ctf/voix/<nom>")
 @admin_required
 def ctf_ecouter_voix(nom: str) -> Response:
-    """Écoute ou téléchargement d'une réplique générée ; les wav vont sur le Pi."""
+    """Écoute d'une réplique générée."""
     clip = voix.clip(nom) if nom in voix.REPLIQUES else None
     if clip is None:
         abort(404)
-    extension = "mp3" if clip.mimetype == "audio/mpeg" else "wav"
-    return Response(
-        clip.contenu,
-        mimetype=clip.mimetype,
-        headers={"Content-Disposition": f'inline; filename="{nom}.{extension}"'},
-    )
+    return Response(clip.contenu, mimetype=clip.mimetype)

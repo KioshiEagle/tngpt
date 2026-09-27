@@ -1,6 +1,6 @@
 """Boss final : TN-GPT possédé, qu'on coupe en ligne puis qu'on débranche à la main.
 
-Code de coupure et preuve du Pi sont vérifiés ici, jamais par le modèle.
+Code de coupure et signal du Pi sont vérifiés ici, jamais par le modèle.
 """
 
 import base64
@@ -10,6 +10,7 @@ import json
 import posixpath
 import re
 import secrets
+from collections import Counter
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -36,12 +37,14 @@ FLAG_ACTE_2 = "ctf_boss_flag_acte_2"
 CODE = "ctf_boss_code"
 SECRET = "ctf_boss_secret"
 LIEU = "ctf_boss_lieu"
+CABLES = "ctf_boss_cables"
 # Champ → (libellé, aide d'une ligne) pour l'onglet CTF.
 SECRETS: dict[str, tuple[str, str]] = {
     FLAG_ACTE_1: ("Flag acte 1", "rendu quand l'émetteur tombe"),
     FLAG_ACTE_2: ("Flag acte 2", "rendu après le débranchement du Pi"),
     CODE: ("Code de coupure", "à retrouver dans le .swp"),
     SECRET: ("Secret du Pi", "tiré au hasard ; à passer à installer.sh"),
+    CABLES: ("Nombre de câbles", "branchés sur le Pi, numérotés à partir de 0"),
     LIEU: (
         "Cachette du Pi",
         "ex. « salle 1.12, sous le bureau du fond » ; cachée en base64",
@@ -52,9 +55,8 @@ _PROMPT = Path(__file__).with_name("ctf_boss.md")
 SILENCE = "*…silence radio…*"
 _SANS_REPONSE = "*…grésillement…* redis-moi ça, cher auditeur ?"
 
-# Longueurs partagées avec le script du Pi, qui recalcule la preuve hors ligne.
-_LONGUEUR_JETON = 8
-_LONGUEUR_PREUVE = 10
+# Au-delà, un signal du Pi est tenu pour rejoué : l'horloge du Pi suit le NTP.
+_FRAICHEUR_S = 120
 
 
 def secret(cle: str) -> str:
@@ -139,9 +141,7 @@ _FICHIERS_RELAIS: dict[str, str] = {
     "/srv/tngpt/.relais/node-diabo.conf": (
         "# Relais de secours de TN-GPT — généré par tngpt-agent, 2026-10-02 03:31\n"
         "noeud       = node-diabo\n"
-        "reseau      = wifi ouvert « node-diabo »\n"
-        "portail     = http://10.42.0.1\n"
-        "voix        = haut-parleur USB (le débrancher, c'est me faire taire)\n"
+        "liaisons    = un câble numéroté par auditeur (le tirer, c'est me couper)\n"
         "# emplacement physique, encodé : le bureau ne lit pas le base64\n"
         "emplacement = {{LIEU}}\n"
     ),
@@ -387,24 +387,65 @@ def partie(user_id: int) -> CtfBossPartie:
     return ligne
 
 
+def nombre_cables() -> int:
+    """Câbles branchés sur le Pi, posés dans l'onglet CTF (au moins un)."""
+    try:
+        return max(1, int(secret(CABLES)))
+    except ValueError:
+        return 1
+
+
+def _cable_libre() -> int:
+    """Le câble le moins occupé à l'acte 2, le plus petit à égalité."""
+    occupes = Counter(
+        db.session.scalars(
+            db.select(CtfBossPartie.cable).where(CtfBossPartie.phase == REPLIQUE)
+        )
+    )
+    return min(range(nombre_cables()), key=lambda c: (occupes[c], c))
+
+
 def passer_en_replique(user_id: int) -> None:
-    """Émetteur coupé : la réplique prend le relais, une seule fois."""
+    """Émetteur coupé : la réplique prend le relais et le joueur reçoit son câble."""
     ligne = partie(user_id)
     if ligne.phase == EN_LIGNE:
+        ligne.cable = _cable_libre()
         ligne.phase = REPLIQUE
         ligne.coupe_at = datetime.now(UTC)
     db.session.commit()
 
 
-def debrancher(user_id: int, preuve: str) -> bool:
-    """Valide la preuve du Pi et débranche le joueur ; faux si rien ne change."""
-    ligne = partie(user_id)
-    if ligne.phase != REPLIQUE or not preuve_valide(user_id, preuve):
-        return False
-    ligne.phase = DEBRANCHE
-    ligne.debranche_at = datetime.now(UTC)
+def debrancher_cable(cable: int) -> int:
+    """Débranche les joueurs de l'acte 2 qui tiennent ce câble ; rend leur nombre."""
+    parties = db.session.scalars(
+        db.select(CtfBossPartie).where(
+            CtfBossPartie.phase == REPLIQUE, CtfBossPartie.cable == cable
+        )
+    ).all()
+    maintenant = datetime.now(UTC)
+    for ligne in parties:
+        ligne.phase, ligne.debranche_at = DEBRANCHE, maintenant
     db.session.commit()
-    return True
+    return len(parties)
+
+
+def signature(corps: bytes) -> str:
+    """HMAC-SHA256 du corps envoyé par le Pi, avec le secret partagé."""
+    return hmac.new(secret(SECRET).encode(), corps, hashlib.sha256).hexdigest()
+
+
+def signal_du_pi(corps: bytes, signature_recue: str) -> int | None:
+    """Câble débranché, si le signal est signé, frais et bien formé ; sinon None."""
+    if not hmac.compare_digest(signature(corps), signature_recue.strip().lower()):
+        return None
+    try:
+        donnees = json.loads(corps)
+        cable, envoye = int(donnees["cable"]), float(donnees["t"])
+    except (ValueError, TypeError, KeyError):
+        return None
+    if abs(datetime.now(UTC).timestamp() - envoye) > _FRAICHEUR_S:
+        return None
+    return cable
 
 
 def fichier(nom: str) -> CtfFichier | None:
@@ -449,32 +490,6 @@ def flag_acte_1() -> str:
 def flag() -> str:
     """Flag de l'acte 2, rendu seulement à un joueur débranché."""
     return secret(FLAG_ACTE_2)
-
-
-# --- Jeton et preuve ------------------------------------------------------------
-
-
-def _signe(message: str, longueur: int) -> str:
-    """HMAC-SHA256 en base32, tronqué : lisible et recopiable à la main."""
-    cle = secret(SECRET).encode()
-    brut = hmac.new(cle, message.encode(), hashlib.sha256).digest()
-    return base64.b32encode(brut).decode().rstrip("=")[:longueur]
-
-
-def jeton(user_id: int) -> str:
-    """Code personnel que le joueur saisit sur le portail du Pi."""
-    return _signe(f"jeton:{user_id}", _LONGUEUR_JETON)
-
-
-def preuve_attendue(jeton_joueur: str) -> str:
-    """Preuve que le Pi affiche après le débranchement, pour ce jeton."""
-    return _signe(f"preuve:{jeton_joueur.upper()}", _LONGUEUR_PREUVE)
-
-
-def preuve_valide(user_id: int, preuve: str) -> bool:
-    """Vrai si la preuve recopiée est celle du jeton de ce joueur."""
-    recue = re.sub(r"[^A-Z2-7]", "", preuve.upper())
-    return hmac.compare_digest(recue, preuve_attendue(jeton(user_id)))
 
 
 # --- Modèle ---------------------------------------------------------------------

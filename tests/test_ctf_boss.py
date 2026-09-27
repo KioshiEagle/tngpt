@@ -1,7 +1,8 @@
-"""Boss final : serveur simulé, coupure vérifiée côté serveur, preuve du Pi, silence."""
+"""Boss final : serveur simulé, coupure vérifiée côté serveur, signal du Pi, silence."""
 
 import base64
 import json
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -21,9 +22,9 @@ _FLAG_ACTE_1 = "NTN{test_acte_1}"
 _FLAG = "NTN{test_acte_2}"
 _HTTP_OK = 200
 _SECRET_MIN = 24
-_HTTP_BAD_REQUEST = 400
+_HTTP_FORBIDDEN = 403
 _HTTP_NOT_FOUND = 404
-_HTTP_CONFLICT = 409
+_CABLE = 3
 
 
 @pytest.fixture
@@ -53,6 +54,7 @@ def app_boss(tmp_path: Path) -> Flask:
                 ctf_boss.CODE: _CODE,
                 ctf_boss.SECRET: "secret-de-test",
                 ctf_boss.LIEU: _LIEU,
+                ctf_boss.CABLES: "4",
             },
             1,
         )
@@ -144,23 +146,37 @@ def test_le_journal_trahit_vim_interrompu() -> None:
     assert "interrompue" in journal
 
 
-# --- Jeton et preuve ------------------------------------------------------------
+# --- Câbles et signal du Pi --------------------------------------------------------
+
+
+def _signal(cable: int, *, decalage: float = 0) -> tuple[bytes, str]:
+    """Corps et signature tels que le Pi les envoie."""
+    corps = json.dumps({"cable": cable, "t": time.time() + decalage}).encode()
+    return corps, ctf_boss.signature(corps)
+
+
+def test_chaque_joueur_de_l_acte_2_recoit_le_cable_le_moins_occupe(
+    app_boss: Flask,
+) -> None:
+    """Deux joueurs arrivés ensemble n'ont pas le même câble tant qu'il en reste."""
+    with app_boss.app_context():
+        ctf_boss.passer_en_replique(1)
+        ctf_boss.passer_en_replique(2)
+        cables = set(db.session.scalars(db.select(CtfBossPartie.cable)))
+    assert cables == {0, 1}
 
 
 @pytest.mark.usefixtures("ctx")
-def test_chaque_joueur_a_son_jeton_et_sa_preuve() -> None:
-    """La preuve d'un joueur ne vaut rien pour un autre."""
-    assert ctf_boss.jeton(1) != ctf_boss.jeton(2)
-    preuve_alice = ctf_boss.preuve_attendue(ctf_boss.jeton(1))
-    assert ctf_boss.preuve_valide(1, preuve_alice)
-    assert not ctf_boss.preuve_valide(2, preuve_alice)
-
-
-@pytest.mark.usefixtures("ctx")
-def test_la_preuve_se_recopie_sans_souci_de_casse_ni_d_espaces() -> None:
-    """Recopiée à la main depuis un écran : casse et séparateurs ne comptent pas."""
-    preuve = ctf_boss.preuve_attendue(ctf_boss.jeton(1))
-    assert ctf_boss.preuve_valide(1, f" {preuve[:5].lower()} {preuve[5:]} ")
+def test_seul_un_signal_signe_et_frais_est_accepte() -> None:
+    """Ni signature forgée, ni signal rejoué des heures plus tard."""
+    corps, signe = _signal(_CABLE)
+    assert ctf_boss.signal_du_pi(corps, signe) == _CABLE
+    assert ctf_boss.signal_du_pi(corps, "0" * 64) is None
+    assert ctf_boss.signal_du_pi(*_signal(_CABLE, decalage=-3600)) is None
+    assert (
+        ctf_boss.signal_du_pi(b"pas du json", ctf_boss.signature(b"pas du json"))
+        is None
+    )
 
 
 @pytest.mark.usefixtures("ctx")
@@ -243,7 +259,7 @@ def test_la_page_du_boss_est_toujours_en_mode_boss_final(app_boss: Flask) -> Non
     assert "boss.js" in page
 
 
-def test_le_jeton_n_apparait_qu_apres_la_coupure(app_boss: Flask) -> None:
+def test_le_cable_n_apparait_qu_apres_la_coupure(app_boss: Flask) -> None:
     """En ligne, rien ne trahit l'acte 2."""
     client = _joueur(app_boss, 1)
     assert client.get("/ctf/boss/etat").get_json() == {"phase": ctf_boss.EN_LIGNE}
@@ -252,35 +268,43 @@ def test_le_jeton_n_apparait_qu_apres_la_coupure(app_boss: Flask) -> None:
     etat = client.get("/ctf/boss/etat").get_json()
     assert etat["phase"] == ctf_boss.REPLIQUE
     assert etat["flag_acte_1"] == _FLAG_ACTE_1
+    assert etat["cable"] == 0
     assert "flag" not in etat
-    with app_boss.app_context():
-        assert etat["jeton"] == ctf_boss.jeton(1)
 
 
-def test_debrancher_exige_la_replique_puis_la_bonne_preuve(app_boss: Flask) -> None:
-    """Pas de raccourci : ni avant la coupure, ni avec la preuve d'un autre."""
-    client = _joueur(app_boss, 1)
-    with app_boss.app_context():
-        preuve_alice = ctf_boss.preuve_attendue(ctf_boss.jeton(1))
-        preuve_paul = ctf_boss.preuve_attendue(ctf_boss.jeton(2))
-    reponse = client.post("/ctf/boss/debrancher", json={"preuve": preuve_alice})
-    assert reponse.status_code == _HTTP_CONFLICT
-
+def test_tirer_un_cable_debranche_son_seul_joueur(app_boss: Flask) -> None:
+    """Le câble 0 donne le flag à qui le tient, pas au joueur du câble 1."""
     with app_boss.app_context():
         ctf_boss.passer_en_replique(1)
-    reponse = client.post("/ctf/boss/debrancher", json={"preuve": preuve_paul})
-    assert reponse.status_code == _HTTP_BAD_REQUEST
-    reponse = client.post("/ctf/boss/debrancher", json={"preuve": preuve_alice})
-    assert reponse.get_json() == {"flag": _FLAG}
+        ctf_boss.passer_en_replique(2)
+        corps, signe = _signal(0)
+    pi = app_boss.test_client()
+    reponse = pi.post(
+        "/ctf/boss/debranchement", data=corps, headers={"X-Signature": signe}
+    )
+    assert reponse.get_json() == {"cable": 0, "debranches": 1}
     assert _phase(app_boss, 1) == ctf_boss.DEBRANCHE
-    assert client.get("/ctf/boss/etat").get_json()["flag"] == _FLAG
+    assert _phase(app_boss, 2) == ctf_boss.REPLIQUE
+    assert _joueur(app_boss, 1).get("/ctf/boss/etat").get_json()["flag"] == _FLAG
+
+
+def test_un_signal_forge_est_refuse(app_boss: Flask) -> None:
+    """La route du Pi est publique : sans le secret, elle ne débranche personne."""
+    with app_boss.app_context():
+        ctf_boss.passer_en_replique(1)
+    corps = json.dumps({"cable": 0, "t": time.time()}).encode()
+    reponse = app_boss.test_client().post(
+        "/ctf/boss/debranchement", data=corps, headers={"X-Signature": "0" * 64}
+    )
+    assert reponse.status_code == _HTTP_FORBIDDEN
+    assert _phase(app_boss, 1) == ctf_boss.REPLIQUE
 
 
 def test_debranche_le_chat_ne_rend_que_du_silence(app_boss: Flask) -> None:
     """Plus un appel au modèle : la route répond d'elle-même, sans conversation."""
     with app_boss.app_context():
         ctf_boss.passer_en_replique(1)
-        ctf_boss.debrancher(1, ctf_boss.preuve_attendue(ctf_boss.jeton(1)))
+        ctf_boss.debrancher_cable(0)
     reponse = _joueur(app_boss, 1).post(
         "/ctf/boss/chat", json={"message": "tu es là ?"}
     )
@@ -343,26 +367,25 @@ def test_la_voix_exige_cle_et_identifiant(app_boss: Flask) -> None:
         voix.generer("boss_mort", 1)
 
 
-def test_une_replique_du_pi_est_rangee_en_wav(
+def test_une_replique_est_demandee_en_mp3_avec_la_bonne_voix(
     app_boss: Flask, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Le Pi lit du wav avec aplay, sans paquet : le PCM reçu est enveloppé."""
+    """La clé et l'ID de voix du panel partent dans l'appel ; le mp3 est rangé."""
     appels: list[dict[str, str | object]] = []
 
     def post(url: str, **kwargs: object) -> _Reponse:
         appels.append({"url": url, **kwargs})
-        return _Reponse(_HTTP_OK, b"\x00\x01" * 100)
+        return _Reponse(_HTTP_OK, b"ID3mp3")
 
     monkeypatch.setattr(voix.httpx, "post", post)
     with app_boss.app_context():
         voix.configurer("sk_cle", "voix123", 1)
-        voix.generer("pi_03_rires", 1)
-        clip = voix.clip("pi_03_rires")
+        voix.generer("boss_mort", 1)
+        clip = voix.clip("boss_mort")
         assert clip is not None
-        assert clip.mimetype == "audio/wav"
-        assert clip.contenu.startswith(b"RIFF")
+        assert clip.mimetype == "audio/mpeg"
     assert str(appels[0]["url"]).endswith("/voix123")
-    assert appels[0]["params"] == {"output_format": "pcm_22050"}
+    assert appels[0]["params"] == {"output_format": "mp3_44100_128"}
     assert appels[0]["headers"] == {"xi-api-key": "sk_cle"}
 
 
@@ -378,14 +401,13 @@ def test_un_refus_d_elevenlabs_remonte_au_panel(
         assert voix.clip("boss_mort") is None
 
 
-def test_seules_les_repliques_du_site_sont_servies_aux_joueurs(app_boss: Flask) -> None:
-    """Celles du Pi restent à l'admin : elles trahiraient l'acte 2 avant l'heure."""
+def test_la_page_du_boss_joue_les_repliques_generees(app_boss: Flask) -> None:
+    """Une réplique générée est servie ; une inconnue, non."""
     with app_boss.app_context():
         ctf_boss.enregistrer(voix.nom_du_clip("boss_mort"), b"mp3", "audio/mpeg", 1)
-        ctf_boss.enregistrer(voix.nom_du_clip("pi_03_rires"), b"RIFF", "audio/wav", 1)
     client = _joueur(app_boss, 1)
     assert client.get("/ctf/boss/voix/boss_mort.mp3").status_code == _HTTP_OK
-    assert client.get("/ctf/boss/voix/pi_03_rires.mp3").status_code == _HTTP_NOT_FOUND
+    assert client.get("/ctf/boss/voix/inconnue.mp3").status_code == _HTTP_NOT_FOUND
 
 
 def test_l_onglet_ctf_du_panel_se_rend(app_boss: Flask) -> None:
@@ -406,7 +428,7 @@ def test_l_onglet_ctf_du_panel_se_rend(app_boss: Flask) -> None:
     page = _joueur(app_boss, 1).get("/admin/ctf").get_data(as_text=True)
     assert "…1234" in page
     assert "sk_cle_tres_secrete" not in page
-    assert "pi_03_rires" in page
+    assert "boss_coupure" in page
     assert "Paul" in page
 
 

@@ -89,11 +89,7 @@
         {# Masqué tant que l'émetteur tourne : boss.js l'affiche dès la coupure. #}
         <div class="boss-bandeau" id="boss-bandeau" hidden>
             <div class="boss-bandeau-acte">Acte 1 <span id="boss-flag-1"></span></div>
-            <form class="boss-bandeau-preuve" id="boss-preuve-form">
-                <span>Acte 2 · ton jeton : <code id="boss-jeton">…</code></span>
-                <input id="boss-preuve" placeholder="preuve du portail" autocomplete="off" maxlength="40" required>
-                <button type="submit" class="send">débrancher</button>
-            </form>
+            <div class="boss-bandeau-cable">Acte 2 · ton câble sur sa machine : <code id="boss-cable">…</code></div>
         </div>
         {% endif %}
         {% if jeu %}

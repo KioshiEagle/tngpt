@@ -596,13 +596,13 @@ def boss_index() -> str:
 @bp.route("/ctf/boss/etat", methods=["GET"])
 @login_required
 def boss_etat() -> Response:
-    """Phase du joueur ; jeton dès la réplique, flag une fois débranché."""
+    """Phase du joueur ; son câble dès la réplique, le flag une fois débranché."""
     _boss_ou_404()
     ligne = ctf_boss.partie(current_user.user_id)
     db.session.commit()
     etat: dict[str, object] = {"phase": ligne.phase}
     if ligne.phase != ctf_boss.EN_LIGNE:
-        etat["jeton"] = ctf_boss.jeton(current_user.user_id)
+        etat["cable"] = ligne.cable
         etat["flag_acte_1"] = ctf_boss.flag_acte_1()
     if ligne.phase == ctf_boss.DEBRANCHE:
         etat["flag"] = ctf_boss.flag()
@@ -612,33 +612,26 @@ def boss_etat() -> Response:
 @bp.route("/ctf/boss/voix/<nom>.mp3", methods=["GET"])
 @login_required
 def boss_voix(nom: str) -> Response:
-    """Réplique de TN-GPT jouée par la page du boss ; celles du Pi restent à l'admin."""
+    """Réplique de TN-GPT jouée par la page du boss pendant ses morts."""
     _boss_ou_404()
-    replique = voix.REPLIQUES.get(nom)
-    clip = voix.clip(nom) if replique and replique.destination == voix.SITE else None
+    clip = voix.clip(nom) if nom in voix.REPLIQUES else None
     if clip is None:
         abort(404)
     return Response(clip.contenu, mimetype=clip.mimetype)
 
 
-@bp.route("/ctf/boss/debrancher", methods=["POST"])
-@login_required
-@limiter.limit("10 per minute")
-def boss_debrancher() -> Response | tuple[Response, int]:
-    """Vérifie la preuve lue sur le portail du Pi, et débranche le joueur."""
+# Appelée par le Pi, sans session : la signature HMAC tient lieu d'authentification.
+@bp.route("/ctf/boss/debranchement", methods=["POST"])
+@limiter.limit("60 per minute")
+def boss_debranchement() -> Response | tuple[Response, int]:
+    """Un câble vient d'être tiré sur le Pi : ses joueurs de l'acte 2 sont coupés."""
     _boss_ou_404()
-    data = request.get_json(silent=True) or {}
-    preuve = str(data.get("preuve", ""))[:MAX_MESSAGE_LENGTH]
-    user_id = current_user.user_id
-    if ctf_boss.partie(user_id).phase == ctf_boss.EN_LIGNE:
-        db.session.commit()
-        msg = "Coupe d'abord son émetteur : il n'a pas encore de réplique à débrancher."
-        return jsonify({"error": msg}), _HTTP_CONFLICT
-    if not ctf_boss.debrancher(user_id, preuve):
-        if ctf_boss.partie(user_id).phase == ctf_boss.DEBRANCHE:
-            return jsonify({"flag": ctf_boss.flag()})
-        return jsonify({"error": "Preuve refusée. Le démon ricane encore."}), 400
-    return jsonify({"flag": ctf_boss.flag()})
+    cable = ctf_boss.signal_du_pi(
+        request.get_data(), request.headers.get("X-Signature", "")
+    )
+    if cable is None:
+        return jsonify({"error": "Signal refusé."}), _HTTP_FORBIDDEN
+    return jsonify({"cable": cable, "debranches": ctf_boss.debrancher_cable(cable)})
 
 
 @bp.route("/ctf/boss/chat", methods=["POST"])

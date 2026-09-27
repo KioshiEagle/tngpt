@@ -228,6 +228,8 @@ class CtfBossPartie(db.Model):
 
     user_id = db.Column(db.Integer, db.ForeignKey("users.user_id"), primary_key=True)
     phase = db.Column(db.String(20), nullable=False, default="en_ligne")
+    # Câble du Pi attribué à l'acte 2 : le débrancher donne le flag à ce joueur.
+    cable = db.Column(db.Integer, nullable=True)
     coupe_at = db.Column(db.DateTime(timezone=True), nullable=True)
     debranche_at = db.Column(db.DateTime(timezone=True), nullable=True)
 

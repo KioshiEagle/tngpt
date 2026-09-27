@@ -3,10 +3,6 @@
 Clé et voix se règlent dans l'onglet CTF ; les joueurs ne déclenchent jamais l'API.
 """
 
-import io
-import wave
-from dataclasses import dataclass
-
 import httpx
 
 from .ctf_boss import enregistrer, fichier, supprimer
@@ -16,47 +12,20 @@ from .reglages import regler, valeur
 CLE_API = "elevenlabs_cle"
 VOIX_ID = "elevenlabs_voix"
 
-SITE = "site"
-PI = "pi"
-
 _API = "https://api.elevenlabs.io/v1/text-to-speech/{voix}"
 _MODELE = "eleven_multilingual_v2"
-_FREQUENCE_PI = 22050
 # Une réplique revient en quelques secondes ; au-delà, le worker unique bloque tout.
 _DELAI_S = 25.0
 _HTTP_OK = 200
 
 
-@dataclass(frozen=True)
-class Replique:
-    """Un texte dit par TN-GPT, et où il est joué."""
-
-    texte: str
-    destination: str
-
-
-REPLIQUES: dict[str, Replique] = {
-    "boss_coupure": Replique(
+# Jouées par la page du boss : la fausse mort de l'acte 1, la vraie de l'acte 2.
+REPLIQUES: dict[str, str] = {
+    "boss_coupure": (
         "Kkkrrsh... Oh, cher auditeur... Tu m'as coupé l'antenne. "
-        "Mais pas la voix. Ha ha ha ! Restez à l'écoute.",
-        SITE,
+        "Mais pas la voix. Ha ha ha ! Restez à l'écoute."
     ),
-    "boss_mort": Replique(
-        "Non... non, non, non... le spectacle... ne peut pas... s'arrêter...", SITE
-    ),
-    "pi_01_en_direct": Replique(
-        "Ici node-diabo, en direct de ma cachette ! "
-        "Chers auditeurs, vous me cherchez ? Vous chauffez...",
-        PI,
-    ),
-    "pi_02_aucune_commande": Replique(
-        "Aucune commande ne m'atteint ici. Seule une main posée sur mon câble "
-        "pourrait me faire taire. Mais vous n'oserez pas.",
-        PI,
-    ),
-    "pi_03_rires": Replique(
-        "Ha ha ha ! Le spectacle continue. Restez à l'écoute, mortels !", PI
-    ),
+    "boss_mort": "Non... non, non, non... le spectacle... ne peut pas... s'arrêter...",
 }
 
 
@@ -73,12 +42,12 @@ def _cle_texte(nom: str) -> str:
 
 def texte(nom: str) -> str:
     """Texte de la réplique : celui du panel s'il a été réécrit, sinon l'original."""
-    return valeur(_cle_texte(nom)) or REPLIQUES[nom].texte
+    return valeur(_cle_texte(nom)) or REPLIQUES[nom]
 
 
 def modifier_texte(nom: str, nouveau: str, user_id: int) -> bool:
     """Réécrit une réplique et retire son clip devenu faux ; faux si rien ne change."""
-    nouveau = nouveau.strip()[:_MAX_TEXTE] or REPLIQUES[nom].texte
+    nouveau = nouveau.strip()[:_MAX_TEXTE] or REPLIQUES[nom]
     if nouveau == texte(nom):
         return False
     regler(_cle_texte(nom), nouveau, user_id=user_id)
@@ -114,29 +83,16 @@ def clip(nom: str) -> CtfFichier | None:
     return fichier(nom_du_clip(nom))
 
 
-def _wav(pcm: bytes) -> bytes:
-    """PCM 16 bits mono d'ElevenLabs enveloppé en wav, que aplay lit sans paquet."""
-    tampon = io.BytesIO()
-    with wave.open(tampon, "wb") as sortie:
-        sortie.setnchannels(1)
-        sortie.setsampwidth(2)
-        sortie.setframerate(_FREQUENCE_PI)
-        sortie.writeframes(pcm)
-    return tampon.getvalue()
-
-
 def generer(nom: str, user_id: int) -> None:
     """Fait dire la réplique `nom` par la voix de TN-GPT, et la range en base."""
-    replique = REPLIQUES[nom]
     cle, voix_id = reglages()
     if not cle or not voix_id:
         msg = "Renseigne d'abord la clé API et l'identifiant de voix."
         raise VoixError(msg)
-    pour_le_site = replique.destination == SITE
     try:
         reponse = httpx.post(
             _API.format(voix=voix_id),
-            params={"output_format": "mp3_44100_128" if pour_le_site else "pcm_22050"},
+            params={"output_format": "mp3_44100_128"},
             headers={"xi-api-key": cle},
             json={"text": texte(nom), "model_id": _MODELE},
             timeout=_DELAI_S,
@@ -147,7 +103,4 @@ def generer(nom: str, user_id: int) -> None:
     if reponse.status_code != _HTTP_OK:
         msg = f"ElevenLabs a refusé ({reponse.status_code}) : {reponse.text[:200]}"
         raise VoixError(msg)
-    if pour_le_site:
-        enregistrer(nom_du_clip(nom), reponse.content, "audio/mpeg", user_id)
-    else:
-        enregistrer(nom_du_clip(nom), _wav(reponse.content), "audio/wav", user_id)
+    enregistrer(nom_du_clip(nom), reponse.content, "audio/mpeg", user_id)

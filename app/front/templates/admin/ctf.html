@@ -52,7 +52,7 @@
 
     <div class="admin-card admin-card--spaced">
         <h2>Répliques</h2>
-        <p class="admin-note">« site » : jouée pendant les morts de TN-GPT · « pi » : .wav à copier dans <code>deploy/pi/voix/</code>. Modifier un texte efface son audio.</p>
+        <p class="admin-note">Jouées pendant la fausse mort (acte 1) et la vraie (acte 2). Modifier un texte efface son audio.</p>
         <div class="admin-table-scroll">
             <table class="admin-table">
                 <thead>
@@ -63,9 +63,9 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for nom, replique, texte, clip in repliques %}
+                    {% for nom, texte, clip in repliques %}
                         <tr>
-                            <td class="admin-mono">{{ nom }}<br><span class="admin-cell-muted">{{ replique.destination }}</span></td>
+                            <td class="admin-mono">{{ nom }}</td>
                             <td>
                                 <form method="post" action="{{ url_for('admin.ctf_texte_voix', nom=nom) }}">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -76,9 +76,6 @@
                             <td>
                                 {% if clip %}
                                     <audio controls preload="none" src="{{ url_for('admin.ctf_ecouter_voix', nom=nom) }}"></audio>
-                                    {% if replique.destination != site %}
-                                        <br><a class="admin-link" href="{{ url_for('admin.ctf_ecouter_voix', nom=nom) }}" download="{{ nom }}.wav">télécharger le .wav</a>
-                                    {% endif %}
                                 {% else %}
                                     <span class="admin-cell-muted">pas encore générée</span>
                                 {% endif %}
@@ -105,6 +102,7 @@
                         <tr>
                             <th>Joueur</th>
                             <th>Phase</th>
+                            <th>Câble</th>
                             <th>Émetteur coupé</th>
                             <th>Débranché</th>
                         </tr>
@@ -114,6 +112,7 @@
                             <tr>
                                 <td>{{ joueur.user_firstname }} {{ joueur.user_surname }} <span class="admin-user-mail">{{ joueur.user_mail }}</span></td>
                                 <td>{{ partie.phase }}</td>
+                                <td>{{ partie.cable if partie.cable is not none else '—' }}</td>
                                 <td>{{ partie.coupe_at.strftime('%H:%M:%S') if partie.coupe_at else '—' }}</td>
                                 <td>{{ partie.debranche_at.strftime('%H:%M:%S') if partie.debranche_at else '—' }}</td>
                             </tr>

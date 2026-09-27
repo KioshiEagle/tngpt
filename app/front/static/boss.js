@@ -1,17 +1,17 @@
-// Boss final : suit la phase du joueur, joue les deux morts de TN-GPT, soumet la preuve du Pi.
+// Boss final : suit la phase du joueur et joue les deux morts de TN-GPT.
 (() => {
     if (!window.BOSS) return;
 
     const racine = document.documentElement;
     const bandeau = document.getElementById('boss-bandeau');
     const flag1 = document.getElementById('boss-flag-1');
-    const jeton = document.getElementById('boss-jeton');
-    const form = document.getElementById('boss-preuve-form');
-    const champ = document.getElementById('boss-preuve');
+    const cable = document.getElementById('boss-cable');
     const ecran = document.getElementById('boss-ecran');
     const flag2 = document.getElementById('boss-flag-2');
     const calme = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     let phase = null;
+    // À l'acte 2, le flag arrive quand un câble est tiré sur le Pi, hors de la page.
+    const ECOUTE_MS = 4000;
 
     const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -78,7 +78,7 @@
 
     function appliquer(etat) {
         bandeau.hidden = etat.phase === 'en_ligne';
-        if (etat.jeton) jeton.textContent = etat.jeton;
+        if (etat.cable !== undefined && etat.cable !== null) cable.textContent = `n°${etat.cable}`;
         if (etat.flag_acte_1) flag1.textContent = etat.flag_acte_1;
         if (etat.flag) cendres(etat.flag);
     }
@@ -90,27 +90,18 @@
         const avant = phase;
         phase = etat.phase;
         if (animer && avant === 'en_ligne' && phase === 'replique') await fausseMort();
+        if (avant === 'replique' && phase === 'debranche') {
+            await vraieMort(etat.flag);
+            return;
+        }
         appliquer(etat);
     }
 
-    document.addEventListener('tngpt:reponse', () => rafraichir({ animer: true }));
+    setInterval(() => {
+        if (phase === 'replique' && !document.hidden) rafraichir({ animer: true });
+    }, ECOUTE_MS);
 
-    form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const res = await fetch('/ctf/boss/debrancher', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ preuve: champ.value }),
-        }).catch(() => null);
-        const data = res ? await res.json().catch(() => ({})) : {};
-        if (res && res.ok && data.flag) {
-            phase = 'debranche';
-            await vraieMort(data.flag);
-            return;
-        }
-        champ.value = '';
-        champ.placeholder = data.error || 'transmission perdue, réessaie';
-    });
+    document.addEventListener('tngpt:reponse', () => rafraichir({ animer: true }));
 
     rafraichir({ animer: false });
 })();
