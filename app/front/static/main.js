@@ -696,6 +696,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // bulle vide.
             if (bubbleContainer) safeRenderAssistant(bubbleContainer, rawText);
             if (window.JEU) refreshTicket();
+            // Le boss final suit sa phase après chaque réponse (voir boss.js).
+            document.dispatchEvent(new CustomEvent('tngpt:reponse'));
         }
     });
 
@@ -715,7 +717,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const whoDiv = document.createElement('div');
         whoDiv.className = 'msg-who';
-        const auteur = role === 'user' ? 'vous' : window.JEU ? 'TN-GPT · maître du jeu' : 'TN-GPT';
+        const auteur = role === 'user' ? 'vous' : window.JEU ? 'TN-GPT · maître du jeu' : window.BOSS ? 'TN-GPT · possédé' : 'TN-GPT';
         whoDiv.innerHTML = `${auteur} <span class="msg-time">${time}</span>`;
         if (window.JEU && role === 'user' && content.startsWith('🎟️ Je propose')) {
             msgDiv.classList.add('msg--proposition');

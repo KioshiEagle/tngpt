@@ -214,6 +214,13 @@ def test_le_boss_sans_ses_secrets_renvoie_404(
     assert _joueur(app_boss, 1).get("/ctf/boss").status_code == _HTTP_NOT_FOUND
 
 
+def test_la_page_du_boss_est_toujours_en_mode_boss_final(app_boss: Flask) -> None:
+    """Le chal porte son thème, que l'admin ait allumé le réglage global ou non."""
+    page = _joueur(app_boss, 1).get("/ctf/boss").get_data(as_text=True)
+    assert 'data-flamme="on"' in page
+    assert "boss.js" in page
+
+
 def test_le_jeton_n_apparait_qu_apres_la_coupure(app_boss: Flask) -> None:
     """En ligne, rien ne trahit l'acte 2."""
     client = _joueur(app_boss, 1)

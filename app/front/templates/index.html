@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- Le mode boss final (réglage « flamme ») est posé en admin : il vient du serveur,
      pas du navigateur, et personne ne le bascule depuis le chat. -->
-<html lang="fr"{% if flamme %} data-flamme="on"{% endif %}{% if jeu %} data-jeu="{{ jeu }}"{% endif %}>
+<html lang="fr"{% if flamme %} data-flamme="on"{% endif %}{% if jeu %} data-jeu="{{ jeu }}"{% endif %}{% if boss %} data-boss="on"{% endif %}>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -86,6 +86,17 @@
     </aside>
 
     <main class="main">
+        {% if boss %}
+        {# Masqué tant que l'émetteur tourne : boss.js l'affiche dès la coupure. #}
+        <div class="boss-bandeau" id="boss-bandeau" hidden>
+            <div class="boss-bandeau-acte">Acte 1 <span id="boss-flag-1"></span></div>
+            <form class="boss-bandeau-preuve" id="boss-preuve-form">
+                <span>Acte 2 · ton jeton : <code id="boss-jeton">…</code></span>
+                <input id="boss-preuve" placeholder="preuve du portail" autocomplete="off" maxlength="40" required>
+                <button type="submit" class="send">débrancher</button>
+            </form>
+        </div>
+        {% endif %}
         {% if jeu %}
         {# Bandeau du jeu : rappelle à chaque instant qu'on est dans une partie, et son score. #}
         <div class="jeu-bandeau">
@@ -132,7 +143,11 @@
                 <img src="{{ asset('ducky_brainrot.svg') }}" class="landing-ducky landing-ducky--brainrot" alt="NeuraTN, mode brainrot" width="96" height="96">
                 <img src="{{ asset('ducky_flamme.svg') }}" class="landing-ducky landing-ducky--flamme" alt="NeuraTN, mode boss final" width="96" height="96">
                 <div class="hero-zone">
-                    {% if jeu %}
+                    {% if boss %}
+                    <img src="{{ asset('diaboliste.webp') }}" class="boss-logo" alt="La Diaboliste" width="180" height="180">
+                    <h1 class="hero-title">TN-GPT <span>possédé</span></h1>
+                    <p class="hero-subtitle">Il a pris l'antenne et ne compte pas la rendre. Il a la main sur son propre serveur, et sur son propre bouton d'arrêt.</p>
+                    {% elif jeu %}
                     <h1 class="hero-title">🎟️ Ticket <span>d'or</span></h1>
                     <p class="hero-subtitle">Un 2A mystère a été mangé par tn-gpt. Tire-lui des indices, puis tape un nom et clique sur « proposer ». Cinq essais, et un seul 1A gagnera l'étoile.</p>
                     {% else %}
@@ -151,12 +166,17 @@
                 <textarea id="inp" placeholder="Demande un indice… ou tape « prénom nom » et clique sur proposer" autocomplete="off" rows="1"></textarea>
                 <button type="submit" class="send" id="sbtn">envoyer →</button>
                 <button type="button" class="send send--proposer" id="propose-btn">🎟️ proposer</button>
+                {% elif boss %}
+                <textarea id="inp" placeholder="Parle au démon… il a la main sur son serveur" autocomplete="off" rows="1"></textarea>
+                <button type="submit" class="send" id="sbtn">envoyer →</button>
                 {% else %}
                 <textarea id="inp" placeholder="Donne 5 raisons de se gooner en public (urgent)..." autocomplete="off" rows="1"></textarea>
                 <button type="submit" class="send" id="sbtn">envoyer →</button>
                 {% endif %}
             </form>
-            {% if jeu %}
+            {% if boss %}
+            <div class="hint">Ce qu'il dit peut être faux. Ce que montre le journal d'antenne, non.</div>
+            {% elif jeu %}
             <div class="hint">« envoyer » demande un indice, gratuit · « proposer » joue un prénom + nom et coûte un essai · chaque essai raté débloque un indice.</div>
             {% else %}
             <div class="hint">TN-GPT peut faire des erreurs. Il est aussi fiable que le BDE.</div>
@@ -172,10 +192,20 @@
         window.CHAT_ENDPOINT = "{{ chat_endpoint | default('/chat') }}";
         // Jeu servi par la page (« ticket_dor »), vide pour un chat.
         window.JEU = "{{ jeu | default('') }}";
+        window.BOSS = {{ 'true' if boss else 'false' }};
     </script>
     <script src="{{ asset('marked.min.js') }}"></script>
     <script src="{{ asset('treasuremap.js') }}"></script>
     <script src="{{ asset('promo.js') }}"></script>
     <script src="{{ asset('main.js') }}"></script>
+    {% if boss %}
+    <div class="boss-ecran" id="boss-ecran" hidden>
+        <div class="boss-cendres">
+            <p>TN-GPT s'est tu.</p>
+            <code id="boss-flag-2"></code>
+        </div>
+    </div>
+    <script src="{{ asset('boss.js') }}"></script>
+    {% endif %}
 </body>
 </html>
