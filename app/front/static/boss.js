@@ -121,8 +121,8 @@
         defacement.classList.add('boss-defacement--parti');
         await attendre(600);
         defacement.hidden = true;
-        // Fait apparaître la config dans l'onglet Réseau de l'inspecteur.
-        fetch('/ctf/boss/relais.conf').catch(() => {});
+        // Trace durable dans l'inspecteur, même ouvert après coup.
+        defacement.before(document.createComment(' node-diabo : relais de secours sur /ctf/boss/relais.conf '));
     }
 
     function appliquer(etat) {
@@ -130,7 +130,11 @@
         if (etat.cable !== undefined && etat.cable !== null) cable.textContent = `n°${etat.cable}`;
         if (etat.flag_acte_1) flag1.textContent = etat.flag_acte_1;
         if (etat.flag) cendres(etat.flag);
-        if (etat.phase === 'replique') defigurer();
+        if (etat.phase === 'replique') {
+            defigurer();
+            // Redemandée à chaque écoute pour qu'elle reste visible dans l'onglet Réseau.
+            fetch('/ctf/boss/relais.conf').catch(() => {});
+        }
     }
 
     async function rafraichir({ animer }) {
