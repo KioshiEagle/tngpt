@@ -41,7 +41,7 @@ SECRETS: dict[str, tuple[str, str]] = {
     CABLES: ("Nombre de câbles", "branchés sur le Pi, numérotés à partir de 0"),
     LIEU: (
         "Cachette du Pi",
-        "ex. « salle 1.12, sous le bureau du fond » ; cachée en base64 côté client",
+        "ex. « Local du BDE » ; cachée en base64 côté client",
     ),
 }
 _PROMPT = Path(__file__).with_name("ctf_boss.md")
