@@ -831,6 +831,8 @@ def ctf_page() -> str:
     return render_template(
         "admin/ctf.html",
         boss_actif=ctf_boss.enabled(),
+        boss_complet=ctf_boss.complet(),
+        boss_ferme=ctf_boss.ferme(),
         secrets_boss=[
             (cle, libelle, aide, ctf_boss.secret(cle))
             for cle, (libelle, aide) in ctf_boss.SECRETS.items()
@@ -852,10 +854,24 @@ def ctf_secrets() -> Response:
     logger.info("Secrets du boss modifiés par %s", current_user.user_mail)
     if ctf_boss.enabled():
         flash("Secrets enregistrés : /ctf/boss est ouvert.", "success")
+    elif ctf_boss.complet():
+        flash("Secrets enregistrés ; le jeu reste fermé depuis le panel.", "warning")
     else:
         flash(
             "Enregistré, mais /ctf/boss reste fermé tant qu'un champ manque.", "warning"
         )
+    return redirect(url_for("admin.ctf_page"))
+
+
+@admin_bp.route("/ctf/bascule", methods=["POST"])
+@admin_required
+def ctf_basculer() -> Response:
+    """Ferme ou rouvre /ctf/boss pour tout le monde, sans toucher aux secrets."""
+    ferme = ctf_boss.fermer_ou_rouvrir(current_user.user_id)
+    logger.info("Boss final ferme=%s par %s", ferme, current_user.user_mail)
+    flash(
+        f"Boss final {'fermé pour tout le monde' if ferme else 'rouvert'}.", "success"
+    )
     return redirect(url_for("admin.ctf_page"))
 
 

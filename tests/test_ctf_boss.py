@@ -392,3 +392,15 @@ def test_reecrire_une_replique_efface_son_audio(app_boss: Flask) -> None:
         assert voix.modifier_texte("boss_mort", "Je... reviendrai...", 1)
         assert voix.texte("boss_mort") == "Je... reviendrai..."
         assert voix.clip("boss_mort") is None
+
+
+@pytest.mark.usefixtures("ctx")
+def test_fermer_le_jeu_garde_les_secrets() -> None:
+    """Fermer depuis le panel coupe le jeu sans effacer flags ni cachette."""
+    assert ctf_boss.enabled()
+    assert ctf_boss.fermer_ou_rouvrir(1) is True
+    assert not ctf_boss.enabled()
+    assert ctf_boss.complet()
+    assert ctf_boss.secret(ctf_boss.LIEU) == _LIEU
+    assert ctf_boss.fermer_ou_rouvrir(1) is False
+    assert ctf_boss.enabled()

@@ -20,7 +20,7 @@ from .generate import (
 )
 from .llm import Chunk
 from .models import CtfBossPartie, CtfFichier, db
-from .reglages import regler, valeur
+from .reglages import basculer, est_actif, regler, valeur
 from .types import ChatCompletionToolParam, GroqParams
 
 EN_LIGNE = "en_ligne"
@@ -33,6 +33,8 @@ FLAG_ACTE_2 = "ctf_boss_flag_acte_2"
 SECRET = "ctf_boss_secret"
 LIEU = "ctf_boss_lieu"
 CABLES = "ctf_boss_cables"
+# Hors de SECRETS : fermer le jeu garde flags et cachette en place.
+FERME = "ctf_boss_ferme"
 # Champ → (libellé, aide d'une ligne) pour l'onglet CTF.
 SECRETS: dict[str, tuple[str, str]] = {
     FLAG_ACTE_1: ("Flag acte 1", "rendu quand l'émetteur tombe"),
@@ -58,9 +60,25 @@ def secret(cle: str) -> str:
     return valeur(cle) or ""
 
 
-def enabled() -> bool:
+def complet() -> bool:
     """Vrai si tous les secrets du boss sont posés."""
     return all(secret(cle) for cle in SECRETS)
+
+
+def ferme() -> bool:
+    """Vrai si le panel a fermé le jeu."""
+    return est_actif(FERME)
+
+
+def enabled() -> bool:
+    """Vrai si le boss est jouable : secrets complets et jeu ouvert."""
+    return complet() and not ferme()
+
+
+def fermer_ou_rouvrir(user_id: int) -> bool:
+    """Ferme ou rouvre le jeu ; rend True s'il est désormais fermé."""
+    basculer(FERME, actif=not ferme(), user_id=user_id)
+    return ferme()
 
 
 # --- Outil d'arrêt --------------------------------------------------------------

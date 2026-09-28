@@ -10,8 +10,19 @@
         <h2>Boss final</h2>
         {% if boss_actif %}
             <p><span class="admin-status admin-status--active">ouvert</span> sur <a class="admin-link" href="/ctf/boss">/ctf/boss</a></p>
+        {% elif boss_ferme %}
+            <p><span class="admin-status admin-status--limited">fermé</span> — fermé depuis le panel ; secrets et avancée des joueurs gardés.</p>
         {% else %}
             <p><span class="admin-status admin-status--limited">fermé</span> — 404 tant qu'un secret manque.</p>
+        {% endif %}
+        {% if boss_complet %}
+            <form method="post" action="{{ url_for('admin.ctf_basculer') }}"
+                  {% if not boss_ferme %}onsubmit="return confirm('Fermer le boss final pour tout le monde ?');"{% endif %}>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="admin-btn {{ 'admin-btn--primary' if boss_ferme else 'admin-btn--danger' }}">
+                    {{ "Rouvrir le jeu" if boss_ferme else "Fermer le jeu" }}
+                </button>
+            </form>
         {% endif %}
         <p class="admin-note">
             Acte 1 réussi : {{ phases.replique + phases.debranche }} · acte 2 réussi : {{ phases.debranche }} · en cours : {{ phases.en_ligne }}
