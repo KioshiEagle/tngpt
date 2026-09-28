@@ -115,7 +115,7 @@
         }
         const pique = document.createElement('p');
         pique.className = 'boss-defacement-pique';
-        pique.textContent = 'ma cachette ? elle reste sous les yeux de qui sait regarder la page.';
+        pique.textContent = 'ma cachette ? mon relais la souffle à ton navigateur toutes les quatre secondes. encore faut-il écouter le réseau.';
         defacement.appendChild(pique);
         await attendre(7000);
         defacement.classList.add('boss-defacement--parti');
@@ -123,6 +123,7 @@
         defacement.hidden = true;
         // Trace durable dans l'inspecteur, même ouvert après coup.
         defacement.before(document.createComment(' node-diabo : relais de secours sur /ctf/boss/relais.conf '));
+        console.log('%cnode-diabo : mon relais de secours tient sa config ailleurs que dans cette console.', 'color:#ff3a5c');
     }
 
     function appliquer(etat) {
