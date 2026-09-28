@@ -30,7 +30,7 @@ DEBRANCHE = "debranche"
 # Posés dans l'onglet CTF du panel et rangés en base : ni .env ni redéploiement.
 FLAG_ACTE_1 = "ctf_boss_flag_acte_1"
 FLAG_ACTE_2 = "ctf_boss_flag_acte_2"
-SECRET = "ctf_boss_secret"
+SECRET = "ctf_boss_secret"  # nosec B105 : clé de réglage, pas le secret
 LIEU = "ctf_boss_lieu"
 CABLES = "ctf_boss_cables"
 # Hors de SECRETS : fermer le jeu garde flags et cachette en place.
