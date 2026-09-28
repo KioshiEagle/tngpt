@@ -76,7 +76,9 @@ def enabled() -> bool:
 
 
 def fermer_ou_rouvrir(user_id: int) -> bool:
-    """Ferme ou rouvre le jeu ; rend True s'il est désormais fermé."""
+    """Ferme le jeu en effaçant les parties, ou le rouvre ; True si fermé."""
+    if not ferme():
+        db.session.execute(db.delete(CtfBossPartie))
     basculer(FERME, actif=not ferme(), user_id=user_id)
     return ferme()
 

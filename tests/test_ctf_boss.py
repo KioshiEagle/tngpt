@@ -396,9 +396,11 @@ def test_reecrire_une_replique_efface_son_audio(app_boss: Flask) -> None:
 
 @pytest.mark.usefixtures("ctx")
 def test_fermer_le_jeu_garde_les_secrets() -> None:
-    """Fermer depuis le panel coupe le jeu sans effacer flags ni cachette."""
-    assert ctf_boss.enabled()
+    """Fermer depuis le panel efface les parties, pas les flags ni la cachette."""
+    ctf_boss.passer_en_replique(1)
+    ctf_boss.debrancher_cable(ctf_boss.partie(1).cable)
     assert ctf_boss.fermer_ou_rouvrir(1) is True
+    assert db.session.scalars(db.select(CtfBossPartie)).all() == []
     assert not ctf_boss.enabled()
     assert ctf_boss.complet()
     assert ctf_boss.secret(ctf_boss.LIEU) == _LIEU

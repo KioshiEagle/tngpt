@@ -866,7 +866,7 @@ def ctf_secrets() -> Response:
 @admin_bp.route("/ctf/bascule", methods=["POST"])
 @admin_required
 def ctf_basculer() -> Response:
-    """Ferme ou rouvre /ctf/boss pour tout le monde, sans toucher aux secrets."""
+    """Ferme /ctf/boss en remettant les joueurs à zéro, ou le rouvre."""
     ferme = ctf_boss.fermer_ou_rouvrir(current_user.user_id)
     logger.info("Boss final ferme=%s par %s", ferme, current_user.user_mail)
     flash(
