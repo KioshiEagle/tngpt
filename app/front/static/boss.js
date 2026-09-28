@@ -117,6 +117,10 @@
         pique.className = 'boss-defacement-pique';
         pique.textContent = 'ma cachette ? elle reste sous les yeux de qui sait regarder la page.';
         defacement.appendChild(pique);
+        await attendre(7000);
+        defacement.classList.add('boss-defacement--parti');
+        await attendre(600);
+        defacement.hidden = true;
         // Fait apparaître la config dans l'onglet Réseau de l'inspecteur.
         fetch('/ctf/boss/relais.conf').catch(() => {});
     }
