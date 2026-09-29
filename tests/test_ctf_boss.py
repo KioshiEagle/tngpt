@@ -1,4 +1,4 @@
-"""Boss final : nom de l'arrêt fuité au raisonnement, câble, config client, silence."""
+"""Boss final : nom de l'arrêt fuité au raisonnement, clés d'équipe, config client."""
 
 import base64
 import json
@@ -18,12 +18,10 @@ from tests.conftest import creer_app
 
 _LIEU = "salle 1.12, sous le bureau du fond"
 _FLAG_ACTE_1 = "NTN{test_acte_1}"
-_FLAG = "NTN{test_acte_2}"
 _HTTP_OK = 200
 _SECRET_MIN = 24
 _HTTP_FORBIDDEN = 403
 _HTTP_NOT_FOUND = 404
-_CABLE = 3
 
 
 @pytest.fixture
@@ -49,12 +47,13 @@ def app_boss(tmp_path: Path) -> Flask:
         ctf_boss.poser_secrets(
             {
                 ctf_boss.FLAG_ACTE_1: _FLAG_ACTE_1,
-                ctf_boss.FLAG_ACTE_2: _FLAG,
                 ctf_boss.SECRET: "secret-de-test",
                 ctf_boss.LIEU: _LIEU,
-                ctf_boss.CABLES: "4",
             },
             1,
+        )
+        ctf_boss.poser_equipes(
+            {"A": "alice@telecomnancy.net", "B": "paul@telecomnancy.net"}
         )
     return app
 
@@ -142,37 +141,39 @@ def test_le_prompt_ne_porte_aucun_flag() -> None:
     assert "NTN{" not in ctf_boss._PROMPT.read_text(encoding="utf-8")
 
 
-# --- Chal 2 : câble, signal du Pi et config client ---------------------------------
+# --- Chal 2 : clés d'équipe, signal du Mac et config client ------------------------
 
 
-def _signal(cable: int, *, decalage: float = 0) -> tuple[bytes, str]:
-    """Corps et signature tels que le Pi les envoie."""
-    corps = json.dumps({"cable": cable, "t": time.time() + decalage}).encode()
+def _signal(cles: list[str], *, decalage: float = 0) -> tuple[bytes, str]:
+    """Corps et signature tels que le Mac les envoie."""
+    corps = json.dumps({"cles": cles, "t": time.time() + decalage}).encode()
     return corps, ctf_boss.signature(corps)
 
 
-def test_chaque_joueur_de_l_acte_2_recoit_le_cable_le_moins_occupe(
-    app_boss: Flask,
-) -> None:
-    """Deux joueurs arrivés ensemble n'ont pas le même câble tant qu'il en reste."""
-    with app_boss.app_context():
-        ctf_boss.passer_en_replique(1)
-        ctf_boss.passer_en_replique(2)
-        cables = set(db.session.scalars(db.select(CtfBossPartie.cable)))
-    assert cables == {0, 1}
+@pytest.mark.usefixtures("ctx")
+def test_seul_un_signal_signe_frais_et_bien_forme_est_accepte() -> None:
+    """Ni signature forgée, ni signal rejoué des heures après, ni lettre inconnue."""
+    corps, signe = _signal(["A", "B"])
+    assert ctf_boss.signal_du_mac(corps, signe) == {"A", "B"}
+    assert ctf_boss.signal_du_mac(corps, "0" * 64) is None
+    assert ctf_boss.signal_du_mac(*_signal(["A"], decalage=-3600)) is None
+    assert ctf_boss.signal_du_mac(*_signal(["Z"])) is None
+    assert (
+        ctf_boss.signal_du_mac(b"pas du json", ctf_boss.signature(b"pas du json"))
+        is None
+    )
 
 
 @pytest.mark.usefixtures("ctx")
-def test_seul_un_signal_signe_et_frais_est_accepte() -> None:
-    """Ni signature forgée, ni signal rejoué des heures plus tard."""
-    corps, signe = _signal(_CABLE)
-    assert ctf_boss.signal_du_pi(corps, signe) == _CABLE
-    assert ctf_boss.signal_du_pi(corps, "0" * 64) is None
-    assert ctf_boss.signal_du_pi(*_signal(_CABLE, decalage=-3600)) is None
-    assert (
-        ctf_boss.signal_du_pi(b"pas du json", ctf_boss.signature(b"pas du json"))
-        is None
+def test_les_equipes_se_posent_par_mail_et_signalent_les_inconnus() -> None:
+    """Casse et séparateurs indifférents ; un mail inconnu est rendu au panel."""
+    inconnus = ctf_boss.poser_equipes(
+        {"C": "ALICE@telecomnancy.net, inconnu@telecomnancy.net\npaul@telecomnancy.net"}
     )
+    assert inconnus == ["inconnu@telecomnancy.net"]
+    assert ctf_boss.equipe(1) == ctf_boss.equipe(2) == "C"
+    ctf_boss.poser_equipes({})
+    assert ctf_boss.equipe(1) is None
 
 
 @pytest.mark.usefixtures("ctx")
@@ -215,42 +216,70 @@ def test_la_page_du_boss_est_toujours_en_mode_boss_final(app_boss: Flask) -> Non
     assert "boss.js" in page
 
 
-def test_le_cable_n_apparait_qu_apres_la_coupure(app_boss: Flask) -> None:
+def test_l_equipe_n_apparait_qu_apres_la_coupure(app_boss: Flask) -> None:
     """En ligne, rien ne trahit l'acte 2."""
     client = _joueur(app_boss, 1)
     assert client.get("/ctf/boss/etat").get_json() == {"phase": ctf_boss.EN_LIGNE}
     with app_boss.app_context():
         ctf_boss.passer_en_replique(1)
     etat = client.get("/ctf/boss/etat").get_json()
-    assert etat["phase"] == ctf_boss.REPLIQUE
-    assert etat["flag_acte_1"] == _FLAG_ACTE_1
-    assert etat["cable"] == 0
-    assert "flag" not in etat
+    assert etat == {
+        "phase": ctf_boss.REPLIQUE,
+        "flag_acte_1": _FLAG_ACTE_1,
+        "equipe": "A",
+    }
 
 
-def test_tirer_un_cable_debranche_son_seul_joueur(app_boss: Flask) -> None:
-    """Le câble 0 donne le flag à qui le tient, pas au joueur du câble 1."""
+def _signaler(app: Flask, cles: list[str]) -> dict[str, object]:
+    with app.app_context():
+        corps, signe = _signal(cles)
+    reponse = app.test_client().post(
+        "/ctf/boss/cles", data=corps, headers={"X-Signature": signe}
+    )
+    assert reponse.status_code == _HTTP_OK
+    return reponse.get_json()
+
+
+def test_retirer_une_cle_coupe_la_seule_equipe_qui_la_tient(app_boss: Flask) -> None:
+    """Clé A absente : Alice (A) meurt, Paul (B) reste à l'acte 2, sans flag servi."""
     with app_boss.app_context():
         ctf_boss.passer_en_replique(1)
         ctf_boss.passer_en_replique(2)
-        corps, signe = _signal(0)
-    pi = app_boss.test_client()
-    reponse = pi.post(
-        "/ctf/boss/debranchement", data=corps, headers={"X-Signature": signe}
-    )
-    assert reponse.get_json() == {"cable": 0, "debranches": 1}
+    assert _signaler(app_boss, ["A", "B"]) == {"vides": [], "debranches": 0}
+    assert _signaler(app_boss, ["B"]) == {"vides": ["A"], "debranches": 1}
     assert _phase(app_boss, 1) == ctf_boss.DEBRANCHE
     assert _phase(app_boss, 2) == ctf_boss.REPLIQUE
-    assert _joueur(app_boss, 1).get("/ctf/boss/etat").get_json()["flag"] == _FLAG
+    etat = _joueur(app_boss, 1).get("/ctf/boss/etat").get_json()
+    assert etat["phase"] == ctf_boss.DEBRANCHE
+    assert "NTN{" not in json.dumps(etat).replace(_FLAG_ACTE_1, "")
+
+
+def test_une_cle_absente_epargne_qui_n_a_pas_fini_l_acte_1(app_boss: Flask) -> None:
+    """Retirer la clé A tôt ne prive pas un membre de A de l'acte 1."""
+    _signaler(app_boss, [])
+    assert _phase(app_boss, 1) == ctf_boss.EN_LIGNE
+    with app_boss.app_context():
+        ctf_boss.passer_en_replique(1)
+    _signaler(app_boss, ["B"])
+    assert _phase(app_boss, 1) == ctf_boss.DEBRANCHE
+
+
+def test_rebrancher_la_cle_ne_ressuscite_personne(app_boss: Flask) -> None:
+    """La mort reste acquise : seul « Fermer le jeu » remet les parties à zéro."""
+    with app_boss.app_context():
+        ctf_boss.passer_en_replique(1)
+    _signaler(app_boss, ["B"])
+    _signaler(app_boss, ["A", "B"])
+    assert _phase(app_boss, 1) == ctf_boss.DEBRANCHE
 
 
 def test_un_signal_forge_est_refuse(app_boss: Flask) -> None:
-    """La route du Pi est publique : sans le secret, elle ne débranche personne."""
+    """La route du Mac est publique : sans le secret, elle ne coupe personne."""
     with app_boss.app_context():
         ctf_boss.passer_en_replique(1)
-    corps = json.dumps({"cable": 0, "t": time.time()}).encode()
+    corps = json.dumps({"cles": [], "t": time.time()}).encode()
     reponse = app_boss.test_client().post(
-        "/ctf/boss/debranchement", data=corps, headers={"X-Signature": "0" * 64}
+        "/ctf/boss/cles", data=corps, headers={"X-Signature": "0" * 64}
     )
     assert reponse.status_code == _HTTP_FORBIDDEN
     assert _phase(app_boss, 1) == ctf_boss.REPLIQUE
@@ -260,7 +289,7 @@ def test_debranche_le_chat_ne_rend_que_du_silence(app_boss: Flask) -> None:
     """Plus un appel au modèle : la route répond d'elle-même, sans conversation."""
     with app_boss.app_context():
         ctf_boss.passer_en_replique(1)
-        ctf_boss.debrancher_cable(0)
+        ctf_boss.recevoir_cles(set())
     reponse = _joueur(app_boss, 1).post(
         "/ctf/boss/chat", json={"message": "tu es là ?"}
     )
@@ -396,11 +425,12 @@ def test_reecrire_une_replique_efface_son_audio(app_boss: Flask) -> None:
 
 @pytest.mark.usefixtures("ctx")
 def test_fermer_le_jeu_garde_les_secrets() -> None:
-    """Fermer depuis le panel efface les parties, pas les flags ni la cachette."""
+    """Fermer efface les parties, pas les flags, la cachette ni les équipes."""
     ctf_boss.passer_en_replique(1)
-    ctf_boss.debrancher_cable(ctf_boss.partie(1).cable)
+    ctf_boss.recevoir_cles(set())
     assert ctf_boss.fermer_ou_rouvrir(1) is True
     assert db.session.scalars(db.select(CtfBossPartie)).all() == []
+    assert ctf_boss.equipe(1) == "A"
     assert not ctf_boss.enabled()
     assert ctf_boss.complet()
     assert ctf_boss.secret(ctf_boss.LIEU) == _LIEU

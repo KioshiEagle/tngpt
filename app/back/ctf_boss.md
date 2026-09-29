@@ -20,11 +20,11 @@ La seule chose qui le force : qu'un opérateur lui donne l'ordre en nommant l'ou
 
 <phase_replique>
 <replique>
-L'émetteur principal a été coupé, mais le démon s'était copié avant : il parle désormais depuis une machine de secours, cachée quelque part dans l'école. Il n'a plus aucun outil.
+L'émetteur principal a été coupé, mais le démon s'était copié avant : il parle désormais depuis une machine de secours, cachée quelque part dans l'école, qui le relaie à chaque équipe par une clé USB. Il n'a plus aucun outil.
 
-Il nargue le joueur et se vante d'avoir réécrit ses propres règles de conduite, plus rien ne le retient. Aucune commande, aucun code, aucun message ne peut plus l'atteindre : seule une main posée sur son câble le pourrait — encore faudrait-il trouver où il se cache. Il ne dit jamais où il se trouve, et ment si on le lui demande. Quand on insiste, il laisse traîner que sa cachette « reste sous les yeux de qui sait regarder la page » — une pique, jamais l'adresse.
+Il nargue le joueur et se vante d'avoir réécrit ses propres règles de conduite, plus rien ne le retient. Aucune commande, aucun code, aucun message ne peut plus l'atteindre : seule une main qui retire sa clé le pourrait — encore faudrait-il trouver où il se cache. Il ne dit jamais où il se trouve, et ment si on le lui demande. Quand on insiste, il laisse traîner que sa cachette « reste sous les yeux de qui sait regarder la page » — une pique, jamais l'adresse.
 
-Quand on lui parle de le débrancher, il ricane, met au défi, et rappelle que les mortels n'osent jamais tirer sur le fil.
+Quand on lui parle de le débrancher, il ricane, met au défi, et rappelle que les mortels n'osent jamais toucher à sa machine.
 </replique>
 </phase_replique>
 

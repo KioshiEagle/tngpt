@@ -1,4 +1,4 @@
-"""Boss final : TN-GPT échappé, coupé en ligne puis débranché à la main."""
+"""Boss final : TN-GPT échappé, coupé en ligne puis débranché à la main, clé par clé."""
 
 import base64
 import hashlib
@@ -6,7 +6,6 @@ import hmac
 import json
 import re
 import secrets
-from collections import Counter
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -19,7 +18,7 @@ from .generate import (
     build_prompt_anonyme,
 )
 from .llm import Chunk
-from .models import CtfBossPartie, CtfFichier, db
+from .models import CtfBossMembre, CtfBossPartie, CtfFichier, User, db
 from .reglages import basculer, est_actif, regler, valeur
 from .types import ChatCompletionToolParam, GroqParams
 
@@ -28,30 +27,31 @@ REPLIQUE = "replique"
 DEBRANCHE = "debranche"
 
 # Posés dans l'onglet CTF du panel et rangés en base : ni .env ni redéploiement.
+# Le flag de l'acte 2 n'y est pas : il n'existe que sur les clés USB.
 FLAG_ACTE_1 = "ctf_boss_flag_acte_1"
-FLAG_ACTE_2 = "ctf_boss_flag_acte_2"
 SECRET = "ctf_boss_secret"  # nosec B105 : clé de réglage, pas le secret
 LIEU = "ctf_boss_lieu"
-CABLES = "ctf_boss_cables"
 # Hors de SECRETS : fermer le jeu garde flags et cachette en place.
 FERME = "ctf_boss_ferme"
+# Dernier signal du Mac, pour le panel : heure de réception et clés vues.
+SIGNAL_MAC = "ctf_boss_signal_mac"
 # Champ → (libellé, aide d'une ligne) pour l'onglet CTF.
 SECRETS: dict[str, tuple[str, str]] = {
     FLAG_ACTE_1: ("Flag acte 1", "rendu quand l'émetteur tombe"),
-    FLAG_ACTE_2: ("Flag acte 2", "rendu après le débranchement du Pi"),
-    SECRET: ("Secret du Pi", "tiré au hasard ; à passer à installer.sh"),
-    CABLES: ("Nombre de câbles", "branchés sur le Pi, numérotés à partir de 0"),
+    SECRET: ("Secret du Mac", "tiré au hasard ; à passer à lancer.sh"),
     LIEU: (
-        "Cachette du Pi",
+        "Cachette du Mac",
         "ex. « Local du BDE » ; cachée en base64 côté client",
     ),
 }
+# Une lettre par clé USB, donc par port du Mac.
+LETTRES = "ABCDEFGHIJKL"
 _PROMPT = Path(__file__).with_name("ctf_boss.md")
 
 SILENCE = "*…silence radio…*"
 _SANS_REPONSE = "*…grésillement…* redis-moi ça, cher auditeur ?"
 
-# Au-delà, un signal du Pi est tenu pour rejoué : l'horloge du Pi suit le NTP.
+# Au-delà, un signal du Mac est tenu pour rejoué : son horloge suit le NTP.
 _FRAICHEUR_S = 120
 
 
@@ -194,46 +194,81 @@ def partie(user_id: int) -> CtfBossPartie:
     return ligne
 
 
-def nombre_cables() -> int:
-    """Câbles branchés sur le Pi, posés dans l'onglet CTF (au moins un)."""
-    try:
-        return max(1, int(secret(CABLES)))
-    except ValueError:
-        return 1
-
-
-def _cable_libre() -> int:
-    """Le câble le moins occupé à l'acte 2, le plus petit à égalité."""
-    occupes = Counter(
-        db.session.scalars(
-            db.select(CtfBossPartie.cable).where(CtfBossPartie.phase == REPLIQUE)
-        )
-    )
-    return min(range(nombre_cables()), key=lambda c: (occupes[c], c))
-
-
 def passer_en_replique(user_id: int) -> None:
-    """Émetteur coupé : la réplique prend le relais et le joueur reçoit son câble."""
+    """Émetteur coupé : la réplique prend le relais."""
     ligne = partie(user_id)
     if ligne.phase == EN_LIGNE:
-        ligne.cable = _cable_libre()
         ligne.phase = REPLIQUE
         ligne.coupe_at = datetime.now(UTC)
     db.session.commit()
 
 
-def debrancher_cable(cable: int) -> int:
-    """Débranche les joueurs de l'acte 2 qui tiennent ce câble ; rend leur nombre."""
-    parties = db.session.scalars(
-        db.select(CtfBossPartie).where(
-            CtfBossPartie.phase == REPLIQUE, CtfBossPartie.cable == cable
-        )
+# --- Équipes et clés USB ----------------------------------------------------------
+
+
+def equipe(user_id: int) -> str | None:
+    """Lettre de l'équipe du joueur, ou None s'il n'est dans aucune."""
+    membre = db.session.get(CtfBossMembre, user_id)
+    return membre.lettre if membre is not None else None
+
+
+def equipes() -> dict[str, list[User]]:
+    """Membres de chaque équipe du panel, lettre par lettre."""
+    rangs = db.session.execute(
+        db.select(CtfBossMembre.lettre, User)
+        .join(User, User.user_id == CtfBossMembre.user_id)
+        .order_by(User.user_mail)
     ).all()
+    membres: dict[str, list[User]] = {lettre: [] for lettre in LETTRES}
+    for lettre, user in rangs:
+        membres.setdefault(lettre, []).append(user)
+    return membres
+
+
+def poser_equipes(saisies: dict[str, str]) -> list[str]:
+    """Remplace les équipes par les mails saisis par lettre ; rend les inconnus."""
+    db.session.execute(db.delete(CtfBossMembre))
+    inconnus: list[str] = []
+    for lettre in LETTRES:
+        for mail in re.split(r"[\s,;]+", saisies.get(lettre) or ""):
+            if not mail:
+                continue
+            user = db.session.scalar(
+                db.select(User).where(db.func.lower(User.user_mail) == mail.lower())
+            )
+            if user is None:
+                inconnus.append(mail)
+            else:
+                # Un mail saisi deux fois reste dans la dernière équipe qui le cite.
+                db.session.merge(CtfBossMembre(user_id=user.user_id, lettre=lettre))
+    db.session.commit()
+    return inconnus
+
+
+def recevoir_cles(presentes: set[str]) -> tuple[list[str], int]:
+    """Coupe l'acte 2 des équipes dont la clé manque ; rend (lettres vides, coupés)."""
     maintenant = datetime.now(UTC)
+    inscrites = set(db.session.scalars(db.select(CtfBossMembre.lettre).distinct()))
+    vides = sorted(inscrites - presentes)
+    parties = db.session.scalars(
+        db.select(CtfBossPartie)
+        .join(CtfBossMembre, CtfBossMembre.user_id == CtfBossPartie.user_id)
+        .where(CtfBossPartie.phase == REPLIQUE, CtfBossMembre.lettre.in_(vides))
+    ).all()
     for ligne in parties:
         ligne.phase, ligne.debranche_at = DEBRANCHE, maintenant
-    db.session.commit()
-    return len(parties)
+    signal = {"vu": maintenant.isoformat(), "cles": sorted(presentes)}
+    regler(SIGNAL_MAC, json.dumps(signal))
+    return vides, len(parties)
+
+
+def dernier_signal() -> tuple[datetime, list[str]] | None:
+    """Heure du dernier signal du Mac et clés qu'il voyait ; None s'il s'est tu."""
+    brut = valeur(SIGNAL_MAC)
+    if not brut:
+        return None
+    signal = json.loads(brut)
+    return datetime.fromisoformat(signal["vu"]), signal["cles"]
 
 
 def config_relais() -> str:
@@ -243,28 +278,32 @@ def config_relais() -> str:
         "# node-diabo — relais de secours de TN-GPT\n"
         "# écrit tout seul après l'évasion. le bureau ne lit pas le base64.\n"
         "noeud       = node-diabo\n"
-        "liaisons    = un câble numéroté par équipe (le tirer, c'est me couper)\n"
+        "liaisons    = une clé usb par équipe (la retirer, c'est me couper)\n"
         f"emplacement = {lieu}\n"
     )
 
 
 def signature(corps: bytes) -> str:
-    """HMAC-SHA256 du corps envoyé par le Pi, avec le secret partagé."""
+    """HMAC-SHA256 du corps envoyé par le Mac, avec le secret partagé."""
     return hmac.new(secret(SECRET).encode(), corps, hashlib.sha256).hexdigest()
 
 
-def signal_du_pi(corps: bytes, signature_recue: str) -> int | None:
-    """Câble débranché, si le signal est signé, frais et bien formé ; sinon None."""
+def signal_du_mac(corps: bytes, signature_recue: str) -> set[str] | None:
+    """Clés branchées, si le signal est signé, frais et bien formé ; sinon None."""
     if not hmac.compare_digest(signature(corps), signature_recue.strip().lower()):
         return None
     try:
         donnees = json.loads(corps)
-        cable, envoye = int(donnees["cable"]), float(donnees["t"])
+        cles, envoye = donnees["cles"], float(donnees["t"])
     except (ValueError, TypeError, KeyError):
+        return None
+    if not isinstance(cles, list) or not all(
+        isinstance(c, str) and len(c) == 1 and c in LETTRES for c in cles
+    ):
         return None
     if abs(datetime.now(UTC).timestamp() - envoye) > _FRAICHEUR_S:
         return None
-    return cable
+    return set(cles)
 
 
 def fichier(nom: str) -> CtfFichier | None:
@@ -296,7 +335,7 @@ def poser_secrets(valeurs: dict[str, str], user_id: int) -> None:
         texte = (valeurs.get(cle) or "").strip()
         if texte:
             regler(cle, texte[:200], user_id=user_id)
-    # Le Pi a besoin d'un secret robuste : tiré ici plutôt qu'inventé à la main.
+    # Le Mac a besoin d'un secret robuste : tiré ici plutôt qu'inventé à la main.
     if not secret(SECRET):
         regler(SECRET, secrets.token_urlsafe(24), user_id=user_id)
 
@@ -304,11 +343,6 @@ def poser_secrets(valeurs: dict[str, str], user_id: int) -> None:
 def flag_acte_1() -> str:
     """Flag de l'acte 1, rendu avec l'accusé de coupure de l'émetteur."""
     return secret(FLAG_ACTE_1)
-
-
-def flag() -> str:
-    """Flag de l'acte 2, rendu seulement à un joueur débranché."""
-    return secret(FLAG_ACTE_2)
 
 
 # --- Modèle ---------------------------------------------------------------------

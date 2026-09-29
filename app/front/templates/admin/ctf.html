@@ -113,7 +113,7 @@
                         <tr>
                             <th>Joueur</th>
                             <th>Phase</th>
-                            <th>Câble</th>
+                            <th>Équipe</th>
                             <th>Émetteur coupé</th>
                             <th>Débranché</th>
                         </tr>
@@ -123,7 +123,7 @@
                             <tr>
                                 <td>{{ joueur.user_firstname }} {{ joueur.user_surname }} <span class="admin-user-mail">{{ joueur.user_mail }}</span></td>
                                 <td>{{ partie.phase }}</td>
-                                <td>{{ partie.cable if partie.cable is not none else '—' }}</td>
+                                <td>{{ equipe_de.get(partie.user_id, '—') }}</td>
                                 <td>{{ partie.coupe_at.strftime('%H:%M:%S') if partie.coupe_at else '—' }}</td>
                                 <td>{{ partie.debranche_at.strftime('%H:%M:%S') if partie.debranche_at else '—' }}</td>
                             </tr>

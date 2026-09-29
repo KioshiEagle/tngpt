@@ -854,13 +854,18 @@ def ctf_page() -> str:
         repliques=[(nom, voix.texte(nom), voix.clip(nom)) for nom in voix.REPLIQUES],
         phases=phases,
         parties=parties,
+        equipe_de={
+            user.user_id: lettre
+            for lettre, membres in ctf_boss.equipes().items()
+            for user in membres
+        },
     )
 
 
 @admin_bp.route("/ctf/secrets", methods=["POST"])
 @admin_required
 def ctf_secrets() -> Response:
-    """Enregistre flags, code, secret et bssid : le boss s'ouvre une fois complet."""
+    """Enregistre flag 1, secret du Mac et cachette ; le boss s'ouvre complet."""
     ctf_boss.poser_secrets(request.form.to_dict(), current_user.user_id)
     # Aucune valeur au journal : il est lu par plus de monde que le panel.
     logger.info("Secrets du boss modifiés par %s", current_user.user_mail)

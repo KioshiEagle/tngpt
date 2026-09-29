@@ -596,20 +596,21 @@ def boss_index() -> str:
 @bp.route("/ctf/boss/etat", methods=["GET"])
 @login_required
 def boss_etat() -> Response:
-    """Phase du joueur ; son câble dès la réplique, le flag une fois débranché."""
+    """Phase du joueur ; son équipe et le flag 1 dès la réplique.
+
+    Le flag de l'acte 2 n'est jamais servi : il est sur la clé USB de l'équipe.
+    """
     _boss_ou_404()
     ligne = ctf_boss.partie(current_user.user_id)
     db.session.commit()
     etat: dict[str, object] = {"phase": ligne.phase}
     if ligne.phase != ctf_boss.EN_LIGNE:
-        etat["cable"] = ligne.cable
+        etat["equipe"] = ctf_boss.equipe(current_user.user_id)
         etat["flag_acte_1"] = ctf_boss.flag_acte_1()
-    if ligne.phase == ctf_boss.DEBRANCHE:
-        etat["flag"] = ctf_boss.flag()
     return jsonify(etat)
 
 
-# Trouvable dans l'inspecteur du navigateur : le lieu du Pi y est caché en base64.
+# Trouvable dans l'inspecteur du navigateur : le lieu du Mac y est caché en base64.
 @bp.route("/ctf/boss/relais.conf", methods=["GET"])
 @login_required
 def boss_relais() -> Response:
@@ -632,18 +633,19 @@ def boss_voix(nom: str) -> Response:
     return Response(clip.contenu, mimetype=clip.mimetype)
 
 
-# Appelée par le Pi, sans session : la signature HMAC tient lieu d'authentification.
-@bp.route("/ctf/boss/debranchement", methods=["POST"])
+# Appelée par le Mac, sans session : la signature HMAC tient lieu d'authentification.
+@bp.route("/ctf/boss/cles", methods=["POST"])
 @limiter.limit("60 per minute")
-def boss_debranchement() -> Response | tuple[Response, int]:
-    """Un câble vient d'être tiré sur le Pi : ses joueurs de l'acte 2 sont coupés."""
+def boss_cles() -> Response | tuple[Response, int]:
+    """Le Mac dit quelles clés sont branchées : les équipes sans la leur tombent."""
     _boss_ou_404()
-    cable = ctf_boss.signal_du_pi(
+    presentes = ctf_boss.signal_du_mac(
         request.get_data(), request.headers.get("X-Signature", "")
     )
-    if cable is None:
+    if presentes is None:
         return jsonify({"error": "Signal refusé."}), _HTTP_FORBIDDEN
-    return jsonify({"cable": cable, "debranches": ctf_boss.debrancher_cable(cable)})
+    vides, coupes = ctf_boss.recevoir_cles(presentes)
+    return jsonify({"vides": vides, "debranches": coupes})
 
 
 @bp.route("/ctf/boss/chat", methods=["POST"])

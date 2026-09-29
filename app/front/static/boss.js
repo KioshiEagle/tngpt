@@ -5,13 +5,13 @@
     const racine = document.documentElement;
     const bandeau = document.getElementById('boss-bandeau');
     const flag1 = document.getElementById('boss-flag-1');
-    const cable = document.getElementById('boss-cable');
+    const cle = document.getElementById('boss-cle');
     const defacement = document.getElementById('boss-defacement');
     const ecran = document.getElementById('boss-ecran');
-    const flag2 = document.getElementById('boss-flag-2');
+    const cendresEquipe = document.getElementById('boss-equipe');
     const calme = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     let phase = null;
-    // À l'acte 2, le flag arrive quand un câble est tiré sur le Pi, hors de la page.
+    // À l'acte 2, la mort arrive quand la clé de l'équipe quitte le Mac, hors de la page.
     const ECOUTE_MS = 4000;
 
     const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -76,18 +76,19 @@
         racine.removeAttribute('data-boss-crt');
     }
 
-    function cendres(flag) {
+    // Pas de flag ici : il est sur la clé que l'équipe vient de retirer.
+    function cendres(equipe) {
         racine.setAttribute('data-boss-mort', '');
-        flag2.textContent = flag;
+        cendresEquipe.textContent = equipe ? `relais de l'équipe ${equipe} coupé` : 'relais coupé';
         ecran.hidden = false;
         document.getElementById('inp').disabled = true;
         document.getElementById('sbtn').disabled = true;
     }
 
-    async function vraieMort(flag) {
+    async function vraieMort(equipe) {
         parler('mort');
         await eteindre();
-        cendres(flag);
+        cendres(equipe);
         racine.removeAttribute('data-boss-crt');
     }
 
@@ -128,9 +129,9 @@
 
     function appliquer(etat) {
         bandeau.hidden = etat.phase === 'en_ligne';
-        if (etat.cable !== undefined && etat.cable !== null) cable.textContent = `n°${etat.cable}`;
+        if (etat.phase !== 'en_ligne') cle.textContent = etat.equipe ?? "sans équipe, vois l'orga";
         if (etat.flag_acte_1) flag1.textContent = etat.flag_acte_1;
-        if (etat.flag) cendres(etat.flag);
+        if (etat.phase === 'debranche') cendres(etat.equipe);
         if (etat.phase === 'replique') {
             defigurer();
             // Redemandée à chaque écoute pour qu'elle reste visible dans l'onglet Réseau.
@@ -146,7 +147,7 @@
         phase = etat.phase;
         if (animer && avant === 'en_ligne' && phase === 'replique') await fausseMort();
         if (avant === 'replique' && phase === 'debranche') {
-            await vraieMort(etat.flag);
+            await vraieMort(etat.equipe);
             return;
         }
         appliquer(etat);

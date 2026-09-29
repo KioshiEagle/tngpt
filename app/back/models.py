@@ -230,14 +230,25 @@ class CtfBossPartie(db.Model):
 
     user_id = db.Column(db.Integer, db.ForeignKey("users.user_id"), primary_key=True)
     phase = db.Column(db.String(20), nullable=False, default="en_ligne")
-    # Câble du Pi attribué à l'acte 2 : le débrancher donne le flag à ce joueur.
-    cable = db.Column(db.Integer, nullable=True)
     coupe_at = db.Column(db.DateTime(timezone=True), nullable=True)
     debranche_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
     def __repr__(self) -> str:
         """Représentation lisible de la partie."""
         return f"CtfBossPartie {self.user_id} phase={self.phase}"
+
+
+class CtfBossMembre(db.Model):
+    """Équipe d'un joueur, posée dans le panel : sa clé retirée coupe l'acte 2."""
+
+    __tablename__ = "ctf_boss_membres"
+
+    user_id = db.Column(db.Integer, db.ForeignKey("users.user_id"), primary_key=True)
+    lettre = db.Column(db.String(1), nullable=False)
+
+    def __repr__(self) -> str:
+        """Représentation lisible de l'appartenance."""
+        return f"CtfBossMembre {self.user_id} équipe={self.lettre}"
 
 
 class CtfFichier(db.Model):
