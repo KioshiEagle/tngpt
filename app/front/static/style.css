@@ -1397,7 +1397,7 @@ body.landing .ticket-cta--haut { display: none; }
     top: 0;
     z-index: 5;
     display: grid;
-    grid-template-columns: auto 1fr auto 1fr auto;
+    grid-template-columns: auto 1.7fr auto 1fr auto;
     align-items: center;
     gap: 6px 18px;
     padding: 10px 24px;
