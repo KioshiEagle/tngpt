@@ -171,6 +171,13 @@
                 <button type="submit" class="send" id="sbtn">envoyer →</button>
                 {% endif %}
             </form>
+            {% if jeu %}
+            {# Fin de partie : bannière explicite par-dessus la saisie grisée (main.js la montre). #}
+            <div class="jeu-fin" id="jeu-fin" hidden role="status">
+                <span class="jeu-fin-titre">🎟️ Jeu terminé</span>
+                <span class="jeu-fin-detail"></span>
+            </div>
+            {% endif %}
             {% if boss %}
             <div class="hint">Demande-lui de lister ou de lire ses fichiers. Ce qu'il dit peut être faux ; le journal d'antenne, non.</div>
             {% elif jeu %}

@@ -160,6 +160,13 @@ def test_la_page_ramene_le_joueur_sur_sa_conversation(app_jeu: Flask) -> None:
     assert "/ticket-dor?c=" in reponse.headers["Location"]
 
 
+def test_la_page_de_jeu_porte_la_banniere_de_fin(app_jeu: Flask) -> None:
+    """La bannière « Jeu terminé » est dans la page, masquée jusqu'à la fin."""
+    page = _joueur(app_jeu, 1).get("/ticket-dor?c=1").get_data(as_text=True)
+    assert 'id="jeu-fin"' in page
+    assert "Jeu terminé" in page
+
+
 def test_l_admin_regle_la_partie_et_voit_les_joueurs(app_jeu: Flask) -> None:
     """Le panel pose cible, code et ouverture, puis liste qui a joué."""
     _monter_le_panel(app_jeu)

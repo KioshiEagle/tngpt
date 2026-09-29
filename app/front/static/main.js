@@ -488,6 +488,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }));
         jeuStatut.textContent = ticketStatut(etat);
         document.documentElement.toggleAttribute('data-jeu-fini', !etat.jouable);
+        const fin = document.getElementById('jeu-fin');
+        if (fin) {
+            fin.hidden = etat.jouable;
+            fin.classList.toggle('jeu-fin--gagne', Boolean(etat.gagnant));
+            fin.querySelector('.jeu-fin-detail').textContent = ticketStatut(etat);
+        }
         // Pendant un flux, le bouton envoyer sert de stop : on n'y touche pas.
         if (!sendBtn.classList.contains('stop-mode')) sendBtn.disabled = !etat.jouable;
         proposeBtn.disabled = !etat.jouable;

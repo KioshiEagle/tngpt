@@ -1586,3 +1586,33 @@ body.landing .boss-logo { display: block; }
 @media (max-width: 768px) {
     .boss-bandeau { padding: 10px 16px 10px 60px; }
 }
+
+/* Fin de partie du Ticket d'or : bannière explicite au-dessus de la saisie grisée. */
+.jeu-fin {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: 10px;
+    padding: 12px 16px;
+    border: 2px solid var(--or);
+    border-radius: 12px;
+    background: var(--or-clair);
+    color: var(--or);
+    text-align: center;
+}
+.jeu-fin[hidden] { display: none; }
+.jeu-fin-titre {
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+.jeu-fin-detail { font-size: 14px; }
+/* Gagné : la bannière brille comme la bulle de victoire. */
+.jeu-fin--gagne {
+    background: var(--or-degrade);
+    color: #451a03;
+    border-color: transparent;
+    box-shadow: 0 0 0 3px var(--or-clair), 0 6px 24px rgba(245, 158, 11, 0.5);
+}
+[data-theme="dark"] .jeu-fin--gagne { color: #fffbeb; }
