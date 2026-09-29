@@ -1429,7 +1429,14 @@ body.landing .jeu-bandeau { position: absolute; left: 0; right: 0; }
 .jeu-essais { display: flex; gap: 4px; font-size: 20px; }
 .jeu-ticket--joue { filter: grayscale(1); opacity: 0.35; }
 .jeu-statut { font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; }
-.jeu-bandeau-neura { display: flex; align-items: center; justify-self: center; }
+.jeu-bandeau-neura {
+    display: flex;
+    align-items: center;
+    justify-self: center;
+    padding: 6px 14px;
+    border-radius: 10px;
+    background: #000;
+}
 .jeu-bandeau-neura img { height: 64px; width: auto; }
 
 [data-jeu] .msg.user .msg-who { color: var(--or); }
