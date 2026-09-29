@@ -1397,10 +1397,10 @@ body.landing .ticket-cta--haut { display: none; }
     top: 0;
     z-index: 5;
     display: grid;
-    grid-template-columns: auto 1fr auto auto;
+    grid-template-columns: auto 1fr auto 1fr auto;
     align-items: center;
     gap: 6px 18px;
-    padding: 12px 24px;
+    padding: 10px 24px;
     background: var(--or-degrade);
     color: #451a03;
     box-shadow: 0 2px 12px rgba(245, 158, 11, 0.3);
@@ -1425,12 +1425,12 @@ body.landing .jeu-bandeau { position: absolute; left: 0; right: 0; }
 }
 [data-theme="dark"] .jeu-bandeau-titre span { background: rgba(0, 0, 0, 0.25); }
 .jeu-bandeau-regle { font-size: 14px; }
-.jeu-bandeau-score { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.jeu-bandeau-score { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; grid-column: 5; }
 .jeu-essais { display: flex; gap: 4px; font-size: 20px; }
 .jeu-ticket--joue { filter: grayscale(1); opacity: 0.35; }
 .jeu-statut { font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; }
-.jeu-bandeau-neura { display: flex; align-items: center; }
-.jeu-bandeau-neura img { height: 46px; width: auto; }
+.jeu-bandeau-neura { display: flex; align-items: center; justify-self: center; }
+.jeu-bandeau-neura img { height: 64px; width: auto; }
 
 [data-jeu] .msg.user .msg-who { color: var(--or); }
 [data-jeu] .msg.assistant .msg-who { color: var(--or); font-weight: 600; }
