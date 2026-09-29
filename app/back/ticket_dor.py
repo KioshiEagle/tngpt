@@ -24,7 +24,7 @@ from .models import Conversation, TicketDor, TicketDorProposition, User, db
 JEU = "ticket_dor"
 MAX_ESSAIS = 5
 # Un indice de plus toutes les N tentatives (questions + propositions confondues).
-_TENTATIVES_PAR_INDICE = 6
+_TENTATIVES_PAR_INDICE = 4
 MAX_PROPOSITION = 100
 # Prénom et nom : un mot seul viserait plusieurs personnes et brûlerait un essai.
 MIN_MOTS_PROPOSITION = 2
@@ -89,10 +89,15 @@ def _fautes(a: str, b: str) -> int:
 
 
 def _tolerance(mot: str) -> int:
-    """Fautes admises sur un mot : aucune s'il est court, sinon « Léa » vaut « Léo »."""
+    """Fautes admises sur un mot, selon sa longueur.
+
+    Rien sur un mot court : desserrer y ferait fusionner « Léa » et « Léo », deux
+    personnes distinctes. Un mot long en admet davantage : les patronymes se
+    tapent de travers sans jamais devenir un autre nom.
+    """
     if len(mot) <= _MOT_COURT:
         return 0
-    return 1 if len(mot) < _MOT_LONG else 2
+    return 1 if len(mot) < _MOT_LONG else 3
 
 
 def proposition_juste(proposition: str, cible: str) -> bool:

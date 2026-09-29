@@ -75,9 +75,11 @@ def test_une_faute_de_frappe_par_mot_est_toleree(proposition: str) -> None:
 
 
 def test_la_tolerance_suit_la_longueur_du_mot() -> None:
-    """Deux fautes sur un mot long, aucune sur un mot court."""
-    assert ticket_dor.proposition_juste("Maxmilen Dupont", "Maximilien DUPONT")
+    """Trois fautes sur un mot long, aucune sur un mot court."""
+    assert ticket_dor.proposition_juste("Maximlein Dupont", "Maximilien DUPONT")
     assert not ticket_dor.proposition_juste("Léo Dupont", "Léa DUPONT")
+    # Un mot court reste strict : deux voisins ne fusionnent pas.
+    assert not ticket_dor.proposition_juste("Jeanne Dupont", "Jean DUPONT")
 
 
 def test_la_cible_est_reconnue_dans_une_phrase() -> None:
@@ -237,20 +239,20 @@ def _semer_conversation(user_id: int, questions: int) -> int:
 
 @pytest.mark.usefixtures("app_base")
 def test_les_indices_se_debloquent_par_tranches_de_tentatives() -> None:
-    """Un indice d'office, puis un de plus toutes les six tentatives."""
+    """Un indice d'office, puis un de plus toutes les quatre tentatives."""
     ticket = _lancer(
         indices="- Joue du ukulélé.\n\n- Aime les crêpes.\n• Vient de Brest."
     )
     assert len(ticket_dor.indices_debloques(ticket, 0)) == 1
-    assert len(ticket_dor.indices_debloques(ticket, 5)) == 1
-    assert len(ticket_dor.indices_debloques(ticket, 6)) == 2  # noqa: PLR2004
-    assert len(ticket_dor.indices_debloques(ticket, 12)) == 3  # noqa: PLR2004
+    assert len(ticket_dor.indices_debloques(ticket, 3)) == 1
+    assert len(ticket_dor.indices_debloques(ticket, 4)) == 2  # noqa: PLR2004
+    assert len(ticket_dor.indices_debloques(ticket, 8)) == 3  # noqa: PLR2004
 
     assert (ticket_dor.etat(1).indices_debloques, ticket_dor.etat(1).indices_total) == (
         1,
         3,
     )
-    conv_id = _semer_conversation(1, 6)
+    conv_id = _semer_conversation(1, 4)
     assert ticket_dor.etat(1).indices_debloques == 2  # noqa: PLR2004
     system = ticket_dor.spec_for(ticket, 1, conv_id).system
     assert "crêpes" in system

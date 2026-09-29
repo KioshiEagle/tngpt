@@ -59,7 +59,7 @@
                 <input type="text" name="code" maxlength="100" autocomplete="off" value="{{ ticket.code or '' if ticket else '' }}" class="admin-mono">
             </label>
             <label class="admin-ticket-indices">
-                <span>Indices, un par ligne, du plus vague au plus précis, sans le nom : le premier est donné d'office, un de plus toutes les 6 tentatives (questions et propositions confondues)</span>
+                <span>Indices, un par ligne, du plus vague au plus précis, sans le nom : le premier est donné d'office, un de plus toutes les 4 tentatives (questions et propositions confondues)</span>
                 <textarea name="indices" rows="6">{{ ticket.indices or '' if ticket else '' }}</textarea>
             </label>
             <label class="admin-ticket-ouvert">
