@@ -74,6 +74,20 @@ def test_une_faute_de_frappe_par_mot_est_toleree(proposition: str) -> None:
     assert ticket_dor.proposition_juste(proposition, _CIBLE)
 
 
+@pytest.mark.parametrize(
+    "proposition",
+    ["c'est Jean Dupont", "je dirais Jean Dupont", "je pense que c'est jean dupont"],
+)
+def test_une_amorce_de_phrase_ne_fait_pas_rater(proposition: str) -> None:
+    """« c'est Jean Dupont » vaut « Jean Dupont » : on ne perd pas sur une tournure."""
+    assert ticket_dor.proposition_juste(proposition, _CIBLE)
+
+
+def test_une_liste_de_noms_reste_refusee() -> None:
+    """Retirer les amorces ne laisse pas passer un empilement de noms."""
+    assert not ticket_dor.proposition_juste("Jean Dupont ou Marie Durand", _CIBLE)
+
+
 def test_la_tolerance_suit_la_longueur_du_mot() -> None:
     """Trois fautes sur un mot long, aucune sur un mot court."""
     assert ticket_dor.proposition_juste("Maximlein Dupont", "Maximilien DUPONT")

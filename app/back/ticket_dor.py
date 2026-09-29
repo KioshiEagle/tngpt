@@ -68,9 +68,58 @@ def _mots(texte: str) -> list[str]:
     return [m for m in re.split(r"[^0-9a-z]+", normalize(texte)) if m]
 
 
+# Formules qui enrobent un nom sans en faire partie : « c'est Florent Virely »,
+# « je dirais… », « ça doit être… ». Retirées en tête avant de comparer.
+_AMORCES = frozenset(
+    {
+        "c",
+        "est",
+        "cest",
+        "ce",
+        "ca",
+        "cela",
+        "je",
+        "dirais",
+        "dis",
+        "pense",
+        "crois",
+        "que",
+        "doit",
+        "etre",
+        "peut",
+        "surement",
+        "propose",
+        "serait",
+        "alors",
+        "bah",
+        "ben",
+        "euh",
+        "genre",
+        "peutetre",
+        "la",
+        "le",
+    }
+)
+
+
+def _mots_proposition(texte: str) -> list[str]:
+    """Mots d'une proposition, sans les amorces de tête (« c'est », « je dirais »).
+
+    On ne rogne jamais au point de laisser moins de deux mots : une liste de
+    plusieurs noms garde tous ses mots et reste donc refusée.
+    """
+    mots = _mots(texte)
+    i = 0
+    while (
+        i < len(mots) and mots[i] in _AMORCES and len(mots) - i > MIN_MOTS_PROPOSITION
+    ):
+        i += 1
+    return mots[i:]
+
+
 def proposition_valide(proposition: str) -> bool:
     """Vrai si la proposition compte au moins un prénom et un nom."""
-    return len(_mots(proposition)) >= MIN_MOTS_PROPOSITION
+    return len(_mots_proposition(proposition)) >= MIN_MOTS_PROPOSITION
 
 
 def _fautes(a: str, b: str) -> int:
@@ -105,7 +154,7 @@ def proposition_juste(proposition: str, cible: str) -> bool:
 
     Autant de mots que le nom, pas plus : sinon une liste de noms gagnerait.
     """
-    attendus, proposes = _mots(cible), _mots(proposition)
+    attendus, proposes = _mots(cible), _mots_proposition(proposition)
     if not attendus or len(proposes) != len(attendus):
         return False
     return any(
@@ -390,7 +439,7 @@ def classement_propositions() -> list[NomPropose]:
     for proposition in db.session.scalars(
         db.select(TicketDorProposition).order_by(TicketDorProposition.created_at)
     ):
-        cle = tuple(sorted(_mots(proposition.texte)))
+        cle = tuple(sorted(_mots_proposition(proposition.texte)))
         groupes.setdefault(cle, []).append(proposition)
     classement = [
         NomPropose(
