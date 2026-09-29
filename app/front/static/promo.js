@@ -11,7 +11,7 @@
         // Fuseau explicite : sinon l'échéance glisse d'une heure selon le
         // réglage du navigateur. La billetterie ferme « au plus tard le 7 ».
         fin: new Date('2026-10-07T23:59:59+02:00'),
-        toutesLesBulles: 10,
+        toutesLesBulles: 15,
         auteur: 'l’Inté',
         // Variante de style.css (.promo--bleu) ; absente, l'encart prend le thème.
         teinte: 'bleu',
