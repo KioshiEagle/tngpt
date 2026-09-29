@@ -222,25 +222,53 @@ def _systeme() -> str:
     return ticket_dor.spec_for(ticket, 1, 1).system
 
 
+def _semer_conversation(user_id: int, questions: int) -> int:
+    """Ouvre une conversation de jeu avec `questions` messages, comme le chat."""
+    conversation = Conversation(
+        user_id=user_id,
+        jeu=ticket_dor.JEU,
+        title="🎟️",
+        messages=[{"role": "user", "content": "?"} for _ in range(questions)],
+    )
+    db.session.add(conversation)
+    db.session.commit()
+    return conversation.conversation_id
+
+
 @pytest.mark.usefixtures("app_base")
-def test_un_indice_d_office_puis_un_par_proposition_ratee() -> None:
-    """Réclamer ne débloque rien : seule une proposition ratée ouvre le suivant."""
-    _lancer(indices="- Joue du ukulélé.\n\n- Aime les crêpes.\n• Vient de Brest.")
+def test_les_indices_se_debloquent_par_tranches_de_tentatives() -> None:
+    """Un indice d'office, puis un de plus toutes les six tentatives."""
+    ticket = _lancer(
+        indices="- Joue du ukulélé.\n\n- Aime les crêpes.\n• Vient de Brest."
+    )
+    assert len(ticket_dor.indices_debloques(ticket, 0)) == 1
+    assert len(ticket_dor.indices_debloques(ticket, 5)) == 1
+    assert len(ticket_dor.indices_debloques(ticket, 6)) == 2  # noqa: PLR2004
+    assert len(ticket_dor.indices_debloques(ticket, 12)) == 3  # noqa: PLR2004
+
     assert (ticket_dor.etat(1).indices_debloques, ticket_dor.etat(1).indices_total) == (
         1,
         3,
     )
-    system = _systeme()
-    assert "Joue du ukulélé." in system
-    assert "crêpes" not in system
-
-    verdict = ticket_dor.proposer(1, "Marie Durand")
-    assert verdict is not None
-    assert "nouvel indice" in verdict.reponse
+    conv_id = _semer_conversation(1, 6)
     assert ticket_dor.etat(1).indices_debloques == 2  # noqa: PLR2004
-    assert "crêpes" in _systeme()
-    assert "Brest" not in _systeme()
+    system = ticket_dor.spec_for(ticket, 1, conv_id).system
+    assert "crêpes" in system
+    assert "Brest" not in system
     assert ticket_dor.etat(2).indices_debloques == 1
+
+
+@pytest.mark.usefixtures("app_base")
+def test_un_dispense_ne_voit_ni_ne_joue() -> None:
+    """Un 2A/3A coché est retiré du jeu ; décocher le lui rend."""
+    _lancer()
+    assert ticket_dor.etat(1).visible
+    assert ticket_dor.regler_dispenses({"1"}, admin_id=2) == 1
+    assert not ticket_dor.etat(1).visible
+    assert not ticket_dor.etat(1).jouable
+    assert ticket_dor.etat(2).visible
+    assert ticket_dor.regler_dispenses(set(), admin_id=2) == 0
+    assert ticket_dor.etat(1).visible
 
 
 @pytest.mark.usefixtures("app_base")

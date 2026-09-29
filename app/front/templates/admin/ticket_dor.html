@@ -1,6 +1,21 @@
 {% extends "admin/base.html" %}
 
-{% block title %}Ticket d'or{% endblock %}
+{% block title %}Ticket d'or    <script>
+        // Filtre client : masque les lignes qui ne correspondent pas à la recherche.
+        (function () {
+            var champ = document.getElementById('dispense-filtre');
+            if (!champ) return;
+            var lignes = document.querySelectorAll('#dispense-table tbody tr');
+            champ.addEventListener('input', function () {
+                var q = champ.value.trim().toLowerCase();
+                lignes.forEach(function (tr) {
+                    tr.hidden = q !== '' && tr.dataset.nom.indexOf(q) === -1;
+                });
+            });
+        })();
+    </script>
+
+{% endblock %}
 {% block heading %}Ticket d'or{% endblock %}
 {% block subtitle %}Un 2A mystère à faire nommer par tn-gpt : {{ max_essais }} propositions par joueur, un seul gagnant.{% endblock %}
 
@@ -44,7 +59,7 @@
                 <input type="text" name="code" maxlength="100" autocomplete="off" value="{{ ticket.code or '' if ticket else '' }}" class="admin-mono">
             </label>
             <label class="admin-ticket-indices">
-                <span>Indices, un par ligne, du plus vague au plus précis, sans le nom : le premier est donné d'office, un de plus se débloque à chaque proposition ratée</span>
+                <span>Indices, un par ligne, du plus vague au plus précis, sans le nom : le premier est donné d'office, un de plus toutes les 6 tentatives (questions et propositions confondues)</span>
                 <textarea name="indices" rows="6">{{ ticket.indices or '' if ticket else '' }}</textarea>
             </label>
             <label class="admin-ticket-ouvert">
@@ -109,6 +124,33 @@
               style="margin-top: 16px;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="admin-btn admin-btn--danger">Nouvelle partie</button>
+        </form>
+    </div>
+
+    <div class="admin-card admin-card--spaced">
+        <h2>Dispensés du jeu</h2>
+        <p class="admin-note">
+            Coche les 2A/3A : le bouton disparaît chez eux et ils ne peuvent pas jouer.
+            Un gagnant coché garde l'accès à son code.
+        </p>
+        <form method="post" action="{{ url_for('admin.ticket_dor_dispenses') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="search" class="admin-search" id="dispense-filtre" placeholder="Filtrer par nom ou mail…" autocomplete="off">
+            <div class="admin-table-scroll" style="max-height: 340px; overflow-y: auto;">
+                <table class="admin-table" id="dispense-table">
+                    <tbody>
+                        {% for compte in comptes %}
+                        <tr data-nom="{{ (compte.user_firstname ~ ' ' ~ compte.user_surname ~ ' ' ~ compte.user_mail) | lower }}">
+                            <td class="admin-td-perm">
+                                <input type="checkbox" class="admin-check" name="dispense" value="{{ compte.user_id }}" id="dispense-{{ compte.user_id }}" {% if compte.ticket_dor_dispense %}checked{% endif %}>
+                            </td>
+                            <td><label for="dispense-{{ compte.user_id }}">{{ compte.user_firstname }} {{ compte.user_surname }} <span class="admin-user-mail">{{ compte.user_mail }}</span></label></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <button type="submit" class="admin-btn admin-btn--primary" style="margin-top: 12px;">Enregistrer les dispenses</button>
         </form>
     </div>
 

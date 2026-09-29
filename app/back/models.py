@@ -44,6 +44,8 @@ class User(UserMixin, db.Model):
 
     status = db.Column(db.String(20), nullable=False, default=USER_ACTIVE, index=True)
     ban_reason = db.Column(db.String(300), nullable=True)
+    # Dispensé du Ticket d'or : les 2A/3A, cochés depuis le panel, ne le jouent pas.
+    ticket_dor_dispense = db.Column(db.Boolean, nullable=False, default=False)
     # Limite de questions par jour. NULL = valeur par défaut globale (config) ;
     # les administrateurs ne sont jamais plafonnés, quel que soit ce champ.
     quota_daily = db.Column(db.Integer, nullable=True)

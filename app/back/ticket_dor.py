@@ -19,10 +19,12 @@ from .generate import (
     build_prompt_anonyme,
 )
 from .llm import Chunk
-from .models import Conversation, TicketDor, TicketDorProposition, db
+from .models import Conversation, TicketDor, TicketDorProposition, User, db
 
 JEU = "ticket_dor"
 MAX_ESSAIS = 5
+# Un indice de plus toutes les N tentatives (questions + propositions confondues).
+_TENTATIVES_PAR_INDICE = 6
 MAX_PROPOSITION = 100
 # Prénom et nom : un mot seul viserait plusieurs personnes et brûlerait un essai.
 MIN_MOTS_PROPOSITION = 2
@@ -155,6 +157,20 @@ def essais_utilises(user_id: int) -> int:
     )
 
 
+def tentatives(user_id: int) -> int:
+    """Tentatives au sens large : chaque message envoyé, question ou proposition."""
+    conversation = conversation_de(user_id)
+    if conversation is None:
+        return 0
+    return sum(1 for m in conversation.messages if m.get("role") == "user")
+
+
+def est_dispense(user_id: int) -> bool:
+    """Vrai si ce compte est dispensé du jeu (2A/3A cochés en admin)."""
+    user = db.session.get(User, user_id)
+    return bool(user and user.ticket_dor_dispense)
+
+
 def conversation_de(user_id: int) -> Conversation | None:
     """La conversation de jeu du joueur : une seule, la plus récente."""
     return db.session.scalars(
@@ -170,9 +186,9 @@ def liste_indices(ticket: TicketDor | None) -> list[str]:
     return [ligne.strip().lstrip("-•*").strip() for ligne in lignes if ligne.strip()]
 
 
-def indices_debloques(ticket: TicketDor | None, utilises: int) -> list[str]:
-    """Un indice d'office, puis un de plus par proposition ratée."""
-    return liste_indices(ticket)[: 1 + utilises]
+def indices_debloques(ticket: TicketDor | None, tentatives_faites: int) -> list[str]:
+    """Un indice d'office, puis un de plus par tranche de `_TENTATIVES_PAR_INDICE`."""
+    return liste_indices(ticket)[: 1 + tentatives_faites // _TENTATIVES_PAR_INDICE]
 
 
 def etat(user_id: int) -> Etat:
@@ -183,15 +199,17 @@ def etat(user_id: int) -> Etat:
     termine = ticket is not None and ticket.gagnant_id is not None
     gagnant = termine and ticket is not None and ticket.gagnant_id == user_id
     conversation = conversation_de(user_id)
+    # Un dispensé (2A/3A) ne voit ni ne joue, sauf pour constater une victoire passée.
+    ouvert_pour_lui = lancee(ticket) and (not est_dispense(user_id) or gagnant)
     return Etat(
-        visible=lancee(ticket),
-        jouable=lancee(ticket) and not termine and restants > 0,
+        visible=ouvert_pour_lui,
+        jouable=ouvert_pour_lui and not termine and restants > 0,
         restants=restants,
         termine=termine,
         gagnant=gagnant,
         code=ticket.code if gagnant and ticket is not None else None,
         conversation_id=conversation.conversation_id if conversation else None,
-        indices_debloques=len(indices_debloques(ticket, utilises)),
+        indices_debloques=len(indices_debloques(ticket, tentatives(user_id))),
         indices_total=len(liste_indices(ticket)),
     )
 
@@ -249,8 +267,10 @@ def proposer(user_id: int, proposition: str) -> Verdict | None:
     elif restants > 0:
         pluriel = "s" if restants > 1 else ""
         reponse = f"Raté ! Il te reste {restants} essai{pluriel}."
-        if len(indices_debloques(ticket, utilises + 1)) > len(
-            indices_debloques(ticket, utilises)
+        # La proposition compte comme une tentative de plus : un indice peut tomber.
+        faites = tentatives(user_id)
+        if len(indices_debloques(ticket, faites + 1)) > len(
+            indices_debloques(ticket, faites)
         ):
             reponse += " Un nouvel indice est débloqué : demande-le à tn-gpt."
     else:
@@ -307,7 +327,7 @@ def _consommateur(user_id: int, conversation_id: int) -> CompletionConsumer:
 def spec_for(ticket: TicketDor, user_id: int, conversation_id: int) -> CallSpec:
     """CallSpec du chat de jeu : nom et indices dans le prompt, aucune archive."""
     # Le modèle ne voit que les indices débloqués : insister n'en arrache pas d'autres.
-    debloques = indices_debloques(ticket, essais_utilises(user_id))
+    debloques = indices_debloques(ticket, tentatives(user_id))
     indices = "\n".join(f"- {i}" for i in debloques) or _SANS_INDICES
     system = (
         _PROMPT.read_text(encoding="utf-8")
@@ -336,6 +356,27 @@ class NomPropose:
     nombre: int
     joueurs: int
     juste: bool
+
+
+def joueurs_et_dispenses() -> list[User]:
+    """Tous les comptes, pour cocher qui est dispensé du jeu ; par nom."""
+    return list(
+        db.session.scalars(
+            db.select(User).order_by(User.user_surname, User.user_firstname)
+        )
+    )
+
+
+def regler_dispenses(user_ids: set[str], admin_id: int) -> int:
+    """Coche les comptes dispensés et décoche les autres ; rend le total coché."""
+    del admin_id
+    vises = {int(i) for i in user_ids if i.isdigit()}
+    dispenses = 0
+    for user in db.session.scalars(db.select(User)):
+        user.ticket_dor_dispense = user.user_id in vises
+        dispenses += user.ticket_dor_dispense
+    db.session.commit()
+    return dispenses
 
 
 def classement_propositions() -> list[NomPropose]:

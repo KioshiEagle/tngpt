@@ -749,6 +749,7 @@ def ticket_dor_page() -> str:
         lancee=ticket_dor.lancee(ticket),
         joueurs=joueurs,
         max_essais=ticket_dor.MAX_ESSAIS,
+        comptes=ticket_dor.joueurs_et_dispenses(),
     )
 
 
@@ -797,6 +798,17 @@ def ticket_dor_basculer() -> Response:
     logger.info("Ticket d'or ouvert=%s par %s", ticket.ouvert, current_user.user_mail)
     etat = "réactivé" if ticket.ouvert else "désactivé pour tout le monde"
     flash(f"Ticket d'or {etat}.", "success")
+    return redirect(url_for("admin.ticket_dor_page"))
+
+
+@admin_bp.route("/ticket-dor/dispenses", methods=["POST"])
+@admin_required
+def ticket_dor_dispenses() -> Response:
+    """Coche les comptes dispensés du jeu (2A/3A)."""
+    coches = set(request.form.getlist("dispense"))
+    n = ticket_dor.regler_dispenses(coches, current_user.user_id)
+    logger.info("Ticket d'or : %d dispensé(s) par %s", n, current_user.user_mail)
+    flash(f"{n} personne(s) dispensée(s) du Ticket d'or.", "success")
     return redirect(url_for("admin.ticket_dor_page"))
 
 
