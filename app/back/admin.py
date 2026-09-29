@@ -840,6 +840,7 @@ def ctf_page() -> str:
     )
     for partie, _ in parties:
         phases[partie.phase] = phases.get(partie.phase, 0) + 1
+    equipes = ctf_boss.equipes()
     return render_template(
         "admin/ctf.html",
         boss_actif=ctf_boss.enabled(),
@@ -854,12 +855,29 @@ def ctf_page() -> str:
         repliques=[(nom, voix.texte(nom), voix.clip(nom)) for nom in voix.REPLIQUES],
         phases=phases,
         parties=parties,
+        equipes=equipes,
         equipe_de={
             user.user_id: lettre
-            for lettre, membres in ctf_boss.equipes().items()
+            for lettre, membres in equipes.items()
             for user in membres
         },
+        mac=_etat_du_mac(equipes),
     )
+
+
+def _etat_du_mac(equipes: dict[str, list[User]]) -> dict[str, object] | None:
+    """Âge du dernier signal du Mac, clés vues et clés d'équipes inscrites absentes."""
+    signal = ctf_boss.dernier_signal()
+    if signal is None:
+        return None
+    vu, cles = signal
+    return {
+        "age": int((datetime.now(UTC) - vu).total_seconds()),
+        "cles": cles,
+        "manquantes": [
+            c for c, membres in equipes.items() if membres and c not in cles
+        ],
+    }
 
 
 @admin_bp.route("/ctf/secrets", methods=["POST"])
@@ -877,6 +895,22 @@ def ctf_secrets() -> Response:
         flash(
             "Enregistré, mais /ctf/boss reste fermé tant qu'un champ manque.", "warning"
         )
+    return redirect(url_for("admin.ctf_page"))
+
+
+@admin_bp.route("/ctf/equipes", methods=["POST"])
+@admin_required
+def ctf_equipes() -> Response:
+    """Remplace les équipes du boss : une lettre par clé USB branchée sur le Mac."""
+    inconnus = ctf_boss.poser_equipes(request.form.to_dict())
+    logger.info("Équipes du boss modifiées par %s", current_user.user_mail)
+    if inconnus:
+        flash(
+            f"Équipes enregistrées ; comptes introuvables : {', '.join(inconnus)}",
+            "warning",
+        )
+    else:
+        flash("Équipes enregistrées.", "success")
     return redirect(url_for("admin.ctf_page"))
 
 

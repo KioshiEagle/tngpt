@@ -2,7 +2,7 @@
 
 {% block title %}CTF{% endblock %}
 {% block heading %}CTF{% endblock %}
-{% block subtitle %}Boss final : secrets, voix de TN-GPT, avancée des joueurs.{% endblock %}
+{% block subtitle %}Boss final : secrets, équipes, voix de TN-GPT, avancée des joueurs.{% endblock %}
 
 {% block content %}
 
@@ -41,6 +41,44 @@
                 </label>
             {% endfor %}
             <button type="submit" class="admin-btn admin-btn--primary">Enregistrer</button>
+        </form>
+    </div>
+
+    <div class="admin-card admin-card--spaced">
+        <h2>Équipes</h2>
+        <p class="admin-note">
+            {% if mac %}
+                Mac : dernier signal il y a {{ mac.age }} s · clés branchées : {{ mac.cles | join(', ') or 'aucune' }}
+                {% if mac.manquantes %}· <strong>clés retirées : {{ mac.manquantes | join(', ') }}</strong>{% endif %}
+                {% if mac.age > 30 %}· <strong>le Mac ne répond plus</strong>{% endif %}
+            {% else %}
+                Mac : aucun signal reçu.
+            {% endif %}
+        </p>
+        <p class="admin-note">Une lettre par clé (volume <code>EQUIPE_A</code>…). Mails des joueurs séparés par des espaces, virgules ou retours à la ligne. Clé absente : l'acte 2 tombe pour les membres de l'équipe qui y sont.</p>
+        <form method="post" action="{{ url_for('admin.ctf_equipes') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="admin-table-scroll">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>Clé</th>
+                            <th>Membres</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for lettre, membres in equipes.items() %}
+                            <tr>
+                                <td class="admin-mono">{{ lettre }}</td>
+                                <td>
+                                    <textarea name="{{ lettre }}" rows="2" autocomplete="off" class="admin-mono" style="width: 100%; min-width: 260px;">{{ membres | map(attribute='user_mail') | join('\n') }}</textarea>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <button type="submit" class="admin-btn admin-btn--primary">Enregistrer les équipes</button>
         </form>
     </div>
 

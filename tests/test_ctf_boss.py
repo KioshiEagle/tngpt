@@ -375,29 +375,51 @@ def test_la_page_du_boss_joue_les_repliques_generees(app_boss: Flask) -> None:
     assert client.get("/ctf/boss/voix/inconnue.mp3").status_code == _HTTP_NOT_FOUND
 
 
-def test_l_onglet_ctf_du_panel_se_rend(app_boss: Flask) -> None:
-    """Secrets, voix et joueurs sur une seule page, clé jamais affichée en clair."""
+def _panel(app: Flask) -> FlaskClient:
+    """Client admin sur l'onglet CTF, CSRF coupé pour poster les formulaires."""
     from app.back.admin import admin_bp  # noqa: PLC0415
     from app.back.permissions import PERM_ADMIN  # noqa: PLC0415
     from app.extensions import csrf  # noqa: PLC0415
 
-    app_boss.register_blueprint(admin_bp)
-    csrf.init_app(app_boss)
-    with app_boss.app_context():
+    app.register_blueprint(admin_bp)
+    app.config["WTF_CSRF_ENABLED"] = False
+    csrf.init_app(app)
+    with app.app_context():
         admin = db.session.get(User, 1)
         assert admin is not None
         admin.user_permissions = 1 << PERM_ADMIN
         db.session.commit()
+    return _joueur(app, 1)
+
+
+def test_l_onglet_ctf_du_panel_se_rend(app_boss: Flask) -> None:
+    """Secrets, voix et joueurs sur une seule page, clé jamais affichée en clair."""
+    panel = _panel(app_boss)
+    with app_boss.app_context():
         voix.configurer("sk_cle_tres_secrete_1234", "voix123", 1)
         ctf_boss.passer_en_replique(2)
-    page = _joueur(app_boss, 1).get("/admin/ctf").get_data(as_text=True)
+    page = panel.get("/admin/ctf").get_data(as_text=True)
     assert "…1234" in page
     assert "sk_cle_tres_secrete" not in page
     assert "boss_coupure" in page
     assert "Paul" in page
 
 
-def test_le_secret_du_pi_se_tire_seul_et_un_champ_vide_ne_l_efface_pas(
+def test_le_panel_pose_les_equipes_et_montre_les_cles_retirees(
+    app_boss: Flask,
+) -> None:
+    """Le formulaire remplace les équipes ; l'état du Mac nomme la clé qui manque."""
+    panel = _panel(app_boss)
+    panel.post("/admin/ctf/equipes", data={"C": "paul@telecomnancy.net"})
+    with app_boss.app_context():
+        assert ctf_boss.equipe(1) is None
+        assert ctf_boss.equipe(2) == "C"
+        ctf_boss.recevoir_cles({"A"})
+    page = panel.get("/admin/ctf").get_data(as_text=True)
+    assert "clés retirées : C" in page
+
+
+def test_le_secret_du_mac_se_tire_seul_et_un_champ_vide_ne_l_efface_pas(
     app_boss: Flask,
 ) -> None:
     """Enregistrer le formulaire avec des champs vides ne rouvre ni ne casse rien."""
