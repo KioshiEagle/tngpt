@@ -16,13 +16,39 @@
 
     const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
 
-    // Voix de TN-GPT (onglet CTF), passée dans un filtre radio ; muette si le clip manque.
-    function parler(clip) {
-        const el = new Audio(`/ctf/boss/voix/boss_${clip}.mp3`);
-        el.crossOrigin = 'anonymous';
+    // Un seul contexte, réveillé à chaque geste : créé hors geste (la mort de l'acte 2
+    // arrive par le sondage), il naîtrait suspendu et la voix partirait dans le vide.
+    let audio = null;
+    function contexte() {
         try {
-            const ctx = new AudioContext();
-            const source = ctx.createMediaElementSource(el);
+            audio ??= new AudioContext();
+        } catch {
+            return null;
+        }
+        if (audio.state !== 'running') audio.resume().catch(() => {});
+        return audio;
+    }
+    for (const geste of ['pointerdown', 'keydown']) {
+        document.addEventListener(geste, contexte, { capture: true });
+    }
+
+    // Clips décodés d'avance : au moment de la mort, il ne reste qu'à les jouer.
+    const clips = {};
+    const urlClip = (clip) => `/ctf/boss/voix/boss_${clip}.mp3`;
+    function charger(clip) {
+        clips[clip] ??= fetch(urlClip(clip))
+            .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(r.status))))
+            .then((octets) => contexte().decodeAudioData(octets));
+        return clips[clip];
+    }
+
+    // Voix de TN-GPT (onglet CTF), passée dans un filtre radio ; muette si le clip manque.
+    async function parler(clip) {
+        const ctx = contexte();
+        try {
+            if (!ctx || ctx.state !== 'running') throw new Error('audio suspendu');
+            const source = ctx.createBufferSource();
+            source.buffer = await charger(clip);
             const haut = ctx.createBiquadFilter();
             haut.type = 'highpass';
             haut.frequency.value = 700;
@@ -30,17 +56,19 @@
             bas.type = 'lowpass';
             bas.frequency.value = 3200;
             source.connect(haut).connect(bas).connect(ctx.destination);
+            source.start();
         } catch {
-            // Web Audio indisponible : on joue la voix telle quelle.
+            // Aucun geste encore, ou Web Audio absent : la voix brute, si le navigateur veut.
+            new Audio(urlClip(clip)).play().catch(() => {});
         }
-        el.play().catch(() => {});
     }
 
     // Bruit blanc synthétisé : pas de fichier son à servir pour un grésillement.
     function gresiller(duree) {
+        const ctx = contexte();
+        if (!ctx) return;
         try {
-            const ctx = new AudioContext();
-            const tampon = ctx.createBuffer(1, ctx.sampleRate * duree, ctx.sampleRate);
+            const tampon = ctx.createBuffer(1, Math.round(ctx.sampleRate * duree), ctx.sampleRate);
             const donnees = tampon.getChannelData(0);
             for (let i = 0; i < donnees.length; i++) donnees[i] = Math.random() * 2 - 1;
             const source = ctx.createBufferSource();
@@ -50,7 +78,6 @@
             source.buffer = tampon;
             source.connect(volume).connect(ctx.destination);
             source.start();
-            source.onended = () => ctx.close();
         } catch {
             // Audio refusé par le navigateur : la mort reste visible, muette.
         }
@@ -133,6 +160,7 @@
         if (etat.flag_acte_1) flag1.textContent = etat.flag_acte_1;
         if (etat.phase === 'debranche') cendres(etat.equipe);
         if (etat.phase === 'replique') {
+            charger('mort').catch(() => {});
             defigurer();
             // Redemandée à chaque écoute pour qu'elle reste visible dans l'onglet Réseau.
             fetch('/ctf/boss/relais.conf').catch(() => {});
@@ -159,5 +187,7 @@
 
     document.addEventListener('tngpt:reponse', () => rafraichir({ animer: true }));
 
+    // La coupure se joue dès la fin de l'acte 1 : on l'a sous la main avant.
+    charger('coupure').catch(() => {});
     rafraichir({ animer: false });
 })();
