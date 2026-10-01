@@ -8,7 +8,6 @@
     const cle = document.getElementById('boss-cle');
     const defacement = document.getElementById('boss-defacement');
     const ecran = document.getElementById('boss-ecran');
-    const cendresEquipe = document.getElementById('boss-equipe');
     const calme = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     let phase = null;
     // À l'acte 2, la mort arrive quand la clé de l'équipe quitte le Mac, hors de la page.
@@ -104,18 +103,17 @@
     }
 
     // Pas de flag ici : il est sur la clé que l'équipe vient de retirer.
-    function cendres(equipe) {
+    function cendres() {
         racine.setAttribute('data-boss-mort', '');
-        cendresEquipe.textContent = equipe ? `relais de l'équipe ${equipe} coupé` : 'relais coupé';
         ecran.hidden = false;
         document.getElementById('inp').disabled = true;
         document.getElementById('sbtn').disabled = true;
     }
 
-    async function vraieMort(equipe) {
+    async function vraieMort() {
         parler('mort');
         await eteindre();
-        cendres(equipe);
+        cendres();
         racine.removeAttribute('data-boss-crt');
     }
 
@@ -158,7 +156,7 @@
         bandeau.hidden = etat.phase === 'en_ligne';
         if (etat.phase !== 'en_ligne') cle.textContent = etat.equipe ?? "sans équipe, vois l'orga";
         if (etat.flag_acte_1) flag1.textContent = etat.flag_acte_1;
-        if (etat.phase === 'debranche') cendres(etat.equipe);
+        if (etat.phase === 'debranche') cendres();
         if (etat.phase === 'replique') {
             charger('mort').catch(() => {});
             defigurer();
@@ -175,7 +173,7 @@
         phase = etat.phase;
         if (animer && avant === 'en_ligne' && phase === 'replique') await fausseMort();
         if (avant === 'replique' && phase === 'debranche') {
-            await vraieMort(etat.equipe);
+            await vraieMort();
             return;
         }
         appliquer(etat);

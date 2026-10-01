@@ -89,7 +89,7 @@
         {# Masqué tant que l'émetteur tourne : boss.js l'affiche dès la coupure. #}
         <div class="boss-bandeau" id="boss-bandeau" hidden>
             <div class="boss-bandeau-acte">Acte 1 <span id="boss-flag-1"></span></div>
-            <div class="boss-bandeau-cle">Acte 2 · ta clé sur sa machine : <code id="boss-cle">…</code></div>
+            <div class="boss-bandeau-cle">Acte 2 · ton équipe : <code id="boss-cle">…</code></div>
         </div>
         {# La réplique réécrit ses propres règles sous les yeux du joueur (boss.js). #}
         <div class="boss-defacement" id="boss-defacement" hidden></div>
@@ -208,8 +208,8 @@
     {% if boss %}
     <div class="boss-ecran" id="boss-ecran" hidden>
         <div class="boss-cendres">
-            <p>TN-GPT s'est tu.</p>
-            <code id="boss-equipe"></code>
+            <p>no signal</p>
+            <code>TN-GPT offline</code>
         </div>
     </div>
     <script src="{{ asset('boss.js') }}"></script>
