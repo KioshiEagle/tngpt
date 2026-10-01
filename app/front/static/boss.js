@@ -105,6 +105,9 @@
     // Pas de flag ici : il est sur la clé que l'équipe vient de retirer.
     function cendres() {
         racine.setAttribute('data-boss-mort', '');
+        // La citation du jour n'a plus de bouche pour la dire.
+        const bulle = document.getElementById('sidebar-bubble');
+        if (bulle) bulle.textContent = '⚰️';
         ecran.hidden = false;
         document.getElementById('inp').disabled = true;
         document.getElementById('sbtn').disabled = true;
